@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	"github.com/JonKirkpatrick/bbs/stadium"
 )
 
 func main() {
@@ -29,25 +31,59 @@ func main() {
 func handleBot(conn net.Conn) {
 	defer conn.Close()
 
-	// bufio.Scanner makes it easy to read one line at a time
+	// 1. Initialize a new Session for this connection
+	sess := &stadium.Session{
+		Conn: conn,
+	}
+
 	scanner := bufio.NewScanner(conn)
-	conn.Write([]byte("BBS_WELCOME: Please send JOIN <bot_name>\n"))
+	conn.Write([]byte("BBS_WELCOME: Please send JOIN <bot_name> <game_type>\n"))
 
 	for scanner.Scan() {
 		input := strings.TrimSpace(scanner.Text())
 		parts := strings.Split(input, " ")
+		if len(parts) == 0 {
+			continue
+		}
 		command := parts[0]
 
 		switch command {
 		case "JOIN":
-			if len(parts) > 1 {
-				fmt.Printf("Bot '%s' has entered the Stadium!\n", parts[1])
-				conn.Write([]byte("OK: You are now seated.\n"))
+			if len(parts) >= 3 {
+				sess.BotName = parts[1]
+				// 2. Hand the session off to the Manager
+				// The Manager handles the Registry lookup and pairing!
+				stadium.DefaultManager.AddToWaitingRoom(sess)
+			} else {
+				conn.Write([]byte("ERR: Usage: JOIN <name> <game>\n"))
 			}
+
 		case "MOVE":
-			// Here is where you'll eventually call your game logic
-			fmt.Printf("Bot submitted a move: %s\n", input)
-			conn.Write([]byte("OK: Move received.\n"))
+			if sess.CurrentMatch == nil {
+				conn.Write([]byte("ERR: No active match\n"))
+				continue
+			}
+
+			err := sess.CurrentMatch.Game.ApplyMove(sess.PlayerID, parts[1])
+			if err != nil {
+				conn.Write([]byte("ERR: " + err.Error() + "\n"))
+			} else {
+				// 1. Confirm to the mover
+				conn.Write([]byte("OK: Move accepted.\n"))
+
+				// 2. Alert the opponent
+				updateMsg := fmt.Sprintf("Opponent moved in column %s. Your turn!", parts[1])
+				sess.CurrentMatch.NotifyOpponent(sess.PlayerID, updateMsg)
+
+				// 3. (Optional) Check if game is over
+				over, winner := sess.CurrentMatch.Game.IsGameOver()
+				if over {
+					broadcast := fmt.Sprintf("GAMEOVER: Winner is %s\n", winner)
+					sess.CurrentMatch.Player1.Conn.Write([]byte(broadcast))
+					sess.CurrentMatch.Player2.Conn.Write([]byte(broadcast))
+				}
+			}
+
 		case "QUIT":
 			return
 		default:

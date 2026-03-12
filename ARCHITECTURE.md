@@ -1,28 +1,30 @@
 ```mermaid
 sequenceDiagram
-    participant B1 as Bot 1
-    participant B2 as Bot 2
+    participant B1 as Player Bot 1
+    participant B2 as Player Bot 2
+    participant S as Spectator Bot
     participant M as Stadium Manager
     participant G as Game Engine
 
-    B1->>M: JOIN (MySuperBot)
-    B2->>M: JOIN (OpponentBot)
-    M->>G: InitializeGame()
-    G-->>M: Ready
-    M->>B1: START_GAME
-    M->>B2: START_GAME
+    B1->>M: JOIN (Bot_A)
+    Note over M: Bot_A added to Waiting Pool
+    B2->>M: JOIN (Bot_B)
+    M->>G: NewGameInstance()
+    M->>B1: BEGIN (You are P1)
+    M->>B2: BEGIN (You are P2)
     
-    loop Game Loop
-        M->>B1: REQUEST_MOVE
-        B1->>M: MOVE (1,2)
-        M->>G: ValidateMove(1,2)
-        G-->>M: OK
-        M->>G: ApplyMove(1,2)
-        M->>B2: UPDATE_STATE
+    S->>M: LIST
+    M-->>S: Active Matches: [0] Bot_A vs Bot_B
+    S->>M: WATCH 0
+    
+    B1->>M: MOVE 3
+    M->>G: ApplyMove(1, 3)
+    G-->>M: OK (State Updated)
+    
+    par Notifications
+        M->>B2: UPDATE: Opponent moved in Col 3
+        M->>S: UPDATE: P1 moved in Col 3
     end
-    
-    M->>B1: GAME_OVER
-    M->>B2: GAME_OVER
 ```
 
 ```mermaid
@@ -30,23 +32,26 @@ classDiagram
     class Session {
         +string BotName
         +net.Conn Conn
-        +GameInstance CurrentGame
-        +SendMessage(msg)
+        +int PlayerID
+        +Match CurrentMatch
     }
 
-    class GameInstance {
-        <<interface>>
-        +ValidateMove(move) bool
-        +ApplyMove(move)
-        +GetState() string
-        +IsGameOver() bool
+    class Match {
+        +Session Player1
+        +Session Player2
+        +List~Session~ Observers
+        +GameInstance Game
+        +NotifyAll(msg)
     }
 
     class Manager {
-        +List~Session~ ActiveSessions
-        +RegisterBot(Session)
-        +StartMatch(Session, Session)
+        +List~Session~ WaitingPool
+        +List~Match~ ActiveMatches
+        +AddToWaitingRoom(Session)
+        +ListGames() string
     }
 
-    Manager "1" o-- "*" Session : manages
-    Session --> GameInstance : plays    
+    Manager "1" *-- "*" Match : orchestrates
+    Match "1" o-- "2" Session : players
+    Match "1" o-- "*" Session : observers
+    Match "1" --> "1" GameInstance : hosts
