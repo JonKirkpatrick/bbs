@@ -3,6 +3,7 @@ package connect4
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type Connect4Game struct {
@@ -20,7 +21,15 @@ func (c *Connect4Game) GetName() string {
 }
 
 func (c *Connect4Game) GetState() string {
-	return fmt.Sprintf("Board state: %v, Turn: Player %d", c.Board, c.Turn)
+	s := ""
+	for r := 0; r < 6; r++ {
+		for col := 0; col < 7; col++ {
+			s += fmt.Sprintf("%d", c.Board[r][col])
+		}
+		s += "\n"
+	}
+	s += fmt.Sprintf("TURN %d", c.Turn)
+	return s
 }
 
 func (c *Connect4Game) ValidateMove(playerID int, move string) error {
@@ -53,7 +62,7 @@ func (c *Connect4Game) ApplyMove(playerID int, move string) error {
 	fmt.Sscanf(move, "%d", &col)
 
 	// 3. Find the lowest empty row (Gravity)
-	for row := 5; row >= 0; row-- {
+	for row := len(c.Board) - 1; row >= 0; row-- {
 		if c.Board[row][col] == 0 {
 			c.Board[row][col] = playerID
 			break
@@ -61,16 +70,81 @@ func (c *Connect4Game) ApplyMove(playerID int, move string) error {
 	}
 
 	// 4. Switch Turns
-	if c.Turn == 1 {
-		c.Turn = 2
-	} else {
-		c.Turn = 1
-	}
+	c.Turn = 3 - c.Turn // Switches between 1 and 2
 
 	return nil
 }
 
 func (c *Connect4Game) IsGameOver() (bool, string) {
-	// Add win-condition logic here
+	// Check every cell for a possible winning sequence
+	rows := len(c.Board)
+	cols := len(c.Board[0])
+
+	for r := 0; r < rows; r++ {
+		for col := 0; col < cols; col++ {
+			player := c.Board[r][col]
+			if player == 0 {
+				continue
+			}
+
+			// Check right (horizontal)
+			if col+3 < cols &&
+				player == c.Board[r][col+1] &&
+				player == c.Board[r][col+2] &&
+				player == c.Board[r][col+3] {
+				return true, fmt.Sprintf("Player %d", player)
+			}
+
+			// Check down (vertical)
+			if r+3 < rows &&
+				player == c.Board[r+1][col] &&
+				player == c.Board[r+2][col] &&
+				player == c.Board[r+3][col] {
+				return true, fmt.Sprintf("Player %d", player)
+			}
+
+			// Check diagonal down-right
+			if r+3 < rows && col+3 < cols &&
+				player == c.Board[r+1][col+1] &&
+				player == c.Board[r+2][col+2] &&
+				player == c.Board[r+3][col+3] {
+				return true, fmt.Sprintf("Player %d", player)
+			}
+
+			// Check diagonal up-right
+			if r-3 >= 0 && col+3 < cols &&
+				player == c.Board[r-1][col+1] &&
+				player == c.Board[r-2][col+2] &&
+				player == c.Board[r-3][col+3] {
+				return true, fmt.Sprintf("Player %d", player)
+			}
+		}
+	}
+
+	// Check for draw: top row is full
+	full := true
+	for col := 0; col < cols; col++ {
+		if c.Board[0][col] == 0 {
+			full = false
+			break
+		}
+	}
+	if full {
+		return true, "draw"
+	}
+
+	// Game continues
 	return false, ""
+}
+
+func (c *Connect4Game) String() string {
+	var s strings.Builder
+	s.WriteString("\n")
+	for r := range c.Board {
+		for col := range c.Board[r] {
+			fmt.Fprintf(&s, "%d ", c.Board[r][col])
+		}
+		s.WriteString("\n")
+	}
+	return s.String()
 }

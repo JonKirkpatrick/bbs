@@ -27,7 +27,6 @@ const WelcomeBanner = `
 // Build-a-Bot Stadium - Perfect Information Bot Server
 // Developed by Jon Kirkpatrick (github.com/JonKirkpatrick)
 // For questions/comments/improvements, please reach out!
-
 `
 
 func main() {
