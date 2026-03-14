@@ -3,7 +3,6 @@ package stadium
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +32,15 @@ type Arena struct {
 	Bot1Time      time.Duration      // Remaining time for Player 1
 	Bot2Time      time.Duration      // Remaining time for Player 2
 	LastMove      time.Time          // Timestamp of the last move (for timeout tracking)
+}
+
+// ArenaSummary is a simplified struct used for listing arenas without exposing full game state or player details.
+type ArenaSummary struct {
+	ID     int    `json:"id"`
+	Game   string `json:"game"`
+	P1Name string `json:"p1_name"`
+	P2Name string `json:"p2_name"`
+	Status string `json:"status"`
 }
 
 // DefaultManager is the global instance of the Manager that handles all arenas and sessions in the stadium.
@@ -127,28 +135,27 @@ func (m *Arena) NotifyAll(msgType, payload string) {
 	}
 }
 
-// ListMatches returns a formatted string of all current arenas and their player statuses.
-func (m *Manager) ListMatches() string {
+// ListMatches returns a summary of all current arenas, including their ID, game type, player names, and status, for display in the lobby.
+func (m *Manager) ListMatches() []ArenaSummary {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var sb strings.Builder
-	sb.WriteString("CURRENT_ARENAS:\n")
-
+	var list []ArenaSummary
 	for id, arena := range m.Arenas {
-		p1Name := "Waiting..."
+		summary := ArenaSummary{
+			ID:     id,
+			Game:   arena.Game.GetName(),
+			Status: arena.Status,
+		}
 		if arena.Player1 != nil {
-			p1Name = arena.Player1.BotName
+			summary.P1Name = arena.Player1.BotName
 		}
-
-		p2Name := "Waiting..."
 		if arena.Player2 != nil {
-			p2Name = arena.Player2.BotName
+			summary.P2Name = arena.Player2.BotName
 		}
-
-		sb.WriteString(fmt.Sprintf("%d: %s vs %s\n", id, p1Name, p2Name))
+		list = append(list, summary)
 	}
-	return sb.String()
+	return list
 }
 
 // AddObserver allows a session to start observing an arena, receiving updates without participating as a player.
@@ -166,12 +173,11 @@ func (m *Manager) AddObserver(arenaID int, observer *Session) error {
 	return nil
 }
 
-// CreateArena initializes a new arena with the specified game type, time limit, and handicap settings, returning the new arena's ID.
-func (m *Manager) CreateArena(gameType string, timeLimit time.Duration, allowHandicap bool) int {
+// CreateArena now accepts the fully-initialized GameInstance.
+func (m *Manager) CreateArena(game games.GameInstance, timeLimit time.Duration, allowHandicap bool) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	game, _ := games.GetGame(gameType)
 	id := m.nextArenaID
 	m.nextArenaID++
 
@@ -214,26 +220,29 @@ func (m *Manager) JoinArena(arenaID int, s *Session, handicap int) error {
 	return nil
 }
 
-// HandlePlayerLeave manages the cleanup process when a player disconnects,
-// including notifying opponents and observers, and destroying the arena if necessary.
+// HandlePlayerLeave is called when a session disconnects or quits, ensuring that the arena is properly cleaned up and the opponent is notified.
 func (m *Manager) HandlePlayerLeave(s *Session) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 1. If in an arena, notify and destroy
 	if s.CurrentArena != nil {
-		s.CurrentArena.NotifyAll("error", "Player "+s.BotName+" disconnected.")
+		// 1. Notify others
+		s.CurrentArena.NotifyAll("error", "Player "+s.BotName+" left.")
 
-		// Destroy the arena so no further moves can be made
-		delete(m.Arenas, s.CurrentArena.ID)
+		// 2. IMPORTANT: Clear references from the Arena to the Session
+		if s.CurrentArena.Player1 == s {
+			s.CurrentArena.Player1 = nil
+		}
+		if s.CurrentArena.Player2 == s {
+			s.CurrentArena.Player2 = nil
+		}
 
-		// Nullify session reference so it doesn't try to leave twice
+		// 3. Mark Arena as inactive/aborted
+		s.CurrentArena.Status = "aborted"
+
+		// 4. Sever the Session's reference to the arena
 		s.CurrentArena = nil
 	}
-
-	// 2. Remove from active session registry
-	delete(m.ActiveSessions, s.SessionID)
-	s.IsRegistered = false
 }
 
 // Broadcast sends a message to both players and all observers in the arena, prefixed with "OBSERVE:" for observers.
@@ -297,4 +306,20 @@ func (m *Manager) UnregisterSession(sessionID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.ActiveSessions, sessionID)
+}
+
+// UpdateSessionProfile allows a session to update its profile information, such as name or capabilities, while ensuring thread safety.
+func (m *Manager) UpdateSessionProfile(sess *Session, key, val string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	switch key {
+	case "name":
+		sess.BotName = val
+	case "capability":
+		sess.Capabilities = append(sess.Capabilities, val)
+	default:
+		return errors.New("unknown field")
+	}
+	return nil
 }

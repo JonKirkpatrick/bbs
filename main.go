@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JonKirkpatrick/bbs/games"
 	"github.com/JonKirkpatrick/bbs/stadium"
 )
 
@@ -109,17 +110,39 @@ func handleBot(conn net.Conn) {
 				sess.SendJSON(stadium.Response{Status: "ok", Type: "register", Payload: fmt.Sprintf("Registered as %s (ID: %d)", sess.BotName, sess.SessionID)})
 			}
 
-		case "CREATE":
-			// Usage: CREATE <game_type> <time_limit_ms> <allow_handicap_bool>
-			if len(parts) < 4 {
-				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Usage: CREATE <game> <time_ms> <handicap_bool>"})
+		case "WHOAMI":
+			payload := fmt.Sprintf("ID: %d, Name: %s, Registered: %t, Arena: %v",
+				sess.SessionID, sess.BotName, sess.IsRegistered, (sess.CurrentArena != nil))
+			sess.SendJSON(stadium.Response{Status: "ok", Type: "info", Payload: payload})
+
+		case "UPDATE":
+			// ... parse parts ...
+			err := stadium.DefaultManager.UpdateSessionProfile(sess, parts[1], parts[2])
+			if err != nil {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: err.Error()})
 				continue
 			}
+			sess.SendJSON(stadium.Response{Status: "ok", Type: "update", Payload: "Profile updated"})
+
+		case "CREATE":
+			// Usage: CREATE <type> <time_ms> <handicap_bool> [optional_args...]
+			if len(parts) < 4 {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Usage: CREATE <type> <time> <handicap> [args...]"})
+				continue
+			}
+
 			gameType := parts[1]
+			// The slice [4:] contains everything after the time and handicap flags
+			game, err := games.GetGame(gameType, parts[4:])
+
+			if err != nil {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: err.Error()})
+				continue
+			}
 			timeLimit, _ := strconv.Atoi(parts[2])
 			allowHandicap := parts[3] == "true"
 
-			arenaID := stadium.DefaultManager.CreateArena(gameType, time.Duration(timeLimit)*time.Millisecond, allowHandicap)
+			arenaID := stadium.DefaultManager.CreateArena(game, time.Duration(timeLimit)*time.Millisecond, allowHandicap)
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "create", Payload: strconv.Itoa(arenaID)})
 
 		case "JOIN":
@@ -138,9 +161,15 @@ func handleBot(conn net.Conn) {
 			} else {
 				sess.SendJSON(stadium.Response{Status: "ok", Type: "join", Payload: "Joined arena " + parts[1]})
 			}
+
 		case "MOVE":
 			if sess.CurrentArena == nil {
 				conn.Write([]byte("ERR: No active match\n"))
+				continue
+			}
+
+			if sess.CurrentArena.Status != "active" {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Match is not active"})
 				continue
 			}
 
@@ -178,7 +207,18 @@ func handleBot(conn net.Conn) {
 			}
 
 		case "LIST":
-			conn.Write([]byte(stadium.DefaultManager.ListMatches() + "\n"))
+			matches := stadium.DefaultManager.ListMatches()
+
+			// 1. Presenting to CLI (pretty-print)
+			var sb strings.Builder
+			sb.WriteString("CURRENT_ARENAS:\n")
+			for _, m := range matches {
+				fmt.Fprintf(&sb, "%d: [%s] %s vs %s\n", m.ID, m.Game, m.P1Name, m.P2Name)
+			}
+			sess.SendJSON(stadium.Response{Status: "ok", Type: "list", Payload: sb.String()})
+
+			// 2. OR, if the client is the Dashboard, you could send the raw slice:
+			// sess.SendJSON(stadium.Response{Status: "ok", Type: "list", Payload: matches})
 
 		case "WATCH":
 			if len(parts) < 2 {

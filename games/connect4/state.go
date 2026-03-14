@@ -1,19 +1,36 @@
 package connect4
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 )
 
 type Connect4Game struct {
-	Board [6][7]int
-	Turn  int // 1 or 2
+	Board [][]int
+	Rows  int
+	Cols  int
+	Turn  int
 }
 
-// New creates a new Connect4 game instance
-func New() *Connect4Game {
-	return &Connect4Game{Turn: 1}
+type GameState struct {
+	Board [][]int `json:"board"`
+	Turn  int     `json:"turn"`
+}
+
+// New now accepts dimensions
+func New(rows, cols int) *Connect4Game {
+	board := make([][]int, rows)
+	for i := range board {
+		board[i] = make([]int, cols)
+	}
+	return &Connect4Game{
+		Board: board,
+		Rows:  rows,
+		Cols:  cols,
+		Turn:  1,
+	}
 }
 
 func (c *Connect4Game) GetName() string {
@@ -21,15 +38,19 @@ func (c *Connect4Game) GetName() string {
 }
 
 func (c *Connect4Game) GetState() string {
-	s := ""
-	for r := 0; r < 6; r++ {
-		for col := 0; col < 7; col++ {
-			s += fmt.Sprintf("%d", c.Board[r][col])
-		}
-		s += "\n"
+	// Convert array to slice for JSON serialization
+	boardSlice := make([][]int, c.Rows)
+	for i := range c.Board {
+		boardSlice[i] = c.Board[i][:]
 	}
-	s += fmt.Sprintf("TURN %d", c.Turn)
-	return s
+
+	state := GameState{
+		Board: boardSlice,
+		Turn:  c.Turn,
+	}
+
+	bytes, _ := json.Marshal(state)
+	return string(bytes)
 }
 
 func (c *Connect4Game) ValidateMove(playerID int, move string) error {
@@ -39,8 +60,8 @@ func (c *Connect4Game) ValidateMove(playerID int, move string) error {
 
 	var col int
 	_, err := fmt.Sscanf(move, "%d", &col)
-	if err != nil || col < 0 || col > 6 {
-		return errors.New("invalid column: must be 0-6")
+	if err != nil || col < 0 || col > c.Cols-1 {
+		return fmt.Errorf("invalid column: must be 0-%d", c.Cols-1)
 	}
 
 	// Check if the top row of this column is already occupied
@@ -80,8 +101,8 @@ func (c *Connect4Game) IsGameOver() (bool, string) {
 	rows := len(c.Board)
 	cols := len(c.Board[0])
 
-	for r := 0; r < rows; r++ {
-		for col := 0; col < cols; col++ {
+	for r := range rows {
+		for col := range cols {
 			player := c.Board[r][col]
 			if player == 0 {
 				continue
@@ -123,7 +144,7 @@ func (c *Connect4Game) IsGameOver() (bool, string) {
 
 	// Check for draw: top row is full
 	full := true
-	for col := 0; col < cols; col++ {
+	for col := range cols {
 		if c.Board[0][col] == 0 {
 			full = false
 			break
