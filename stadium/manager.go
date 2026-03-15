@@ -3,6 +3,7 @@ package stadium
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,8 +16,14 @@ type Manager struct {
 	mu             sync.Mutex
 	Arenas         map[int]*Arena
 	ActiveSessions map[int]*Session
+	subscribers    map[chan StadiumEvent]struct{} // For dashboard updates
 	nextArenaID    int
 	nextSessionID  int
+}
+
+type StadiumEvent struct {
+	Type    string      `json:"type"`
+	Payload interface{} `json:"payload"`
 }
 
 // Arena represents a single match instance, including the two players, any observers, the game state, and timing information.
@@ -43,6 +50,53 @@ type ArenaSummary struct {
 	Status string `json:"status"`
 }
 
+type SessionSnapshot struct {
+	SessionID       int      `json:"session_id"`
+	BotName         string   `json:"bot_name"`
+	PlayerID        int      `json:"player_id"`
+	CurrentArenaID  int      `json:"current_arena_id,omitempty"`
+	HasCurrentArena bool     `json:"has_current_arena"`
+	Capabilities    []string `json:"capabilities"`
+	IsRegistered    bool     `json:"is_registered"`
+	RemoteAddr      string   `json:"remote_addr"`
+}
+
+type ObserverSnapshot struct {
+	SessionID int    `json:"session_id"`
+	BotName   string `json:"bot_name"`
+}
+
+type ArenaSnapshot struct {
+	ID             int                `json:"id"`
+	Status         string             `json:"status"`
+	Game           string             `json:"game"`
+	AllowHandicap  bool               `json:"allow_handicap"`
+	TimeLimitMS    int64              `json:"time_limit_ms"`
+	Bot1TimeMS     int64              `json:"bot1_time_ms"`
+	Bot2TimeMS     int64              `json:"bot2_time_ms"`
+	LastMove       string             `json:"last_move"`
+	Player1Session int                `json:"player1_session,omitempty"`
+	HasPlayer1     bool               `json:"has_player1"`
+	Player1Name    string             `json:"player1_name"`
+	Player2Session int                `json:"player2_session,omitempty"`
+	HasPlayer2     bool               `json:"has_player2"`
+	Player2Name    string             `json:"player2_name"`
+	Observers      []ObserverSnapshot `json:"observers"`
+	GameState      string             `json:"game_state"`
+	ObserverCount  int                `json:"observer_count"`
+}
+
+type ManagerSnapshot struct {
+	GeneratedAt     string            `json:"generated_at"`
+	NextArenaID     int               `json:"next_arena_id"`
+	NextSessionID   int               `json:"next_session_id"`
+	SessionCount    int               `json:"session_count"`
+	ArenaCount      int               `json:"arena_count"`
+	SubscriberCount int               `json:"subscriber_count"`
+	Sessions        []SessionSnapshot `json:"sessions"`
+	Arenas          []ArenaSnapshot   `json:"arenas"`
+}
+
 // DefaultManager is the global instance of the Manager that handles all arenas and sessions in the stadium.
 var DefaultManager = &Manager{}
 
@@ -52,6 +106,7 @@ func init() {
 		Arenas:         make(map[int]*Arena),
 		nextArenaID:    1,
 		ActiveSessions: make(map[int]*Session),
+		subscribers:    make(map[chan StadiumEvent]struct{}),
 		nextSessionID:  1,
 	}
 	DefaultManager.StartWatchdog()
@@ -81,6 +136,11 @@ func (m *Manager) StartWatchdog() {
 					if time.Since(arena.LastMove) > (1 * time.Hour) {
 						m.terminateArena(id, "Arena closed: Lobby timed out.")
 					}
+				case "aborted":
+					// Aborted arenas can live for a short time for debugging
+					if time.Since(arena.LastMove) > (5 * time.Minute) {
+						m.terminateArena(id, "Arena closed: Match aborted.")
+					}
 				}
 			}
 			m.mu.Unlock()
@@ -93,6 +153,7 @@ func (m *Manager) terminateArena(id int, reason string) {
 	if arena, ok := m.Arenas[id]; ok {
 		arena.NotifyAll("error", reason)
 		delete(m.Arenas, id)
+		m.broadcastArenaListLocked()
 	}
 }
 
@@ -101,15 +162,16 @@ func (m *Manager) DestroyArena(id int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.Arenas, id)
+	m.broadcastArenaListLocked()
 }
 
 // NotifyOpponent sends a message to the opponent of the given actorID (1 or 2) in the arena.
-func (m *Arena) NotifyOpponent(actorID int, message string) {
+func (a *Arena) NotifyOpponent(actorID int, message string) {
 	var opponent *Session
 	if actorID == 1 {
-		opponent = m.Player2
+		opponent = a.Player2
 	} else {
-		opponent = m.Player1
+		opponent = a.Player1
 	}
 
 	if opponent != nil && opponent.Conn != nil {
@@ -118,7 +180,7 @@ func (m *Arena) NotifyOpponent(actorID int, message string) {
 }
 
 // NotifyAll sends a message to both players and all observers in the arena.
-func (m *Arena) NotifyAll(msgType, payload string) {
+func (a *Arena) NotifyAll(msgType, payload string) {
 	res := Response{
 		Status:  "ok",
 		Type:    msgType,
@@ -126,12 +188,18 @@ func (m *Arena) NotifyAll(msgType, payload string) {
 	}
 
 	// Notify Players
-	m.Player1.SendJSON(res)
-	m.Player2.SendJSON(res)
+	if a.Player1 != nil {
+		a.Player1.SendJSON(res)
+	}
+	if a.Player2 != nil {
+		a.Player2.SendJSON(res)
+	}
 
 	// Notify Observers
-	for _, obs := range m.Observers {
-		obs.SendJSON(res)
+	for _, obs := range a.Observers {
+		if obs != nil {
+			obs.SendJSON(res)
+		}
 	}
 }
 
@@ -139,7 +207,11 @@ func (m *Arena) NotifyAll(msgType, payload string) {
 func (m *Manager) ListMatches() []ArenaSummary {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.listMatches()
+}
 
+// listMatches is an internal method that compiles a list of ArenaSummary structs for all current arenas, used by ListMatches and when broadcasting new arena creation to dashboards.
+func (m *Manager) listMatches() []ArenaSummary {
 	var list []ArenaSummary
 	for id, arena := range m.Arenas {
 		summary := ArenaSummary{
@@ -170,6 +242,7 @@ func (m *Manager) AddObserver(arenaID int, observer *Session) error {
 
 	arena.Observers = append(arena.Observers, observer)
 	observer.CurrentArena = arena
+	m.broadcastArenaListLocked()
 	return nil
 }
 
@@ -190,6 +263,7 @@ func (m *Manager) CreateArena(game games.GameInstance, timeLimit time.Duration, 
 		Observers:     make([]*Session, 0),
 		LastMove:      time.Now(),
 	}
+	m.broadcastArenaListLocked()
 	return id
 }
 
@@ -217,6 +291,7 @@ func (m *Manager) JoinArena(arenaID int, s *Session, handicap int) error {
 	}
 
 	s.CurrentArena = arena
+	m.broadcastArenaListLocked()
 	return nil
 }
 
@@ -242,18 +317,7 @@ func (m *Manager) HandlePlayerLeave(s *Session) {
 
 		// 4. Sever the Session's reference to the arena
 		s.CurrentArena = nil
-	}
-}
-
-// Broadcast sends a message to both players and all observers in the arena, prefixed with "OBSERVE:" for observers.
-func (m *Arena) Broadcast(msg string) {
-	// Notify players
-	m.Player1.Conn.Write([]byte(msg + "\n"))
-	m.Player2.Conn.Write([]byte(msg + "\n"))
-
-	// Notify observers
-	for _, obs := range m.Observers {
-		obs.Conn.Write([]byte("OBSERVE: " + msg + "\n"))
+		m.broadcastArenaListLocked()
 	}
 }
 
@@ -279,25 +343,29 @@ func (m *Manager) activateArena(a *Arena) {
 	a.Player2.SendJSON(Response{"ok", "info", msg})
 }
 
-// RegisterSession adds a new session to the manager's active sessions, ensuring that the bot name is unique.
-func (m *Manager) RegisterSession(s *Session, name string) error {
+// RegisterSession now captures the full profile of the bot upon entry.
+func (m *Manager) RegisterSession(s *Session, name string, caps []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 1. Check if name is already taken
+	// 1. Name uniqueness check
 	for _, sess := range m.ActiveSessions {
 		if sess.BotName == name {
 			return errors.New("bot name already in use")
 		}
 	}
 
-	// 2. Assign ID and register
+	// 2. Set ID and core flags
 	s.SessionID = m.nextSessionID
 	m.nextSessionID++
-	s.BotName = name
 	s.IsRegistered = true
+	s.Capabilities = caps // Store what this bot can actually play
+
+	// 3. Identity assignment
+	s.BotName = name
 
 	m.ActiveSessions[s.SessionID] = s
+	m.broadcastArenaListLocked()
 	return nil
 }
 
@@ -306,6 +374,46 @@ func (m *Manager) UnregisterSession(sessionID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.ActiveSessions, sessionID)
+	m.broadcastArenaListLocked()
+}
+
+func (m *Manager) EjectSession(sessionID int, reason string) error {
+	m.mu.Lock()
+	sess, exists := m.ActiveSessions[sessionID]
+	if !exists {
+		m.mu.Unlock()
+		return errors.New("session not found")
+	}
+
+	if reason == "" {
+		reason = "Removed by dashboard admin"
+	}
+
+	if sess.CurrentArena != nil {
+		arena := sess.CurrentArena
+		arena.NotifyAll("error", "Player "+sess.BotName+" was ejected: "+reason)
+
+		if arena.Player1 == sess {
+			arena.Player1 = nil
+		}
+		if arena.Player2 == sess {
+			arena.Player2 = nil
+		}
+
+		arena.Status = "aborted"
+		sess.CurrentArena = nil
+	}
+
+	delete(m.ActiveSessions, sessionID)
+	m.broadcastArenaListLocked()
+	m.mu.Unlock()
+
+	if sess.Conn != nil {
+		sess.SendJSON(Response{Status: "err", Type: "ejected", Payload: reason})
+		sess.Conn.Close()
+	}
+
+	return nil
 }
 
 // UpdateSessionProfile allows a session to update its profile information, such as name or capabilities, while ensuring thread safety.
@@ -321,5 +429,140 @@ func (m *Manager) UpdateSessionProfile(sess *Session, key, val string) error {
 	default:
 		return errors.New("unknown field")
 	}
+	m.broadcastArenaListLocked()
 	return nil
+}
+
+func (m *Manager) Snapshot() ManagerSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.snapshotLocked()
+}
+
+func (m *Manager) Subscribe() chan StadiumEvent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ch := make(chan StadiumEvent, 10)
+	m.subscribers[ch] = struct{}{}
+	return ch
+}
+
+func (m *Manager) Unsubscribe(ch chan StadiumEvent) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.subscribers, ch)
+	close(ch)
+}
+
+func (m *Manager) PublishArenaList() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.broadcastArenaListLocked()
+}
+
+func (m *Manager) broadcastArenaListLocked() {
+	m.broadcastLocked("arena_list", m.listMatches())
+	m.broadcastLocked("manager_state", m.snapshotLocked())
+}
+
+func (m *Manager) snapshotLocked() ManagerSnapshot {
+	snapshot := ManagerSnapshot{
+		GeneratedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		NextArenaID:     m.nextArenaID,
+		NextSessionID:   m.nextSessionID,
+		SessionCount:    len(m.ActiveSessions),
+		ArenaCount:      len(m.Arenas),
+		SubscriberCount: len(m.subscribers),
+		Sessions:        make([]SessionSnapshot, 0, len(m.ActiveSessions)),
+		Arenas:          make([]ArenaSnapshot, 0, len(m.Arenas)),
+	}
+
+	for _, sess := range m.ActiveSessions {
+		session := SessionSnapshot{
+			SessionID:    sess.SessionID,
+			BotName:      sess.BotName,
+			PlayerID:     sess.PlayerID,
+			Capabilities: append([]string(nil), sess.Capabilities...),
+			IsRegistered: sess.IsRegistered,
+		}
+
+		if sess.CurrentArena != nil {
+			session.CurrentArenaID = sess.CurrentArena.ID
+			session.HasCurrentArena = true
+		}
+
+		if sess.Conn != nil && sess.Conn.RemoteAddr() != nil {
+			session.RemoteAddr = sess.Conn.RemoteAddr().String()
+		}
+
+		snapshot.Sessions = append(snapshot.Sessions, session)
+	}
+
+	sort.Slice(snapshot.Sessions, func(i, j int) bool {
+		return snapshot.Sessions[i].SessionID < snapshot.Sessions[j].SessionID
+	})
+
+	for _, arena := range m.Arenas {
+		arenaSnap := ArenaSnapshot{
+			ID:            arena.ID,
+			Status:        arena.Status,
+			AllowHandicap: arena.AllowHandicap,
+			TimeLimitMS:   arena.TimeLimit.Milliseconds(),
+			Bot1TimeMS:    arena.Bot1Time.Milliseconds(),
+			Bot2TimeMS:    arena.Bot2Time.Milliseconds(),
+			LastMove:      arena.LastMove.UTC().Format(time.RFC3339Nano),
+			Observers:     make([]ObserverSnapshot, 0, len(arena.Observers)),
+		}
+
+		if arena.Game != nil {
+			arenaSnap.Game = arena.Game.GetName()
+			arenaSnap.GameState = arena.Game.GetState()
+		}
+
+		if arena.Player1 != nil {
+			arenaSnap.Player1Session = arena.Player1.SessionID
+			arenaSnap.HasPlayer1 = true
+			arenaSnap.Player1Name = arena.Player1.BotName
+		}
+
+		if arena.Player2 != nil {
+			arenaSnap.Player2Session = arena.Player2.SessionID
+			arenaSnap.HasPlayer2 = true
+			arenaSnap.Player2Name = arena.Player2.BotName
+		}
+
+		for _, observer := range arena.Observers {
+			if observer == nil {
+				continue
+			}
+			arenaSnap.Observers = append(arenaSnap.Observers, ObserverSnapshot{
+				SessionID: observer.SessionID,
+				BotName:   observer.BotName,
+			})
+		}
+
+		sort.Slice(arenaSnap.Observers, func(i, j int) bool {
+			return arenaSnap.Observers[i].SessionID < arenaSnap.Observers[j].SessionID
+		})
+		arenaSnap.ObserverCount = len(arenaSnap.Observers)
+
+		snapshot.Arenas = append(snapshot.Arenas, arenaSnap)
+	}
+
+	sort.Slice(snapshot.Arenas, func(i, j int) bool {
+		return snapshot.Arenas[i].ID < snapshot.Arenas[j].ID
+	})
+
+	return snapshot
+}
+
+func (m *Manager) broadcastLocked(eventType string, payload interface{}) {
+	event := StadiumEvent{Type: eventType, Payload: payload}
+	for ch := range m.subscribers {
+		select {
+		case ch <- event:
+		default:
+			// Client is too slow; avoid blocking the whole server
+		}
+	}
 }

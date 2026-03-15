@@ -43,6 +43,7 @@ func main() {
 	defer listener.Close()
 
 	fmt.Println("Build-a-Bot Stadium is OPEN and listening on port 8080...")
+	go startDashboard()
 
 	for {
 		conn, err := listener.Accept()
@@ -97,26 +98,34 @@ func handleBot(conn net.Conn) {
 			sess.Conn.Write([]byte(stadium.GetHelpText(sess.IsRegistered) + "\n"))
 
 		case "REGISTER":
-			// Usage: REGISTER <bot_name>
 			if len(parts) < 2 {
-				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Usage: REGISTER <name>"})
+				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: "Usage: REGISTER <name> [cap1,cap2,...]"})
 				continue
 			}
 
-			err := stadium.DefaultManager.RegisterSession(sess, parts[1])
-			if err != nil {
-				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: err.Error()})
-			} else {
-				sess.SendJSON(stadium.Response{Status: "ok", Type: "register", Payload: fmt.Sprintf("Registered as %s (ID: %d)", sess.BotName, sess.SessionID)})
+			// Parse capabilities if provided (e.g., "connect4,tictactoe")
+			var caps []string
+			if len(parts) > 2 {
+				caps = strings.Split(parts[2], ",")
 			}
 
+			err := stadium.DefaultManager.RegisterSession(sess, parts[1], caps)
+			if err != nil {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: err.Error()})
+				continue
+			}
+
+			msg := fmt.Sprintf("Registered as %s with capabilities: %v", sess.BotName, sess.Capabilities)
+			sess.SendJSON(stadium.Response{Status: "ok", Type: "register", Payload: msg})
+
 		case "WHOAMI":
+			// Usage: WHOAMI
 			payload := fmt.Sprintf("ID: %d, Name: %s, Registered: %t, Arena: %v",
 				sess.SessionID, sess.BotName, sess.IsRegistered, (sess.CurrentArena != nil))
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "info", Payload: payload})
 
 		case "UPDATE":
-			// ... parse parts ...
+			// Usage: UPDATE <field> <value>
 			err := stadium.DefaultManager.UpdateSessionProfile(sess, parts[1], parts[2])
 			if err != nil {
 				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: err.Error()})
@@ -185,6 +194,7 @@ func handleBot(conn net.Conn) {
 
 				// Mark the arena as completed to prevent further moves
 				sess.CurrentArena.Status = "completed"
+				stadium.DefaultManager.PublishArenaList()
 
 				sess.SendJSON(stadium.Response{Status: "err", Type: "timeout", Payload: msg})
 				continue
@@ -209,16 +219,16 @@ func handleBot(conn net.Conn) {
 		case "LIST":
 			matches := stadium.DefaultManager.ListMatches()
 
-			// 1. Presenting to CLI (pretty-print)
 			var sb strings.Builder
 			sb.WriteString("CURRENT_ARENAS:\n")
 			for _, m := range matches {
 				fmt.Fprintf(&sb, "%d: [%s] %s vs %s\n", m.ID, m.Game, m.P1Name, m.P2Name)
 			}
-			sess.SendJSON(stadium.Response{Status: "ok", Type: "list", Payload: sb.String()})
-
-			// 2. OR, if the client is the Dashboard, you could send the raw slice:
-			// sess.SendJSON(stadium.Response{Status: "ok", Type: "list", Payload: matches})
+			sess.SendJSON(stadium.Response{
+				Status:  "ok",
+				Type:    "list",
+				Payload: sb.String(),
+			})
 
 		case "WATCH":
 			if len(parts) < 2 {
@@ -247,8 +257,6 @@ func handleBot(conn net.Conn) {
 			}
 
 			stadium.DefaultManager.HandlePlayerLeave(sess)
-
-			sess.PlayerID = 0
 
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "leave", Payload: "Left arena successfully"})
 

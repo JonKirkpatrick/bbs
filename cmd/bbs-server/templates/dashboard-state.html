@@ -1,0 +1,164 @@
+<div class="deck-grid">
+    <section class="panel stats-panel">
+        <h2>Runtime Overview</h2>
+        <div class="stat-grid">
+            <article class="stat-card">
+                <div class="stat-label">Sessions</div>
+                <div class="stat-value">{{.Snapshot.SessionCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Arenas</div>
+                <div class="stat-value">{{.Snapshot.ArenaCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Subscribers</div>
+                <div class="stat-value">{{.Snapshot.SubscriberCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Next Session ID</div>
+                <div class="stat-value">{{.Snapshot.NextSessionID}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Next Arena ID</div>
+                <div class="stat-value">{{.Snapshot.NextArenaID}}</div>
+            </article>
+        </div>
+        <p class="generated-at">Snapshot generated: {{.Snapshot.GeneratedAt}}</p>
+    </section>
+
+    <section class="panel sessions-panel">
+        <h2>Active Sessions</h2>
+        {{if .Snapshot.Sessions}}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Player</th>
+                            <th>Arena</th>
+                            <th>Capabilities</th>
+                            <th>Remote</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {{range .Snapshot.Sessions}}
+                        <tr>
+                            <td>{{.SessionID}}</td>
+                            <td>{{.BotName}}</td>
+                            <td>{{if eq .PlayerID 0}}-{{else}}{{.PlayerID}}{{end}}</td>
+                            <td>{{if .HasCurrentArena}}#{{.CurrentArenaID}}{{else}}-{{end}}</td>
+                            <td>
+                                {{if .Capabilities}}
+                                    {{range .Capabilities}}<span class="pill">{{.}}</span>{{end}}
+                                {{else}}
+                                    <span class="muted">none</span>
+                                {{end}}
+                            </td>
+                            <td>{{if .RemoteAddr}}{{.RemoteAddr}}{{else}}<span class="muted">unknown</span>{{end}}</td>
+                        </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+            </div>
+        {{else}}
+            <p class="empty">No active sessions.</p>
+        {{end}}
+    </section>
+
+    <section class="panel arenas-panel">
+        <h2>Arenas</h2>
+        {{if .Snapshot.Arenas}}
+            <div class="arena-grid">
+            {{range .Snapshot.Arenas}}
+                <article class="arena-card">
+                    <header>
+                        <h3>Arena #{{.ID}}</h3>
+                        <span class="status status-{{.Status}}">{{.Status}}</span>
+                    </header>
+                    <dl>
+                        <dt>Game</dt>
+                        <dd>{{.Game}}</dd>
+                        <dt>Time Limit</dt>
+                        <dd>{{.TimeLimitMS}} ms</dd>
+                        <dt>Handicap</dt>
+                        <dd>{{.AllowHandicap}}</dd>
+                        <dt>Last Move</dt>
+                        <dd>{{.LastMove}}</dd>
+                    </dl>
+                    <div class="players">
+                        <div>
+                            <strong>P1:</strong>
+                            {{if .HasPlayer1}}{{.Player1Name}} (ID {{.Player1Session}}){{else}}<span class="muted">empty</span>{{end}}
+                        </div>
+                        <div>
+                            <strong>P2:</strong>
+                            {{if .HasPlayer2}}{{.Player2Name}} (ID {{.Player2Session}}){{else}}<span class="muted">empty</span>{{end}}
+                        </div>
+                    </div>
+                    <div class="observers">
+                        <strong>Observers ({{.ObserverCount}}):</strong>
+                        {{if .Observers}}
+                            <ul>
+                                {{range .Observers}}
+                                    <li>{{.BotName}} (ID {{.SessionID}})</li>
+                                {{end}}
+                            </ul>
+                        {{else}}
+                            <span class="muted">none</span>
+                        {{end}}
+                    </div>
+                    <details>
+                        <summary>Raw Game State</summary>
+                        <pre>{{.GameState}}</pre>
+                    </details>
+                </article>
+            {{end}}
+            </div>
+        {{else}}
+            <p class="empty">No arenas currently in memory.</p>
+        {{end}}
+    </section>
+
+    <section class="panel admin-panel">
+        <h2>Admin Controls</h2>
+        {{if .IsAdmin}}
+            <p class="admin-intro">You are in admin mode. Actions below mutate live manager state immediately.</p>
+            <div class="admin-actions">
+                <form class="admin-action" hx-post="/admin/eject-bot" hx-target="#admin-result" hx-swap="innerHTML">
+                    <input type="hidden" name="admin_key" value="{{.AdminKey}}" />
+                    <h3>Eject Session</h3>
+                    <label>Session ID</label>
+                    <input type="number" min="1" name="session_id" required />
+                    <label>Reason (optional)</label>
+                    <input type="text" name="reason" placeholder="Removed by admin" />
+                    <button type="submit">Eject Bot</button>
+                </form>
+
+                <form class="admin-action" hx-post="/admin/create-arena" hx-target="#admin-result" hx-swap="innerHTML">
+                    <input type="hidden" name="admin_key" value="{{.AdminKey}}" />
+                    <h3>Create Arena</h3>
+                    <label>Game</label>
+                    <input type="text" name="game" value="connect4" required />
+                    <label>Time Limit (ms)</label>
+                    <input type="number" min="1" name="time_ms" value="1000" required />
+                    <label>Allow Handicap</label>
+                    <select name="allow_handicap">
+                        <option value="false" selected>false</option>
+                        <option value="true">true</option>
+                    </select>
+                    <label>Game Args (comma or space separated)</label>
+                    <input type="text" name="game_args" placeholder="6,7" />
+                    <button type="submit">Create Arena</button>
+                </form>
+            </div>
+        {{else}}
+            {{if .AdminConfigured}}
+                <p class="empty">Viewer mode. Provide a valid admin key to unlock controls.</p>
+            {{else}}
+                <p class="empty">Admin controls are disabled. Set <code>BBS_DASHBOARD_ADMIN_KEY</code> on the server.</p>
+            {{end}}
+        {{end}}
+        <div id="admin-result"></div>
+    </section>
+</div>
