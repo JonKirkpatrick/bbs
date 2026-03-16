@@ -126,11 +126,24 @@ Sent when BBS emits game-state data (`type=data`) or equivalent view updates.
   "v": "0.1",
   "type": "state",
   "payload": {
-    "raw_state": "...",
+    "raw_state": "{\"board\":[...],\"turn\":2}",
+    "state_obj": {
+      "board": [[0,0,0,0,0,0,0], [0,0,0,0,0,0,0]],
+      "turn": 2
+    },
+    "turn_player": 2,
+    "your_turn": false,
     "source": "server_data"
   }
 }
 ```
+
+Notes:
+
+- `raw_state` is always forwarded as the canonical state string when available.
+- `state_obj` is optional and only present when the agent can parse `raw_state` as JSON object.
+- `turn_player` and `your_turn` are optional convenience fields inferred by the agent.
+- `legal_moves` is intentionally not required in v0.1; workers can compute legality from game state.
 
 ### `event`
 Generic game/runtime event for non-state updates.
@@ -258,6 +271,8 @@ A minimum compliant worker should:
 3. Handle `manifest` and `state`
 4. Optionally emit `move` when it decides a move
 5. Exit cleanly when it receives `shutdown`
+
+For Connect4 workers, a common baseline is deriving legal columns from `state_obj.board` instead of relying on server-provided legal move lists.
 
 ## Agent Lifecycle (Reference)
 

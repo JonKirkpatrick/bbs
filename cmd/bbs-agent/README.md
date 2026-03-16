@@ -32,5 +32,5 @@ Optional:
 ## Notes
 
 - The agent writes credentials to `<name>_credentials.txt` if the server issues a new identity during register.
-- The worker template only auto-moves if incoming `state` includes `legal_moves` and indicates it is the worker's turn.
+- The worker template derives Connect4 legal columns from `state.state_obj.board` and only emits a move when `your_turn`/`turn_player` indicates it should act.
 - Current BBS transport is plain TCP; treat credentials and owner tokens as sensitive.

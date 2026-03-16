@@ -42,6 +42,10 @@ class WorkerState:
         self.game: str = ""
 
 
+def normalized_game_name(name: str) -> str:
+    return name.strip().lower()
+
+
 def is_our_turn(state_payload: Dict[str, Any], worker_state: WorkerState) -> bool:
     """Best-effort turn inference from generic payload.
 
@@ -60,9 +64,15 @@ def choose_move(state_payload: Dict[str, Any], worker_state: WorkerState) -> Opt
     """Customize this function with your actual bot logic.
 
     Default behavior:
-    - if `legal_moves` exists and is a non-empty list, choose one at random
+    - for connect4, derive legal columns from the top board row in state_obj
+    - fallback to `legal_moves` if present
     - otherwise return None (no move emitted)
     """
+
+    if normalized_game_name(worker_state.game) == "connect4" or looks_like_connect4_board(state_payload):
+        legal_cols = connect4_legal_columns_from_state(state_payload)
+        if legal_cols:
+            return random.choice(legal_cols)
 
     legal_moves = state_payload.get("legal_moves")
     if isinstance(legal_moves, list) and legal_moves:
@@ -70,6 +80,66 @@ def choose_move(state_payload: Dict[str, Any], worker_state: WorkerState) -> Opt
         return picked
 
     return None
+
+
+def connect4_legal_columns_from_state(state_payload: Dict[str, Any]) -> list[str]:
+    state_obj = state_payload.get("state_obj")
+    if not isinstance(state_obj, dict):
+        return []
+
+    board = state_obj.get("board")
+    if not isinstance(board, list) or not board:
+        return []
+
+    top_row = board[0]
+    if not isinstance(top_row, list) or not top_row:
+        return []
+
+    legal: list[str] = []
+    for col, cell in enumerate(top_row):
+        if is_empty_cell(cell):
+            legal.append(str(col))
+
+    return legal
+
+
+def looks_like_connect4_board(state_payload: Dict[str, Any]) -> bool:
+    state_obj = state_payload.get("state_obj")
+    if not isinstance(state_obj, dict):
+        return False
+
+    board = state_obj.get("board")
+    if not isinstance(board, list) or not board:
+        return False
+
+    first_row = board[0]
+    if not isinstance(first_row, list):
+        return False
+
+    cols = len(first_row)
+    if cols == 0:
+        return False
+
+    # Typical Connect4 shape is 6x7, but we allow compatible variants.
+    if len(board) < 4 or cols < 4:
+        return False
+
+    for row in board:
+        if not isinstance(row, list) or len(row) != cols:
+            return False
+
+    return True
+
+
+def is_empty_cell(cell: Any) -> bool:
+    if isinstance(cell, bool):
+        return False
+    if isinstance(cell, (int, float)):
+        return int(cell) == 0
+    if isinstance(cell, str):
+        trimmed = cell.strip()
+        return trimmed in {"", "0"}
+    return False
 
 
 def handle_registered(payload: Dict[str, Any], worker_state: WorkerState) -> None:

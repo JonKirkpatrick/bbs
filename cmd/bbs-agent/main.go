@@ -82,6 +82,8 @@ type agent struct {
 	registerCh      chan serverMessage
 	serverErrCh     chan error
 	workerReadErrCh chan error
+
+	joinedPlayerID int
 }
 
 func main() {
@@ -485,13 +487,11 @@ func (a *agent) handleServerLine(line string) {
 	switch msgType {
 	case "join":
 		if payloadMap, ok := msg.Payload.(map[string]interface{}); ok {
+			a.joinedPlayerID = asInt(payloadMap["player_id"])
 			_ = a.sendWorker(contractMessage{V: contractVersion, Type: "manifest", Payload: payloadMap})
 		}
 	case "data":
-		statePayload := map[string]interface{}{
-			"raw_state": msg.Payload,
-			"source":    "server_data",
-		}
+		statePayload := buildStatePayload(msg.Payload, a.joinedPlayerID)
 		_ = a.sendWorker(contractMessage{V: contractVersion, Type: "state", Payload: statePayload})
 	default:
 		eventPayload := map[string]interface{}{
@@ -714,4 +714,95 @@ func asNumber(v interface{}) interface{} {
 	default:
 		return v
 	}
+}
+
+func asInt(v interface{}) int {
+	switch val := v.(type) {
+	case int:
+		return val
+	case int32:
+		return int(val)
+	case int64:
+		return int(val)
+	case float64:
+		return int(val)
+	case json.Number:
+		i, err := val.Int64()
+		if err == nil {
+			return int(i)
+		}
+		f, ferr := val.Float64()
+		if ferr == nil {
+			return int(f)
+		}
+		return 0
+	case string:
+		trimmed := strings.TrimSpace(val)
+		if trimmed == "" {
+			return 0
+		}
+		var parsed int
+		if _, err := fmt.Sscanf(trimmed, "%d", &parsed); err == nil {
+			return parsed
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+func buildStatePayload(raw interface{}, joinedPlayerID int) map[string]interface{} {
+	payload := map[string]interface{}{
+		"source": "server_data",
+	}
+
+	rawState := ""
+	var stateObj map[string]interface{}
+
+	switch val := raw.(type) {
+	case string:
+		rawState = strings.TrimSpace(val)
+		if rawState != "" {
+			var parsed interface{}
+			if err := json.Unmarshal([]byte(rawState), &parsed); err == nil {
+				if obj, ok := parsed.(map[string]interface{}); ok {
+					stateObj = obj
+				}
+			}
+		}
+	case map[string]interface{}:
+		stateObj = val
+		encoded, err := json.Marshal(val)
+		if err == nil {
+			rawState = string(encoded)
+		}
+	default:
+		encoded, err := json.Marshal(raw)
+		if err == nil {
+			rawState = string(encoded)
+		}
+	}
+
+	if rawState != "" {
+		payload["raw_state"] = rawState
+	} else {
+		payload["raw_state"] = raw
+	}
+
+	if stateObj != nil {
+		payload["state_obj"] = stateObj
+
+		turnPlayer := asInt(stateObj["turn_player"])
+		if turnPlayer == 0 {
+			turnPlayer = asInt(stateObj["turn"])
+		}
+		if turnPlayer > 0 {
+			payload["turn_player"] = turnPlayer
+			if joinedPlayerID > 0 {
+				payload["your_turn"] = turnPlayer == joinedPlayerID
+			}
+		}
+	}
+
+	return payload
 }
