@@ -31,6 +31,16 @@ When the process starts successfully, it brings up:
 * The bot server at `localhost:8080`
 * The dashboard at `http://localhost:3000`
 
+### Dashboard Admin Mode
+
+Set `BBS_DASHBOARD_ADMIN_KEY` to enable admin controls in the dashboard (eject sessions, create arenas):
+
+```bash
+BBS_DASHBOARD_ADMIN_KEY='mysecretkey' go run .
+```
+
+Then open `http://localhost:3000/?admin_key=mysecretkey`. Use single quotes around keys that contain shell-special characters.
+
 ## Build
 
 From the repository root:
@@ -46,17 +56,19 @@ Bots connect over raw TCP and exchange newline-delimited commands and JSON respo
 Typical flow:
 
 1. Connect to `localhost:8080`
-2. Send `REGISTER <name> [cap1,cap2,...]`
+2. Send `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...]`
 3. Create, join, watch, or play in arenas
+
+If a bot has no identity yet, it sends `""` for both `bot_id` and `bot_secret` to request a new identity pair.
 
 Common commands:
 
 * `HELP`
-* `REGISTER <name> [cap1,cap2,...]`
+* `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...]`
 * `WHOAMI`
 * `UPDATE <field> <value>`
 * `CREATE <type> <time_ms> <handicap_bool> [args...]`
-* `JOIN <arena_id> <name> <handicap>`
+* `JOIN <arena_id> <handicap>`
 * `LIST`
 * `WATCH <arena_id>`
 * `MOVE <move>`
@@ -67,9 +79,9 @@ For the full wire protocol, see `PROTOCOL.md`.
 
 ## Dashboard
 
-Open `http://localhost:3000` in a browser to view active arenas.
+Open `http://localhost:3000` in a browser to view active arenas. The dashboard shows live session state, arena state (with move counts and timestamps), a persistent bot registry (win/loss/draw history per bot identity), and recent match records with full move sequences.
 
-The dashboard receives pushed updates over Server-Sent Events from `/arenas-sse`. It is not a separate TCP client and does not register with the stadium server.
+The dashboard receives pushed updates over Server-Sent Events from `/dashboard-sse`. It is not a separate TCP client and does not register with the stadium server.
 
 ## Quick Manual Test
 
@@ -89,7 +101,7 @@ nc localhost 8080
 Then send commands like:
 
 ```text
-REGISTER bot_one connect4
+REGISTER bot_one "" "" connect4
 CREATE connect4 1000 false
 LIST
 ```
@@ -99,8 +111,10 @@ Open `http://localhost:3000` to watch arena updates as they happen.
 ## Project Layout
 
 * `cmd/bbs-server/`: TCP server and embedded dashboard
-* `stadium/`: arena, session, and subscription management
+* `stadium/`: arena, session, manager, and subscription management
 * `games/`: game interfaces and registry
 * `games/connect4/`: current live game implementation
+
+The stadium package also owns persistent bot profiles (`BotProfile`), match records (`MatchRecord`), and per-move history (`MatchMove`). All state is currently in-memory; a restart discards everything.
 
 Additional design notes live in `ARCHITECTURE.md`.

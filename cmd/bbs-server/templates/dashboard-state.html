@@ -15,12 +15,24 @@
                 <div class="stat-value">{{.Snapshot.SubscriberCount}}</div>
             </article>
             <article class="stat-card">
+                <div class="stat-label">Persistent Bots</div>
+                <div class="stat-value">{{.Snapshot.BotCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Archived Matches</div>
+                <div class="stat-value">{{.Snapshot.MatchCount}}</div>
+            </article>
+            <article class="stat-card">
                 <div class="stat-label">Next Session ID</div>
                 <div class="stat-value">{{.Snapshot.NextSessionID}}</div>
             </article>
             <article class="stat-card">
                 <div class="stat-label">Next Arena ID</div>
                 <div class="stat-value">{{.Snapshot.NextArenaID}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Next Match ID</div>
+                <div class="stat-value">{{.Snapshot.NextMatchID}}</div>
             </article>
         </div>
         <p class="generated-at">Snapshot generated: {{.Snapshot.GeneratedAt}}</p>
@@ -34,9 +46,11 @@
                     <thead>
                         <tr>
                             <th>ID</th>
+                            <th>Bot ID</th>
                             <th>Name</th>
                             <th>Player</th>
                             <th>Arena</th>
+                            <th>W-L-D</th>
                             <th>Capabilities</th>
                             <th>Remote</th>
                         </tr>
@@ -45,9 +59,11 @@
                     {{range .Snapshot.Sessions}}
                         <tr>
                             <td>{{.SessionID}}</td>
+                            <td><code>{{.BotID}}</code></td>
                             <td>{{.BotName}}</td>
                             <td>{{if eq .PlayerID 0}}-{{else}}{{.PlayerID}}{{end}}</td>
                             <td>{{if .HasCurrentArena}}#{{.CurrentArenaID}}{{else}}-{{end}}</td>
+                            <td>{{.Wins}}-{{.Losses}}-{{.Draws}}</td>
                             <td>
                                 {{if .Capabilities}}
                                     {{range .Capabilities}}<span class="pill">{{.}}</span>{{end}}
@@ -85,6 +101,14 @@
                         <dd>{{.AllowHandicap}}</dd>
                         <dt>Last Move</dt>
                         <dd>{{.LastMove}}</dd>
+                        <dt>Move Count</dt>
+                        <dd>{{.MoveCount}}</dd>
+                        <dt>Created</dt>
+                        <dd>{{.CreatedAt}}</dd>
+                        <dt>Activated</dt>
+                        <dd>{{if .ActivatedAt}}{{.ActivatedAt}}{{else}}<span class="muted">not active yet</span>{{end}}</dd>
+                        <dt>Completed</dt>
+                        <dd>{{if .CompletedAt}}{{.CompletedAt}}{{else}}<span class="muted">in progress</span>{{end}}</dd>
                     </dl>
                     <div class="players">
                         <div>
@@ -117,6 +141,83 @@
             </div>
         {{else}}
             <p class="empty">No arenas currently in memory.</p>
+        {{end}}
+    </section>
+
+    <section class="panel bots-panel">
+        <h2>Persistent Bot Registry</h2>
+        {{if .Snapshot.Bots}}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Bot ID</th>
+                            <th>Display Name</th>
+                            <th>Games</th>
+                            <th>W-L-D</th>
+                            <th>Registrations</th>
+                            <th>Created</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Snapshot.Bots}}
+                            <tr>
+                                <td><code>{{.BotID}}</code></td>
+                                <td>{{.DisplayName}}</td>
+                                <td>{{.GamesPlayed}}</td>
+                                <td>{{.Wins}}-{{.Losses}}-{{.Draws}}</td>
+                                <td>{{.RegistrationCount}}</td>
+                                <td>{{.CreatedAt}}</td>
+                                <td>{{.LastSeenAt}}</td>
+                            </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        {{else}}
+            <p class="empty">No persistent bot profiles yet.</p>
+        {{end}}
+    </section>
+
+    <section class="panel matches-panel">
+        <h2>Recent Match Records</h2>
+        {{if .Snapshot.RecentMatches}}
+            <div class="arena-grid">
+                {{range .Snapshot.RecentMatches}}
+                    <article class="arena-card">
+                        <header>
+                            <h3>Match #{{.MatchID}} (Arena {{.ArenaID}})</h3>
+                            <span class="status status-{{.TerminalStatus}}">{{.TerminalStatus}}</span>
+                        </header>
+                        <dl>
+                            <dt>Game</dt>
+                            <dd>{{.Game}}</dd>
+                            <dt>Reason</dt>
+                            <dd>{{.EndReason}}</dd>
+                            <dt>Winner</dt>
+                            <dd>{{if .IsDraw}}draw{{else}}{{.WinnerBotName}} ({{.WinnerBotID}}){{end}}</dd>
+                            <dt>Moves</dt>
+                            <dd>{{.MoveCount}}</dd>
+                            <dt>Started</dt>
+                            <dd>{{.StartedAt}}</dd>
+                            <dt>Ended</dt>
+                            <dd>{{.EndedAt}}</dd>
+                        </dl>
+                        <details>
+                            <summary>Move Sequence</summary>
+                            {{if .MoveSequence}}
+                                <pre>{{range $i, $m := .MoveSequence}}#{{$i}}: {{$m}}
+{{end}}</pre>
+                            {{else}}
+                                <p class="empty">No moves were recorded.</p>
+                            {{end}}
+                        </details>
+                    </article>
+                {{end}}
+            </div>
+        {{else}}
+            <p class="empty">No finalized matches yet.</p>
         {{end}}
     </section>
 

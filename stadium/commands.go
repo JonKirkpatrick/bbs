@@ -13,12 +13,12 @@ func GetHelpText(isRegistered bool) string {
 	sb.WriteString("\n--- BBS STADIUM HELP ---\n")
 
 	if !isRegistered {
-		fmt.Fprintf(&sb, format, "REGISTER <name>", "Identify yourself")
+		fmt.Fprintf(&sb, format, "REGISTER <name> <id> <secret>", "Use id/secret or \"\" \"\" to request a new identity")
 		fmt.Fprintf(&sb, format, "QUIT", "Exit")
 	} else {
 		fmt.Fprintf(&sb, format, "LIST", "View arenas")
 		fmt.Fprintf(&sb, format, "CREATE <type> <ms> <h_bool>", "Start new game")
-		fmt.Fprintf(&sb, format, "JOIN <id> <name> <handi>", "Enter game")
+		fmt.Fprintf(&sb, format, "JOIN <id> <handi>", "Enter game")
 		fmt.Fprintf(&sb, format, "WATCH <id>", "Spectate")
 		fmt.Fprintf(&sb, format, "MOVE <move>", "Make a move")
 		fmt.Fprintf(&sb, format, "QUIT", "Exit")

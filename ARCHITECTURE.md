@@ -27,7 +27,7 @@ flowchart LR
     Bot2 -->|TCP commands| Server
     Spectator -->|TCP WATCH| Server
     Browser -->|HTTP GET /| Server
-    Browser -->|SSE /arenas-sse| Server
+    Browser -->|SSE /dashboard-sse| Server
     Server --> Manager
     Manager --> Arena
     Arena --> Game
@@ -66,12 +66,14 @@ This layer is intentionally thin. It owns transport and command parsing, but not
 
 Responsibilities:
 
-* assign session IDs and arena IDs
+* assign session IDs, arena IDs, and match IDs
 * track active sessions
 * create and mutate arenas
 * attach players and observers
-* summarize arena state for the dashboard
-* publish arena-list snapshots to dashboard subscribers
+* issue and authenticate persistent bot identities (`bot_id` + `bot_secret`)
+* record per-move history and finalize match records on game over, player leave, timeout, or admin eject
+* update win/loss/draw stats on both in-flight sessions and durable `BotProfile` records
+* publish full manager snapshots to dashboard subscribers
 * run a watchdog for stale arena cleanup
 
 The manager protects its mutable maps with a single `sync.Mutex`. That keeps the model simple, at the cost of coarse-grained locking.
@@ -89,6 +91,8 @@ Important fields:
 * `TimeLimit`
 * `Bot1Time`, `Bot2Time`
 * `LastMove`
+* `CreatedAt`, `ActivatedAt`, `CompletedAt`
+* `MoveHistory` — ordered slice of `MatchMove` records
 
 In practice the current statuses used by the code are:
 
@@ -111,16 +115,26 @@ The server resolves a requested game through `games.GetGame()`, which uses `game
 
 This is the main extension point for adding new games.
 
-### 5. Embedded Dashboard
+### 5. Bot Registry and Match History
+
+The `Manager` maintains two in-memory collections that survive across arena lifetimes:
+
+* `BotProfiles map[string]*BotProfile` — keyed by `bot_id`. Each profile stores the hashed secret, display name, registration count, cumulative game stats, and timestamps. A bot reconnecting with the same `bot_id` + `bot_secret` gets its historical stats back.
+* `MatchHistory []MatchRecord` — appended on every arena finalization. Each `MatchRecord` captures participants, outcome, move sequence, elapsed times, and final game state.
+
+These structures provide the persistence boundary for a future database layer.
+
+### 6. Embedded Dashboard
 
 `cmd/bbs-server/dashboard.go` starts an HTTP server on port `3000` in the same process as the TCP server.
 
 Responsibilities:
 
 * serve the dashboard HTML at `/`
-* open an SSE stream at `/arenas-sse`
+* open an SSE stream at `/dashboard-sse`
+* serve admin POST endpoints at `/admin/eject-bot` and `/admin/create-arena` (gated by `BBS_DASHBOARD_ADMIN_KEY`)
 * subscribe to `stadium.DefaultManager`
-* render each arena snapshot through the HTML template
+* render each manager snapshot through the HTML templates
 
 The dashboard does not poll and does not maintain its own copy of state.
 
@@ -137,10 +151,10 @@ sequenceDiagram
     participant A as Arena
     participant D as Dashboard SSE
 
-    Bot->>TCP: REGISTER bot_one connect4
-    TCP->>M: RegisterSession(session, name, caps)
-    M-->>TCP: session ID assigned
-    TCP-->>Bot: {status:"ok", type:"register", ...}
+    Bot->>TCP: REGISTER bot_one "" "" connect4
+    TCP->>M: RegisterSession(session, name, botID, secret, caps)
+    M-->>TCP: RegistrationResult (includes bot_id + bot_secret for new identities)
+    TCP-->>Bot: {status:"ok", type:"register", payload:{bot_id, bot_secret, ...}}
 
     Bot->>TCP: CREATE connect4 1000 false
     TCP->>R: GetGame("connect4", args)
@@ -164,7 +178,7 @@ sequenceDiagram
     participant G as GameInstance
     participant D as Dashboard SSE
 
-    P2->>TCP: JOIN <arena> <name> <handicap>
+    P2->>TCP: JOIN <arena_id> <handicap>
     TCP->>M: JoinArena(arenaID, session, handicap)
     M->>A: attach player
     M->>A: activateArena()
@@ -206,7 +220,7 @@ sequenceDiagram
     Browser->>HTTP: GET /
     HTTP-->>Browser: dashboard HTML
 
-    Browser->>HTTP: GET /arenas-sse
+    Browser->>HTTP: GET /dashboard-sse
     HTTP->>M: Subscribe()
     M-->>HTTP: subscriber channel
     HTTP-->>Browser: initial arena snapshot
@@ -224,9 +238,10 @@ sequenceDiagram
 
 The architecture is intentionally centralized.
 
-* `Session` owns per-connection identity and the socket write lock.
-* `Manager` owns session registration, arena maps, arena summaries, and subscriber lists.
-* `Arena` owns match participation, observer membership, and a concrete `GameInstance`.
+* `Session` owns per-connection identity (including the linked `BotID`), live W/L/D counters, and the socket write lock.
+* `Manager` owns session registration, arena maps, bot profiles, match history, arena summaries, and subscriber lists.
+* `Arena` owns match participation, observer membership, move history, and a concrete `GameInstance`.
+* `BotProfile` owns durable identity and cumulative stats across sessions.
 * `GameInstance` owns game-specific validation and board state.
 
 Because the manager owns the authoritative arena maps, the dashboard is implemented as a subscriber to manager snapshots rather than as an independent reader or a separate process.
@@ -251,22 +266,25 @@ The tradeoff is that subscriber delivery is best-effort. If a subscriber channel
 
 The watchdog runs every 10 seconds and expires arenas according to status:
 
-* `waiting`: after 1 hour
-* `active`: after 3x the configured move time limit
-* `completed`: after 1 minute
+| Status | Expires after |
+| --- | --- |
+| `waiting` | 1 hour |
+| `active` | 3× the configured move time limit |
+| `completed` | 1 minute |
+| `aborted` | 5 minutes |
 
-On cleanup the manager notifies participants, deletes the arena, and publishes a new arena snapshot to the dashboard.
+On cleanup the manager calls `terminateArena`, which notifies any remaining participants, deletes the arena from the map, and publishes a new snapshot to dashboard subscribers. Because `finalizeArenaLocked` nulls out all session references in the arena before returning, a watchdog sweep that fires after finalization finds no participants to notify.
 
 ## Current Boundaries And Gaps
 
 The current design is workable, but it has clear boundaries:
 
-* all state is in memory only
-* process restart drops every session and arena
-* one manager mutex serializes all arena and session mutations
-* dashboard events are full arena-list snapshots, not fine-grained diffs
-* the transport layer still mixes plain text writes and JSON writes in some command paths
-* `GameInstance.IsGameOver()` exists as an interface seam, but match completion is not yet fully orchestrated through a dedicated game-over flow in the command loop
+* all state is in memory only — process restart drops every session, arena, bot profile, and match record
+* one manager mutex serializes all arena and session mutations (coarse-grained; acceptable at current scale)
+* dashboard SSE events carry a full manager snapshot, not fine-grained diffs
+* the transport layer still mixes plain text writes (`WATCH`, `QUIT`, `HELP`) and JSON writes in some command paths
+* the bot identity system uses a shared secret over plain TCP — susceptible to eavesdropping; a future HMAC nonce challenge would harden this without requiring full PKI
+* only one bot session per `bot_id` is permitted at a time; a bot that crashes may be blocked until the old session times out
 
 These are reasonable areas for future cleanup, but they do not change the core architecture described above.
 
@@ -277,10 +295,14 @@ classDiagram
     class Session {
         +int SessionID
         +net.Conn Conn
+        +string BotID
         +string BotName
         +int PlayerID
         +Arena CurrentArena
         +[]string Capabilities
+        +int Wins
+        +int Losses
+        +int Draws
         +bool IsRegistered
         +SendJSON(Response)
     }
@@ -294,18 +316,24 @@ classDiagram
     class Manager {
         +map Arenas
         +map ActiveSessions
+        +map BotProfiles
+        +[]MatchRecord MatchHistory
         +map subscribers
         +int nextArenaID
         +int nextSessionID
-        +RegisterSession(Session, name, caps)
+        +int nextMatchID
+        +RegisterSession(Session, name, botID, secret, caps)
         +CreateArena(GameInstance, timeLimit, allowHandicap)
         +JoinArena(id, Session, handicap)
         +AddObserver(id, Session)
         +HandlePlayerLeave(Session)
+        +RecordMove(arenaID, Session, move, elapsed)
+        +FinalizeArena(arenaID, reason, winnerID, isDraw)
+        +EjectSession(sessionID, reason)
         +ListMatches()
+        +Snapshot()
         +Subscribe()
         +Unsubscribe(chan)
-        +PublishArenaList()
     }
 
     class Arena {
@@ -320,6 +348,10 @@ classDiagram
         +Duration Bot1Time
         +Duration Bot2Time
         +Time LastMove
+        +Time CreatedAt
+        +Time ActivatedAt
+        +Time CompletedAt
+        +[]MatchMove MoveHistory
         +NotifyAll(type, payload)
         +NotifyOpponent(actorID, message)
     }
@@ -338,11 +370,39 @@ classDiagram
         +IsGameOver()
     }
 
+    class BotProfile {
+        +string BotID
+        +string DisplayName
+        +Time CreatedAt
+        +Time LastSeenAt
+        +int RegistrationCount
+        +int GamesPlayed
+        +int Wins
+        +int Losses
+        +int Draws
+    }
+
+    class MatchRecord {
+        +int MatchID
+        +int ArenaID
+        +string Game
+        +string TerminalStatus
+        +string EndReason
+        +int WinnerPlayerID
+        +bool IsDraw
+        +[]MatchMove Moves
+        +string CompactMoves
+        +string FinalGameState
+    }
+
     Manager "1" *-- "*" Arena : manages
     Manager "1" *-- "*" Session : tracks
+    Manager "1" *-- "*" BotProfile : registry
+    Manager "1" o-- "*" MatchRecord : history
     Manager "1" o-- "*" StadiumEvent : publishes
     Arena "1" o-- "0..2" Session : players
     Arena "1" o-- "*" Session : observers
     Arena "1" --> "1" GameInstance : hosts
     Session --> Response : sends
+    Session --> BotProfile : identified by
 ```

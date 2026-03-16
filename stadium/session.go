@@ -10,10 +10,14 @@ type Session struct {
 	SessionID    int
 	Conn         net.Conn
 	mu           sync.Mutex // Protects concurrent writes to the connection
+	BotID        string
 	BotName      string
 	PlayerID     int // 1 or 2
 	CurrentArena *Arena
 	Capabilities []string
+	Wins         int
+	Losses       int
+	Draws        int
 	IsRegistered bool
 }
 

@@ -98,30 +98,37 @@ func handleBot(conn net.Conn) {
 			sess.Conn.Write([]byte(stadium.GetHelpText(sess.IsRegistered) + "\n"))
 
 		case "REGISTER":
-			if len(parts) < 2 {
-				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: "Usage: REGISTER <name> [cap1,cap2,...]"})
+			if len(parts) < 4 {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: "Usage: REGISTER <name> <bot_id_or_\"\"> <bot_secret_or_\"\"> [cap1,cap2,...]"})
 				continue
 			}
 
 			// Parse capabilities if provided (e.g., "connect4,tictactoe")
 			var caps []string
-			if len(parts) > 2 {
-				caps = strings.Split(parts[2], ",")
+			if len(parts) > 4 {
+				caps = strings.Split(parts[4], ",")
 			}
 
-			err := stadium.DefaultManager.RegisterSession(sess, parts[1], caps)
+			result, err := stadium.DefaultManager.RegisterSession(sess, parts[1], parts[2], parts[3], caps)
 			if err != nil {
 				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: err.Error()})
 				continue
 			}
 
-			msg := fmt.Sprintf("Registered as %s with capabilities: %v", sess.BotName, sess.Capabilities)
-			sess.SendJSON(stadium.Response{Status: "ok", Type: "register", Payload: msg})
+			sess.SendJSON(stadium.Response{Status: "ok", Type: "register", Payload: result})
 
 		case "WHOAMI":
-			// Usage: WHOAMI
-			payload := fmt.Sprintf("ID: %d, Name: %s, Registered: %t, Arena: %v",
-				sess.SessionID, sess.BotName, sess.IsRegistered, (sess.CurrentArena != nil))
+			payload := map[string]interface{}{
+				"session_id":    sess.SessionID,
+				"bot_id":        sess.BotID,
+				"name":          sess.BotName,
+				"registered":    sess.IsRegistered,
+				"current_arena": sess.CurrentArena != nil,
+				"wins":          sess.Wins,
+				"losses":        sess.Losses,
+				"draws":         sess.Draws,
+				"capabilities":  sess.Capabilities,
+			}
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "info", Payload: payload})
 
 		case "UPDATE":
@@ -155,20 +162,17 @@ func handleBot(conn net.Conn) {
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "create", Payload: strconv.Itoa(arenaID)})
 
 		case "JOIN":
-			// Usage: JOIN <arena_id> <bot_name> <handicap_value>
-			if len(parts) < 4 {
-				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Usage: JOIN <arena_id> <name> <handicap>"})
+			// Usage: JOIN <arena_id> <handicap_value>
+			if len(parts) < 3 {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Usage: JOIN <arena_id> <handicap>"})
 				continue
 			}
 			arenaID, _ := strconv.Atoi(parts[1])
-			sess.BotName = parts[2]
-			handicap, _ := strconv.Atoi(parts[3])
+			handicap, _ := strconv.Atoi(parts[2])
 
 			err := stadium.DefaultManager.JoinArena(arenaID, sess, handicap)
 			if err != nil {
 				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: err.Error()})
-			} else {
-				sess.SendJSON(stadium.Response{Status: "ok", Type: "join", Payload: "Joined arena " + parts[1]})
 			}
 
 		case "MOVE":
@@ -187,14 +191,20 @@ func handleBot(conn net.Conn) {
 
 			// 2. The Kill Switch: Check if they exceeded the arena's TimeLimit
 			if elapsed > sess.CurrentArena.TimeLimit {
+				arenaRef := sess.CurrentArena
 				msg := fmt.Sprintf("TIMEOUT: Move took %v (Limit: %v)", elapsed.Round(time.Millisecond), sess.CurrentArena.TimeLimit)
 
 				// Notify everyone that the clock claimed a victim
 				sess.CurrentArena.NotifyAll("error", msg)
 
-				// Mark the arena as completed to prevent further moves
-				sess.CurrentArena.Status = "completed"
-				stadium.DefaultManager.PublishArenaList()
+				winnerPlayerID := 0
+				if sess.PlayerID == 1 && arenaRef.Player2 != nil {
+					winnerPlayerID = 2
+				}
+				if sess.PlayerID == 2 && arenaRef.Player1 != nil {
+					winnerPlayerID = 1
+				}
+				_, _ = stadium.DefaultManager.FinalizeArena(arenaRef.ID, "timeout", winnerPlayerID, false)
 
 				sess.SendJSON(stadium.Response{Status: "err", Type: "timeout", Payload: msg})
 				continue
@@ -205,8 +215,8 @@ func handleBot(conn net.Conn) {
 			if err != nil {
 				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: err.Error()})
 			} else {
-				// 4. Success! Update the 'LastMove' timestamp for the NEXT player
-				sess.CurrentArena.LastMove = time.Now()
+				arenaRef := sess.CurrentArena
+				_ = stadium.DefaultManager.RecordMove(sess.CurrentArena.ID, sess, parts[1], elapsed)
 
 				sess.SendJSON(stadium.Response{Status: "ok", Type: "move", Payload: "accepted"})
 				sess.CurrentArena.NotifyAll("update", "Player "+strconv.Itoa(sess.PlayerID)+" moved to "+parts[1])
@@ -214,6 +224,14 @@ func handleBot(conn net.Conn) {
 				// Pro-tip: Send the updated game state to everyone immediately
 				state := sess.CurrentArena.Game.GetState()
 				sess.CurrentArena.NotifyAll("data", state)
+
+				if over, winner := arenaRef.Game.IsGameOver(); over {
+					winnerPlayerID, isDraw := parseWinnerResult(winner)
+					record, finalizeErr := stadium.DefaultManager.FinalizeArena(arenaRef.ID, "game_over", winnerPlayerID, isDraw)
+					if finalizeErr == nil {
+						arenaRef.NotifyAll("gameover", record)
+					}
+				}
 			}
 
 		case "LIST":
@@ -268,4 +286,26 @@ func handleBot(conn net.Conn) {
 			conn.Write([]byte("ERR: Unknown command\n"))
 		}
 	}
+}
+
+func parseWinnerResult(raw string) (winnerPlayerID int, isDraw bool) {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		return 0, false
+	}
+	if raw == "draw" {
+		return 0, true
+	}
+
+	if strings.HasPrefix(raw, "player") {
+		parts := strings.Fields(raw)
+		if len(parts) >= 2 {
+			id, err := strconv.Atoi(parts[1])
+			if err == nil && (id == 1 || id == 2) {
+				return id, false
+			}
+		}
+	}
+
+	return 0, false
 }
