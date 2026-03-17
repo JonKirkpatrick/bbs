@@ -39,9 +39,18 @@ jobs:
           GOOS: linux
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "0"
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            build_version="${GITHUB_REF_NAME}"
+          else
+            build_version="${TAG_INPUT}"
+          fi
+          if [[ -z "$build_version" ]]; then
+            build_version="unreleased"
+          fi
           mkdir -p dist
-          go build -trimpath -ldflags "-s -w" -o "dist/bbs-server-linux-${GOARCH}" ./cmd/bbs-server
+          go build -trimpath -ldflags "-s -w -X main.buildVersion=${build_version}" -o "dist/bbs-server-linux-${GOARCH}" ./cmd/bbs-server
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

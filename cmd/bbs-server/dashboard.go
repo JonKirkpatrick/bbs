@@ -23,11 +23,12 @@ var dashTemplates *template.Template
 const dashboardAdminKeyEnv = "BBS_DASHBOARD_ADMIN_KEY"
 
 type dashboardIndexData struct {
-	AdminConfigured bool
-	IsAdmin         bool
-	AdminKey        string
-	OwnerToken      string
-	SSEQuery        string
+	AdminConfigured  bool
+	IsAdmin          bool
+	AdminKey         string
+	OwnerToken       string
+	SSEQuery         string
+	DashboardVersion string
 }
 
 type dashboardStateView struct {
@@ -258,11 +259,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	adminKey := r.URL.Query().Get("admin_key")
 	ownerToken := ownerTokenFromRequest(r)
 	data := dashboardIndexData{
-		AdminConfigured: dashboardAdminKey() != "",
-		IsAdmin:         isAdminAuthorized(adminKey),
-		AdminKey:        adminKey,
-		OwnerToken:      ownerToken,
-		SSEQuery:        dashboardSSEQuery(adminKey, ownerToken),
+		AdminConfigured:  dashboardAdminKey() != "",
+		IsAdmin:          isAdminAuthorized(adminKey),
+		AdminKey:         adminKey,
+		OwnerToken:       ownerToken,
+		SSEQuery:         dashboardSSEQuery(adminKey, ownerToken),
+		DashboardVersion: currentDashboardVersion(),
 	}
 	dashTemplates.ExecuteTemplate(w, "index.html", data)
 }

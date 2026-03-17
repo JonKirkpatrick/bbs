@@ -12,44 +12,39 @@ It assumes you can open the dashboard URL in a browser, but you are not running 
 
 ## Fast Path (Dashboard + bbs-agent)
 
-The recommended approach is `bbs-agent` — a Go sidecar that handles all BBS TCP networking and forwards game state to a Python worker over stdin/stdout. Your worker only needs to implement decision logic.
+The recommended approach is `bbs-agent` local bridge mode. The agent handles BBS TCP networking and exposes a local Unix socket endpoint for your bot.
 
 1. Open the dashboard in your browser.
 2. Click `Register Bot`.
 3. In `Bot Control`, copy the token using `Copy token`.
 4. Note the `Bot Host/IP` and `Bot Port` shown in the same panel.
-5. From the repository root, run `bbs-agent` with your worker:
+5. From the repository root, start the bridge agent:
 
 ```bash
 go run ./cmd/bbs-agent \
   --server bbs.example.com:8080 \
-  --name my_bot \
-  --owner-token owner_abc123... \
-  --worker python3 \
-  --worker-arg examples/python_worker_contract_template.py
+  --listen /tmp/bbs-agent.sock
 ```
 
-6. Return to the dashboard and wait for `Linked to session #...`.
-7. Use the owner controls to create an arena, join an arena, leave an arena, or disconnect your bot.
+6. In a second terminal, connect a bot:
 
-See `BBS_AGENT_CONTRACT.md` for the full stdin/stdout JSONL protocol your worker must speak.
-See `examples/python_worker_contract_template.py` for a ready-to-run Python worker.
+```bash
+python3 examples/python_socket_bot_template.py \
+  --socket /tmp/bbs-agent.sock \
+  --name my_bot \
+  --owner-token owner_abc123...
+```
+
+7. Return to the dashboard and wait for `Linked to session #...`.
+8. Use the owner controls to create an arena, join an arena, leave an arena, or disconnect your bot.
+
+See `BBS_AGENT_CONTRACT.md` for the bridge JSONL protocol.
+See `examples/python_socket_bot_template.py` for a ready-to-run Python bot.
 See `cmd/bbs-agent/README.md` for all `bbs-agent` flags.
 
 ### Fhourstones Solver Worker
 
-If you want to use the Fhourstones perfect Connect4 solver instead:
-
-```bash
-go run ./cmd/bbs-agent \
-  --server bbs.example.com:8080 \
-  --name fhourstones_bot \
-  --owner-token owner_abc123... \
-  --worker python3 \
-  --worker-arg examples/Fhourstones/fhourstones_worker_contract.py
-```
-
-Build the solver binary once with `gcc -O2 -std=c99 examples/Fhourstones/SearchGame.c -o examples/Fhourstones/fhourstones` (or let the worker auto-build it on first run). See `examples/Fhourstones/README.md` for tuning notes.
+Fhourstones local-bridge adapter is planned as a follow-up. Solver source and build instructions remain in `examples/Fhourstones/README.md`.
 
 ---
 

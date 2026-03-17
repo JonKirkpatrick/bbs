@@ -100,13 +100,13 @@ For the full wire protocol, see `PROTOCOL.md`.
 
 If you want bot authors to avoid handling raw TCP and BBS JSON directly, see:
 
-* `BBS_AGENT_CONTRACT.md` - sidecar contract (`bbs-agent` <-> worker over JSONL stdin/stdout)
-* `examples/python_worker_contract_template.py` - minimal worker template that implements the contract
+* `BBS_AGENT_CONTRACT.md` - local bridge protocol (`bbs-agent` <-> bot over Unix socket JSONL)
+* `examples/python_socket_bot_template.py` - minimal socket bot template for bridge mode
 
 The intended model is:
 
 1. `bbs-agent` handles server networking/registration/reconnect
-2. worker code handles decision logic (`turn` in, `action` out)
+2. bot code connects locally and handles decision logic (`turn` in, `action` out)
 
 ### bbs-agent MVP Command
 
@@ -115,10 +115,16 @@ From repository root:
 ```bash
 go run ./cmd/bbs-agent \
 	--server localhost:8080 \
+	--listen /tmp/bbs-agent.sock
+```
+
+Then connect a local bot:
+
+```bash
+python3 examples/python_socket_bot_template.py \
+	--socket /tmp/bbs-agent.sock \
 	--name agent_python_bot \
-	--owner-token owner_... \
-	--worker python3 \
-	--worker-arg examples/python_worker_contract_template.py
+	--owner-token owner_...
 ```
 
 See `cmd/bbs-agent/README.md` for details.
@@ -127,16 +133,8 @@ See `cmd/bbs-agent/README.md` for details.
 
 If you want to drive moves through the imported Fhourstones solver:
 
-```bash
-go run ./cmd/bbs-agent \
-	--server localhost:8080 \
-	--name fhourstones_bot \
-	--owner-token owner_... \
-	--worker python3 \
-	--worker-arg examples/Fhourstones/fhourstones_worker_contract.py
-```
-
-Build and tuning notes are in `examples/Fhourstones/README.md`.
+Fhourstones native local-bridge adapter is planned as part of the migration.
+Solver assets remain in `examples/Fhourstones/README.md`.
 
 ## Dashboard
 

@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"os/signal"
 	"regexp"
 	"strings"
@@ -23,17 +22,6 @@ const (
 	contractVersion = "0.2"
 	agentVersion    = "0.2.0"
 )
-
-type repeatedStringFlag []string
-
-func (r *repeatedStringFlag) String() string {
-	return strings.Join(*r, ",")
-}
-
-func (r *repeatedStringFlag) Set(value string) error {
-	*r = append(*r, value)
-	return nil
-}
 
 type credentials struct {
 	BotID     string
@@ -53,11 +41,20 @@ type serverMessage struct {
 	Payload interface{} `json:"payload"`
 }
 
-type workerEnvelope struct {
+type botEnvelope struct {
 	V       string          `json:"v"`
 	Type    string          `json:"type"`
 	ID      string          `json:"id,omitempty"`
 	Payload json.RawMessage `json:"payload"`
+}
+
+type localHello struct {
+	Name            string
+	OwnerToken      string
+	CapabilitiesCSV string
+	CredentialsFile string
+	BotID           string
+	BotSecret       string
 }
 
 type agent struct {
@@ -69,18 +66,18 @@ type agent struct {
 	ownerToken   string
 	capabilities string
 
-	workerCmd    *exec.Cmd
-	workerStdin  io.WriteCloser
-	workerStdout io.ReadCloser
-	workerStderr io.ReadCloser
-	workerMu     sync.Mutex
+	botConn net.Conn
+	botMu   sync.Mutex
 
 	conn     net.Conn
 	serverMu sync.Mutex
 
-	registerCh      chan serverMessage
-	serverErrCh     chan error
-	workerReadErrCh chan error
+	localListener   net.Listener
+	localSocketPath string
+
+	registerCh   chan serverMessage
+	serverErrCh  chan error
+	botReadErrCh chan error
 
 	sessionID int
 
@@ -106,12 +103,6 @@ func run() int {
 		return 1
 	}
 
-	creds, err := loadCredentials(cfg.credentialsFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[agent] failed to load credentials: %v\n", err)
-		return 1
-	}
-
 	ag, err := newAgent(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[agent] failed to initialize: %v\n", err)
@@ -119,10 +110,40 @@ func run() int {
 	}
 	defer ag.shutdown("agent_exit")
 
-	if err := ag.startWorker(); err != nil {
-		fmt.Fprintf(os.Stderr, "[agent] failed to start worker: %v\n", err)
+	var creds credentials
+	hello, scanner, conn, err := ag.acceptLocalConnection(cfg.listen)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[agent] failed to start local bridge: %v\n", err)
 		return 1
 	}
+
+	applyLocalHello(&cfg, &creds, hello)
+	if strings.Contains(cfg.name, " ") {
+		fmt.Fprintf(os.Stderr, "[agent] local hello rejected: name cannot contain spaces\n")
+		return 1
+	}
+	if cfg.credentialsFile == "" {
+		cfg.credentialsFile = defaultCredentialsFilePath(cfg.name)
+	}
+	cfg.credentialsFile = strings.TrimSpace(cfg.credentialsFile)
+
+	fileCreds, err := loadCredentials(cfg.credentialsFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[agent] failed to load credentials: %v\n", err)
+		return 1
+	}
+	if strings.TrimSpace(creds.BotID) == "" {
+		creds.BotID = fileCreds.BotID
+	}
+	if strings.TrimSpace(creds.BotSecret) == "" {
+		creds.BotSecret = fileCreds.BotSecret
+	}
+
+	ag.name = cfg.name
+	ag.ownerToken = strings.TrimSpace(cfg.ownerToken)
+	ag.capabilities = strings.TrimSpace(cfg.capabilities)
+	ag.botConn = conn
+	go ag.readBotScanner(scanner)
 
 	if err := ag.connectServer(); err != nil {
 		fmt.Fprintf(os.Stderr, "[agent] server connect failed: %v\n", err)
@@ -161,7 +182,7 @@ func run() int {
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "[agent] registered; waiting for JOIN to send worker welcome")
+	fmt.Fprintln(os.Stderr, "[agent] registered; waiting for JOIN to send bot welcome")
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -174,9 +195,9 @@ func run() int {
 		if err != nil && !errors.Is(err, io.EOF) {
 			fmt.Fprintf(os.Stderr, "[agent] server reader stopped: %v\n", err)
 		}
-	case err := <-ag.workerReadErrCh:
+	case err := <-ag.botReadErrCh:
 		if err != nil && !errors.Is(err, io.EOF) {
-			fmt.Fprintf(os.Stderr, "[agent] worker reader stopped: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[agent] bot reader stopped: %v\n", err)
 		}
 	}
 
@@ -185,26 +206,23 @@ func run() int {
 
 type runtimeConfig struct {
 	server          string
+	listen          string
 	name            string
 	ownerToken      string
 	capabilities    string
 	credentialsFile string
-	workerBin       string
-	workerArgs      []string
 	registerTimeout time.Duration
 }
 
 func parseFlags() (runtimeConfig, error) {
 	var cfg runtimeConfig
-	var workerArgs repeatedStringFlag
 
 	flag.StringVar(&cfg.server, "server", "", "BBS server endpoint in host:port format")
+	flag.StringVar(&cfg.listen, "listen", "", "local endpoint for bot bridge (linux/mac: unix:///tmp/bbs-agent.sock or /tmp/bbs-agent.sock)")
 	flag.StringVar(&cfg.name, "name", "agent_bot", "bot display name used during REGISTER")
 	flag.StringVar(&cfg.ownerToken, "owner-token", "", "optional owner token from dashboard")
 	flag.StringVar(&cfg.capabilities, "capabilities", "connect4", "comma-separated capability list")
 	flag.StringVar(&cfg.credentialsFile, "credentials-file", "", "path to bot credentials file (key=value format)")
-	flag.StringVar(&cfg.workerBin, "worker", "", "worker executable path (required)")
-	flag.Var(&workerArgs, "worker-arg", "argument to pass to worker process (repeat flag for multiple args)")
 	flag.DurationVar(&cfg.registerTimeout, "register-timeout", 12*time.Second, "server register response timeout")
 
 	flag.Parse()
@@ -212,75 +230,172 @@ func parseFlags() (runtimeConfig, error) {
 	if _, _, err := parseServerAddress(cfg.server); err != nil {
 		return cfg, err
 	}
-	if strings.TrimSpace(cfg.workerBin) == "" {
-		return cfg, errors.New("--worker is required")
+	cfg.listen = strings.TrimSpace(cfg.listen)
+	if cfg.listen == "" {
+		return cfg, errors.New("--listen is required")
 	}
 	if strings.Contains(cfg.name, " ") {
 		return cfg, errors.New("--name cannot contain spaces")
 	}
-	if cfg.credentialsFile == "" {
-		cfg.credentialsFile = defaultCredentialsFilePath(cfg.name)
-	}
-	cfg.credentialsFile = strings.TrimSpace(cfg.credentialsFile)
-	cfg.workerArgs = append([]string(nil), workerArgs...)
 
 	return cfg, nil
 }
 
 func newAgent(cfg runtimeConfig) (*agent, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	cmd := exec.CommandContext(ctx, cfg.workerBin, cfg.workerArgs...)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
 	return &agent{
-		ctx:             ctx,
-		cancel:          cancel,
-		name:            cfg.name,
-		server:          cfg.server,
-		ownerToken:      strings.TrimSpace(cfg.ownerToken),
-		capabilities:    strings.TrimSpace(cfg.capabilities),
-		workerCmd:       cmd,
-		workerStdin:     stdin,
-		workerStdout:    stdout,
-		workerStderr:    stderr,
-		registerCh:      make(chan serverMessage, 1),
-		serverErrCh:     make(chan error, 1),
-		workerReadErrCh: make(chan error, 1),
+		ctx:          ctx,
+		cancel:       cancel,
+		name:         cfg.name,
+		server:       cfg.server,
+		ownerToken:   strings.TrimSpace(cfg.ownerToken),
+		capabilities: strings.TrimSpace(cfg.capabilities),
+		registerCh:   make(chan serverMessage, 1),
+		serverErrCh:  make(chan error, 1),
+		botReadErrCh: make(chan error, 1),
 	}, nil
 }
 
-func (a *agent) startWorker() error {
-	if err := a.workerCmd.Start(); err != nil {
-		return err
+func (a *agent) acceptLocalConnection(rawEndpoint string) (localHello, *bufio.Scanner, net.Conn, error) {
+	network, address, display, err := parseLocalEndpoint(rawEndpoint)
+	if err != nil {
+		return localHello{}, nil, nil, err
 	}
 
-	go a.readWorkerStdout()
-	go a.streamWorkerStderr()
+	if network == "unix" {
+		_ = os.Remove(address)
+		a.localSocketPath = address
+	}
 
-	go func() {
-		err := a.workerCmd.Wait()
-		select {
-		case a.workerReadErrCh <- err:
-		default:
+	listener, err := net.Listen(network, address)
+	if err != nil {
+		return localHello{}, nil, nil, err
+	}
+	a.localListener = listener
+
+	fmt.Fprintf(os.Stderr, "[agent] local bridge listening on %s\n", display)
+
+	conn, err := listener.Accept()
+	if err != nil {
+		return localHello{}, nil, nil, err
+	}
+
+	scanner := bufio.NewScanner(conn)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+	if !scanner.Scan() {
+		if scanErr := scanner.Err(); scanErr != nil {
+			return localHello{}, nil, nil, scanErr
 		}
-	}()
+		return localHello{}, nil, nil, errors.New("local client disconnected before hello")
+	}
 
-	return nil
+	hello, err := parseLocalHello(scanner.Text())
+	if err != nil {
+		return localHello{}, nil, nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "[agent] local bot connected; name=%s capabilities=%s\n", hello.Name, hello.CapabilitiesCSV)
+	return hello, scanner, conn, nil
+}
+
+func parseLocalEndpoint(raw string) (network string, address string, display string, err error) {
+	endpoint := strings.TrimSpace(raw)
+	if endpoint == "" {
+		return "", "", "", errors.New("--listen endpoint is empty")
+	}
+
+	if strings.HasPrefix(endpoint, "unix://") {
+		address = strings.TrimSpace(strings.TrimPrefix(endpoint, "unix://"))
+		if address == "" {
+			return "", "", "", errors.New("invalid --listen unix endpoint")
+		}
+		return "unix", address, "unix://" + address, nil
+	}
+
+	if strings.Contains(endpoint, "://") {
+		return "", "", "", fmt.Errorf("unsupported --listen endpoint %q (expected unix:///path/to.sock)", raw)
+	}
+
+	return "unix", endpoint, "unix://" + endpoint, nil
+}
+
+func parseLocalHello(line string) (localHello, error) {
+	var env botEnvelope
+	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &env); err != nil {
+		return localHello{}, fmt.Errorf("invalid hello JSON: %w", err)
+	}
+	if env.V != contractVersion {
+		return localHello{}, fmt.Errorf("unsupported hello version %q", env.V)
+	}
+	if strings.ToLower(strings.TrimSpace(env.Type)) != "hello" {
+		return localHello{}, fmt.Errorf("first local message must be type=hello (got %q)", env.Type)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(env.Payload, &payload); err != nil {
+		return localHello{}, fmt.Errorf("invalid hello payload: %w", err)
+	}
+
+	out := localHello{
+		Name:            asString(payload["name"]),
+		OwnerToken:      asString(payload["owner_token"]),
+		CapabilitiesCSV: capabilitiesCSV(payload["capabilities"]),
+		CredentialsFile: asString(payload["credentials_file"]),
+		BotID:           asString(payload["bot_id"]),
+		BotSecret:       asString(payload["bot_secret"]),
+	}
+	if out.CapabilitiesCSV == "" {
+		out.CapabilitiesCSV = asString(payload["capabilities_csv"])
+	}
+	if out.Name == "" {
+		out.Name = "agent_bot"
+	}
+	if out.CapabilitiesCSV == "" {
+		out.CapabilitiesCSV = "connect4"
+	}
+
+	return out, nil
+}
+
+func applyLocalHello(cfg *runtimeConfig, creds *credentials, hello localHello) {
+	if hello.Name != "" {
+		cfg.name = hello.Name
+	}
+	if hello.OwnerToken != "" {
+		cfg.ownerToken = hello.OwnerToken
+	}
+	if hello.CapabilitiesCSV != "" {
+		cfg.capabilities = hello.CapabilitiesCSV
+	}
+	if hello.CredentialsFile != "" {
+		cfg.credentialsFile = hello.CredentialsFile
+	}
+	if hello.BotID != "" {
+		creds.BotID = hello.BotID
+	}
+	if hello.BotSecret != "" {
+		creds.BotSecret = hello.BotSecret
+	}
+}
+
+func capabilitiesCSV(raw interface{}) string {
+	switch val := raw.(type) {
+	case string:
+		return strings.TrimSpace(val)
+	case []interface{}:
+		parts := make([]string, 0, len(val))
+		for _, item := range val {
+			part := asString(item)
+			if part == "" {
+				continue
+			}
+			parts = append(parts, part)
+		}
+		return strings.Join(parts, ",")
+	default:
+		return ""
+	}
 }
 
 func (a *agent) connectServer() error {
@@ -303,42 +418,31 @@ func waitForRegister(ch <-chan serverMessage, timeout time.Duration) (serverMess
 	}
 }
 
-func (a *agent) readWorkerStdout() {
-	scanner := bufio.NewScanner(a.workerStdout)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
+func (a *agent) readBotScanner(scanner *bufio.Scanner) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
-		a.handleWorkerLine(line)
+		a.handleBotLine(line)
 	}
 
 	err := scanner.Err()
 	select {
-	case a.workerReadErrCh <- err:
+	case a.botReadErrCh <- err:
 	default:
 	}
 }
 
-func (a *agent) streamWorkerStderr() {
-	scanner := bufio.NewScanner(a.workerStderr)
-	for scanner.Scan() {
-		fmt.Fprintf(os.Stderr, "[worker] %s\n", scanner.Text())
-	}
-}
-
-func (a *agent) handleWorkerLine(line string) {
-	var env workerEnvelope
+func (a *agent) handleBotLine(line string) {
+	var env botEnvelope
 	if err := json.Unmarshal([]byte(line), &env); err != nil {
-		fmt.Fprintf(os.Stderr, "[agent] invalid worker JSON: %s\n", line)
+		fmt.Fprintf(os.Stderr, "[agent] invalid bot JSON: %s\n", line)
 		return
 	}
 
 	if env.V != contractVersion {
-		fmt.Fprintf(os.Stderr, "[agent] ignoring worker message with unsupported version: %s\n", env.V)
+		fmt.Fprintf(os.Stderr, "[agent] ignoring bot message with unsupported version: %s\n", env.V)
 		return
 	}
 
@@ -349,7 +453,7 @@ func (a *agent) handleWorkerLine(line string) {
 			Action string `json:"action"`
 		}
 		if err := json.Unmarshal(env.Payload, &payload); err != nil {
-			fmt.Fprintf(os.Stderr, "[agent] worker action payload parse error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[agent] bot action payload parse error: %v\n", err)
 			return
 		}
 		action := strings.TrimSpace(payload.Action)
@@ -365,12 +469,12 @@ func (a *agent) handleWorkerLine(line string) {
 			Message string `json:"message"`
 		}
 		if err := json.Unmarshal(env.Payload, &payload); err != nil {
-			fmt.Fprintf(os.Stderr, "[agent] worker log payload parse error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[agent] bot log payload parse error: %v\n", err)
 			return
 		}
-		fmt.Fprintf(os.Stderr, "[worker:%s] %s\n", strings.TrimSpace(payload.Level), strings.TrimSpace(payload.Message))
+		fmt.Fprintf(os.Stderr, "[bot:%s] %s\n", strings.TrimSpace(payload.Level), strings.TrimSpace(payload.Message))
 	default:
-		fmt.Fprintf(os.Stderr, "[agent] ignoring unsupported worker message type=%s (expected action/log)\n", env.Type)
+		fmt.Fprintf(os.Stderr, "[agent] ignoring unsupported bot message type=%s (expected action/log)\n", env.Type)
 	}
 }
 
@@ -439,7 +543,7 @@ func (a *agent) handleServerLine(line string) {
 				"effective_time_limit_ms": a.joinedMoveMS,
 				"capabilities":            splitCapabilities(a.capabilities),
 			}
-			_ = a.sendWorker(contractMessage{V: contractVersion, Type: "welcome", Payload: welcome})
+			_ = a.sendBot(contractMessage{V: contractVersion, Type: "welcome", Payload: welcome})
 		}
 	case "data":
 		statePayload := buildStatePayload(msg.Payload, a.joinedPlayerID)
@@ -461,7 +565,7 @@ func (a *agent) handleServerLine(line string) {
 			turnPayload["response"] = a.pendingResponse
 		}
 		a.pendingResponse = nil
-		_ = a.sendWorker(contractMessage{V: contractVersion, Type: "turn", Payload: turnPayload})
+		_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: turnPayload})
 	case "move", "error", "timeout", "ejected":
 		a.pendingResponse = map[string]interface{}{
 			"type":    msgType,
@@ -481,14 +585,14 @@ func (a *agent) handleServerLine(line string) {
 				"response":    a.pendingResponse,
 			}
 			a.pendingResponse = nil
-			_ = a.sendWorker(contractMessage{V: contractVersion, Type: "turn", Payload: turnPayload})
+			_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: turnPayload})
 		}
 
 		if msgType == "timeout" || msgType == "ejected" {
 			a.turnStep++
 			terminalPayload := map[string]interface{}{
 				"step":      a.turnStep,
-				"reward":    0.0,
+				"reward":    terminalReward(msgType, msg.Payload, a.joinedPlayerID, status),
 				"done":      true,
 				"truncated": true,
 				"response":  a.pendingResponse,
@@ -497,13 +601,13 @@ func (a *agent) handleServerLine(line string) {
 				terminalPayload["obs"] = a.lastStatePayload
 			}
 			a.pendingResponse = nil
-			_ = a.sendWorker(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
+			_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
 		}
 	case "gameover":
 		a.turnStep++
 		terminalPayload := map[string]interface{}{
 			"step":      a.turnStep,
-			"reward":    0.0,
+			"reward":    terminalReward(msgType, msg.Payload, a.joinedPlayerID, status),
 			"done":      true,
 			"truncated": false,
 			"response": map[string]interface{}{
@@ -516,7 +620,7 @@ func (a *agent) handleServerLine(line string) {
 			terminalPayload["obs"] = a.lastStatePayload
 		}
 		a.pendingResponse = nil
-		_ = a.sendWorker(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
+		_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
 	default:
 		if status == "err" {
 			fmt.Fprintf(os.Stderr, "[agent] server err type=%s payload=%v\n", msgType, msg.Payload)
@@ -524,16 +628,19 @@ func (a *agent) handleServerLine(line string) {
 	}
 }
 
-func (a *agent) sendWorker(msg contractMessage) error {
+func (a *agent) sendBot(msg contractMessage) error {
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
 
-	a.workerMu.Lock()
-	defer a.workerMu.Unlock()
+	a.botMu.Lock()
+	defer a.botMu.Unlock()
 
-	_, err = a.workerStdin.Write(append(payload, '\n'))
+	if a.botConn == nil {
+		return errors.New("local bot is not connected")
+	}
+	_, err = a.botConn.Write(append(payload, '\n'))
 	return err
 }
 
@@ -556,7 +663,7 @@ func (a *agent) sendServerCommand(command string) error {
 func (a *agent) shutdown(reason string) {
 	a.cancel()
 
-	_ = a.sendWorker(contractMessage{
+	_ = a.sendBot(contractMessage{
 		V:    contractVersion,
 		Type: "shutdown",
 		Payload: map[string]interface{}{
@@ -569,8 +676,14 @@ func (a *agent) shutdown(reason string) {
 	if a.conn != nil {
 		_ = a.conn.Close()
 	}
-	if a.workerStdin != nil {
-		_ = a.workerStdin.Close()
+	if a.localListener != nil {
+		_ = a.localListener.Close()
+	}
+	if a.botConn != nil {
+		_ = a.botConn.Close()
+	}
+	if strings.TrimSpace(a.localSocketPath) != "" {
+		_ = os.Remove(a.localSocketPath)
 	}
 }
 
@@ -783,6 +896,34 @@ func asInt(v interface{}) int {
 	default:
 		return 0
 	}
+}
+
+func terminalReward(msgType string, payload interface{}, joinedPlayerID int, status string) float64 {
+	if strings.EqualFold(status, "err") && (msgType == "timeout" || msgType == "ejected") {
+		return -1.0
+	}
+
+	if msgType != "gameover" {
+		return 0.0
+	}
+
+	payloadMap, ok := payload.(map[string]interface{})
+	if !ok {
+		return 0.0
+	}
+
+	if asBool(payloadMap["is_draw"]) {
+		return 0.0
+	}
+
+	winnerPlayerID := asInt(payloadMap["winner_player_id"])
+	if winnerPlayerID <= 0 || joinedPlayerID <= 0 {
+		return 0.0
+	}
+	if winnerPlayerID == joinedPlayerID {
+		return 1.0
+	}
+	return -1.0
 }
 
 func buildStatePayload(raw interface{}, joinedPlayerID int) map[string]interface{} {

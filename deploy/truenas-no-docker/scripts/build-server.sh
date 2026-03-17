@@ -14,10 +14,18 @@ fi
 
 mkdir -p "$DEPLOY_DIR/bin"
 
-echo "[$(date -Iseconds)] build started" >>"$LOG_FILE"
+build_version=""
+if command -v git >/dev/null 2>&1; then
+  build_version="$(git -C "$REPO_ROOT" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
+fi
+if [[ -z "$build_version" ]]; then
+  build_version="unreleased"
+fi
+
+echo "[$(date -Iseconds)] build started version=$build_version" >>"$LOG_FILE"
 (
   cd "$REPO_ROOT"
-  go build -trimpath -ldflags="-s -w" -o "$DEPLOY_DIR/bin/bbs-server" ./cmd/bbs-server
+  go build -trimpath -ldflags="-s -w -X main.buildVersion=$build_version" -o "$DEPLOY_DIR/bin/bbs-server" ./cmd/bbs-server
 ) >>"$LOG_FILE" 2>&1
 
 chmod +x "$DEPLOY_DIR/bin/bbs-server"

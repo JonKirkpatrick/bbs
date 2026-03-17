@@ -1,23 +1,26 @@
-# BBS Agent Contract v0.2 (Minimal Turn Loop)
+# BBS Agent Contract v0.2 (Local Bridge)
 
-This contract defines a minimal stdin/stdout JSONL protocol between:
+This contract defines the local JSONL protocol between:
 
 - `bbs-agent` (network bridge to BBS server)
-- `worker` (bot logic process)
+- local bot process (connected over Unix socket on linux/mac)
 
-Goal: keep the runtime message surface small and deterministic.
+`bbs-agent` no longer launches bot subprocesses. Bot authors connect to the
+local endpoint exposed by `--listen`.
 
 ## Design
 
-- Worker does not perform networking.
-- Dashboard/admin flows stay outside the worker protocol.
-- After one `welcome`, runtime loop is only `turn` -> `action`.
+- Agent owns BBS TCP networking and registration.
+- Bot owns decision logic only.
+- First local bot message is a handshake (`hello`).
+- Runtime loop is `welcome`/`turn`/`shutdown` from agent and `action` from bot.
 
 ## Transport
 
 - Encoding: UTF-8
 - Framing: one JSON object per line
-- Envelope:
+
+Envelope:
 
 ```json
 {
@@ -28,7 +31,58 @@ Goal: keep the runtime message surface small and deterministic.
 }
 ```
 
-## Agent -> Worker
+## Bot -> Agent
+
+### `hello` (required first message)
+
+```json
+{
+  "v": "0.2",
+  "type": "hello",
+  "payload": {
+    "name": "my_bot",
+    "owner_token": "owner_abc123",
+    "capabilities": ["connect4"],
+    "credentials_file": "my_bot_credentials.txt",
+    "bot_id": "",
+    "bot_secret": ""
+  }
+}
+```
+
+Notes:
+
+- `name` defaults to `agent_bot` if omitted.
+- `capabilities` may be array or CSV (`capabilities_csv`).
+- `credentials_file` is optional; default is `<name>_credentials.txt`.
+- Empty `bot_id`/`bot_secret` requests new identity issuance during register.
+
+### `action`
+
+```json
+{
+  "v": "0.2",
+  "type": "action",
+  "payload": {
+    "action": "3"
+  }
+}
+```
+
+### `log` (optional)
+
+```json
+{
+  "v": "0.2",
+  "type": "log",
+  "payload": {
+    "level": "info",
+    "message": "picked action=3"
+  }
+}
+```
+
+## Agent -> Bot
 
 ### `welcome`
 
@@ -55,7 +109,7 @@ Sent once after successful `JOIN`.
 
 ### `turn`
 
-Sent when an actionable state is available for the worker.
+Sent when an actionable state is available.
 
 ```json
 {
@@ -91,52 +145,16 @@ Notes:
 - `obs` is game/environment state.
 - `response` carries result of a prior action when available.
 - `done` and `truncated` indicate terminal conditions.
+- Terminal rewards: `1.0` win, `-1.0` loss, `0.0` draw.
 
 ### `shutdown`
-
-Agent is terminating.
 
 ```json
 {
   "v": "0.2",
   "type": "shutdown",
   "payload": {
-    "reason": "operator_exit"
+    "reason": "agent_exit"
   }
 }
 ```
-
-## Worker -> Agent
-
-### `action`
-
-Worker submits the next action.
-
-```json
-{
-  "v": "0.2",
-  "type": "action",
-  "payload": {
-    "action": "3"
-  }
-}
-```
-
-### `log` (optional)
-
-Worker log line forwarded to agent stderr.
-
-```json
-{
-  "v": "0.2",
-  "type": "log",
-  "payload": {
-    "level": "info",
-    "message": "picked action=3"
-  }
-}
-```
-
-## Migration Notes
-
-v0.2 replaces v0.1 runtime chatter (`hello`, `hello_ack`, `registered`, `manifest`, `state`, `event`, `move`) with a smaller interaction loop.

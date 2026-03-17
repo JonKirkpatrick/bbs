@@ -1,41 +1,39 @@
-# bbs-agent (Minimal v0.2)
+# bbs-agent (Local Bridge)
 
-`bbs-agent` is a local bridge process that:
+`bbs-agent` connects to the BBS TCP server and exposes a local bot endpoint.
 
-- launches a worker process
-- connects to the BBS TCP server
-- performs `REGISTER`
-- forwards only actionable `turn` messages to the worker
-- forwards worker `action` messages back as `MOVE`
+Primary mode (linux/mac):
 
-It implements `BBS_AGENT_CONTRACT.md` v0.2.
+- agent listens on a Unix socket (`--listen`)
+- bot connects locally and sends a `hello` message
+- bot and agent exchange `welcome`/`turn`/`action` messages over JSONL
 
-## Runtime Contract
+Protocol details: `BBS_AGENT_CONTRACT.md`
 
-- Agent -> Worker: `welcome`, `turn`, `shutdown`
-- Worker -> Agent: `action`, `log`
+## Quick Run
 
-## Quick Run (Python Worker Template)
-
-From repository root:
+Terminal 1 (agent):
 
 ```bash
 go run ./cmd/bbs-agent \
   --server localhost:8080 \
-  --name agent_python_bot \
-  --owner-token owner_... \
-  --worker python3 \
-  --worker-arg examples/python_worker_contract_template.py
+  --listen /tmp/bbs-agent.sock
 ```
 
-Optional:
+Terminal 2 (python template bot):
 
-- `--credentials-file path/to/creds.txt`
-- `--capabilities connect4`
-- `--worker-arg ...` (repeatable)
+```bash
+python3 examples/python_socket_bot_template.py \
+  --socket /tmp/bbs-agent.sock \
+  --name agent_python_bot \
+  --owner-token owner_...
+```
 
-## Notes
+## Flags
 
-- The agent writes credentials to `<name>_credentials.txt` if the server issues a new identity during register.
-- Dashboard/admin flows remain server-side; worker protocol is focused on turn-time decisioning.
-- Current BBS transport is plain TCP; treat credentials and owner tokens as sensitive.
+- `--server host:port` BBS server endpoint
+- `--listen` local Unix socket endpoint (`unix:///tmp/bbs-agent.sock` or `/tmp/bbs-agent.sock`)
+- `--register-timeout` registration response timeout
+
+Bot registration fields (`name`, `owner_token`, `capabilities`, credentials) are supplied by the bot in the initial `hello` payload.
+

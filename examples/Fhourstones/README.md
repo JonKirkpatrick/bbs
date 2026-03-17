@@ -1,11 +1,10 @@
-# Fhourstones Worker Integration
+# Fhourstones Solver Assets
 
-This folder contains an imported Fhourstones solver and a worker adapter that plugs into `bbs-agent`.
+This folder contains imported Fhourstones solver sources retained for the local-bridge migration.
 
 ## Files
 
 - `Game.c`, `TransGame.c`, `SearchGame.c` - original Fhourstones sources
-- `fhourstones_worker_contract.py` - worker for `BBS_AGENT_CONTRACT.md` v0.2 (`welcome`/`turn`/`action`)
 - `fhourstones` - solver binary (created by build step)
 
 ## Build Solver Binary
@@ -17,31 +16,9 @@ cd examples/Fhourstones
 gcc -O2 -std=c99 SearchGame.c -o fhourstones
 ```
 
-The worker can also attempt this build automatically if `fhourstones` is missing and `gcc` is available.
+Build is manual during transition.
 
-## Run With bbs-agent
+## Migration Status
 
-From repository root:
-
-```bash
-go run ./cmd/bbs-agent \
-  --server localhost:8080 \
-  --name fhourstones_bot \
-  --owner-token owner_... \
-  --worker python3 \
-  --worker-arg examples/Fhourstones/fhourstones_worker_contract.py
-```
-
-Optional:
-
-- `--worker-arg --solve-timeout`
-- `--worker-arg 0.8`
-- `--worker-arg --solver`
-- `--worker-arg /absolute/path/to/fhourstones`
-
-## Behavior Notes
-
-- The worker only acts on `connect4` environments.
-- It reconstructs a valid move history from board state and evaluates candidate columns with Fhourstones.
-- It uses a decision budget derived from `deadline_ms`/`effective_time_limit_ms` and preserves fallback headroom.
-- If solver calls time out or fail, it falls back to a center-first legal action.
+The legacy stdin/stdout worker adapter was removed.
+The new local-bridge adapter (Unix socket / Windows named pipe) is planned next.
