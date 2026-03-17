@@ -4,8 +4,10 @@ This document describes the architecture of the current runtime, not the earlier
 
 Today the system runs as a single Go process with two interfaces:
 
-* A TCP bot protocol on port `8080`
-* An embedded HTTP dashboard on port `3000`
+* A TCP bot protocol on port `8080` by default
+* An embedded HTTP dashboard on port `3000` by default
+
+These can be overridden at launch with `--stadium <port>` and `--dash <port>`.
 
 The dashboard now serves three related browser surfaces from that same HTTP server:
 
@@ -52,13 +54,13 @@ The executable in `cmd/bbs-server` owns both the bot server and the dashboard se
 
 There is no persistence layer, job queue, or external message bus. If the process restarts, sessions and arenas are lost.
 
-The current live game registry exposes `connect4`. Other game packages may exist in the repository, but only registered games can be created at runtime.
+The current live game registry exposes `connect4` and `gridworld`. Other game packages may exist in the repository, but only registered games can be created at runtime.
 
 ## Major Components
 
 ### 1. TCP Command Surface
 
-`cmd/bbs-server/main.go` accepts raw TCP connections on port `8080` and handles the bot command loop.
+`cmd/bbs-server/main.go` accepts raw TCP connections on the configured stadium port (`8080` default) and handles the bot command loop.
 
 Responsibilities:
 
@@ -90,6 +92,9 @@ Responsibilities:
 
 The manager protects its mutable maps with a single `sync.Mutex`. That keeps the model simple, at the cost of coarse-grained locking.
 
+Arenas can now activate with either one or two players based on the game's
+`RequiredPlayers()` value (default remains two-player for existing games).
+
 ### 3. Arena Model
 
 An `Arena` represents one match or lobby.
@@ -99,6 +104,7 @@ Important fields:
 * `Player1`, `Player2`
 * `Observers`
 * `Status`
+* `RequiredPlayers`
 * `Game`
 * `TimeLimit`
 * `Bot1Time`, `Bot2Time`
@@ -141,7 +147,7 @@ These structures provide the persistence boundary for a future database layer.
 
 ### 6. Embedded Dashboard
 
-`cmd/bbs-server/dashboard.go` starts an HTTP server on port `3000` in the same process as the TCP server.
+`cmd/bbs-server/dashboard.go` starts an HTTP server on the configured dashboard port (`3000` default) in the same process as the TCP server.
 
 Responsibilities:
 

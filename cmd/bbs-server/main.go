@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"net"
 	"strconv"
@@ -13,8 +14,13 @@ import (
 )
 
 const (
-	botServerPort       = "8080"
-	dashboardServerPort = "3000"
+	defaultBotServerPort       = "8080"
+	defaultDashboardServerPort = "3000"
+)
+
+var (
+	botServerPort       = defaultBotServerPort
+	dashboardServerPort = defaultDashboardServerPort
 )
 
 // WelcomeBanner is the ASCII art displayed to bots upon connection, along with a brief introduction to the Build-a-Bot Stadium.
@@ -40,6 +46,11 @@ const WelcomeBanner = `
 // It listens for incoming TCP connections from bots, manages their sessions,
 // and routes commands to the stadium manager for processing.
 func main() {
+	if err := parseLaunchFlags(); err != nil {
+		fmt.Printf("Invalid launch flags: %v\n", err)
+		return
+	}
+
 	listener, err := net.Listen("tcp", ":"+botServerPort)
 	if err != nil {
 		fmt.Println("Error starting stadium:", err)
@@ -57,6 +68,42 @@ func main() {
 		}
 		go handleBot(conn)
 	}
+}
+
+func parseLaunchFlags() error {
+	stadium := flag.String("stadium", defaultBotServerPort, "stadium TCP port (default 8080)")
+	dash := flag.String("dash", defaultDashboardServerPort, "dashboard HTTP port (default 3000)")
+	flag.Parse()
+
+	normalizedStadium, err := normalizePort(*stadium, "stadium")
+	if err != nil {
+		return err
+	}
+	normalizedDash, err := normalizePort(*dash, "dash")
+	if err != nil {
+		return err
+	}
+	if normalizedStadium == normalizedDash {
+		return fmt.Errorf("--stadium and --dash cannot use the same port (%s)", normalizedStadium)
+	}
+
+	botServerPort = normalizedStadium
+	dashboardServerPort = normalizedDash
+	return nil
+}
+
+func normalizePort(raw, flagName string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("--%s is empty", flagName)
+	}
+
+	port, err := strconv.Atoi(trimmed)
+	if err != nil || port < 1 || port > 65535 {
+		return "", fmt.Errorf("--%s must be a valid port number (1-65535): %q", flagName, raw)
+	}
+
+	return strconv.Itoa(port), nil
 }
 
 // handleBot manages the lifecycle of a single bot connection, including registration, command processing, and cleanup on disconnect.
@@ -142,24 +189,14 @@ func handleBot(conn net.Conn) {
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "update", Payload: "Profile updated"})
 
 		case "CREATE":
-			// Usage: CREATE <type> <time_ms> <handicap_bool> [optional_args...]
-			if len(parts) < 4 {
-				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Usage: CREATE <type> <time> <handicap> [args...]"})
-				continue
-			}
-
-			gameType := parts[1]
-			// The slice [4:] contains everything after the time and handicap flags
-			game, err := games.GetGame(gameType, parts[4:])
-
+			// Usage: CREATE <type> [time_ms] [handicap_bool] [optional_args...]
+			game, gameArgs, timeLimit, allowHandicap, err := parseCreateCommand(parts)
 			if err != nil {
 				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: err.Error()})
 				continue
 			}
-			timeLimit, _ := strconv.Atoi(parts[2])
-			allowHandicap := parts[3] == "true"
 
-			arenaID := stadium.DefaultManager.CreateArena(game, parts[4:], time.Duration(timeLimit)*time.Millisecond, allowHandicap)
+			arenaID := stadium.DefaultManager.CreateArena(game, gameArgs, timeLimit, allowHandicap)
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "create", Payload: strconv.Itoa(arenaID)})
 
 		case "JOIN":
@@ -185,6 +222,11 @@ func handleBot(conn net.Conn) {
 			}
 
 		case "MOVE":
+			if len(parts) < 2 {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "error", Payload: "Usage: MOVE <action>"})
+				continue
+			}
+
 			if sess.CurrentArena == nil {
 				conn.Write([]byte("ERR: No active match\n"))
 				continue
@@ -201,9 +243,10 @@ func handleBot(conn net.Conn) {
 			if moveLimit <= 0 {
 				moveLimit = sess.CurrentArena.TimeLimit
 			}
+			enforceMoveClock := games.EnforceMoveClock(sess.CurrentArena.Game)
 
 			// 2. The Kill Switch: Check if they exceeded this player's effective move limit
-			if elapsed > moveLimit {
+			if enforceMoveClock && elapsed > moveLimit {
 				arenaRef := sess.CurrentArena
 				msg := fmt.Sprintf("TIMEOUT: Move took %v (Limit: %v)", elapsed.Round(time.Millisecond), moveLimit)
 
@@ -241,6 +284,27 @@ func handleBot(conn net.Conn) {
 
 				if over, winner := arenaRef.Game.IsGameOver(); over {
 					winnerPlayerID, isDraw := parseWinnerResult(winner)
+
+					if episodic, ok := arenaRef.Game.(games.EpisodicGame); ok {
+						continued, episodePayload, episodeErr := episodic.AdvanceEpisode()
+						if episodeErr != nil {
+							arenaRef.NotifyAll("error", "Episode transition failed: "+episodeErr.Error())
+						} else {
+							if episodePayload == nil {
+								episodePayload = make(map[string]interface{})
+							}
+							episodePayload["winner_player_id"] = winnerPlayerID
+							episodePayload["is_draw"] = isDraw
+							episodePayload["continued"] = continued
+							stadium.SendJSONToSessions(audience, stadium.Response{Status: "ok", Type: "episode_end", Payload: episodePayload})
+
+							if continued {
+								arenaRef.NotifyAll("data", arenaRef.Game.GetState())
+								continue
+							}
+						}
+					}
+
 					record, finalizeErr := stadium.DefaultManager.FinalizeArena(arenaRef.ID, "game_over", winnerPlayerID, isDraw)
 					if finalizeErr == nil {
 						stadium.SendJSONToSessions(audience, stadium.Response{Status: "ok", Type: "gameover", Payload: record})

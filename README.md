@@ -4,12 +4,12 @@ Build-a-Bot Stadium is a Go server for running perfect-information bot matches, 
 
 The project currently runs as a single process with two public surfaces:
 
-* A TCP bot server on port `8080`
-* An embedded HTTP dashboard on port `3000`
+* A TCP bot server on port `8080` by default
+* An embedded HTTP dashboard on port `3000` by default
 
 ## Current Status
 
-The live game registry currently exposes `connect4`.
+The live game registry currently exposes `connect4` and `gridworld`.
 
 The repository contains code for other games and earlier experiments, but only games registered in `games/registry.go` can be created through the running server.
 
@@ -26,20 +26,27 @@ cd cmd/bbs-server
 go run .
 ```
 
+Optional custom ports at launch:
+
+```bash
+cd cmd/bbs-server
+go run . --stadium 18080 --dash 13000
+```
+
 When the process starts successfully, it brings up:
 
-* The bot server at `localhost:8080`
-* The dashboard at `http://localhost:3000`
+* The bot server at `localhost:8080` (or your `--stadium` value)
+* The dashboard at `http://localhost:3000` (or your `--dash` value)
 
 ### Dashboard Admin Mode
 
 Set `BBS_DASHBOARD_ADMIN_KEY` to enable admin controls in the dashboard (eject sessions, create arenas, forcibly move sessions between arenas):
 
 ```bash
-BBS_DASHBOARD_ADMIN_KEY='mysecretkey' go run .
+BBS_DASHBOARD_ADMIN_KEY='mysecretkey' go run . --stadium 8080 --dash 3000
 ```
 
-Then open `http://localhost:3000/?admin_key=mysecretkey`. Use single quotes around keys that contain shell-special characters.
+Then open `http://localhost:<dash_port>/?admin_key=mysecretkey` (default `3000`). Use single quotes around keys that contain shell-special characters.
 
 ### Dashboard Bot Control Mode
 
@@ -74,7 +81,7 @@ Bots connect over raw TCP and exchange newline-delimited commands and JSON respo
 
 Typical flow:
 
-1. Connect to `localhost:8080`
+1. Connect to `localhost:<stadium_port>` (default `8080`)
 2. Send `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
 3. Create, join, watch, or play in arenas
 
@@ -86,7 +93,7 @@ Common commands:
 * `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
 * `WHOAMI`
 * `UPDATE <field> <value>`
-* `CREATE <type> <time_ms> <handicap_bool> [args...]`
+* `CREATE <type> [time_ms] [handicap_bool] [args...]`
 * `JOIN <arena_id> <handicap_percent>`
 * `LIST`
 * `WATCH <arena_id>`
@@ -140,6 +147,8 @@ Solver assets remain in `examples/Fhourstones/README.md`.
 
 Open `http://localhost:3000` in a browser to view active arenas. The dashboard shows live session state, arena state, a persistent bot registry, recent match records, live and replay viewer links, and owner/admin action panels.
 
+If you launched with `--dash`, replace `3000` with your configured dashboard port.
+
 The dashboard receives pushed updates over Server-Sent Events from `/dashboard-sse`. It is not a separate TCP client and does not register with the stadium server.
 
 The match viewer is served at `/viewer`:
@@ -175,6 +184,25 @@ CREATE connect4 1000 false
 LIST
 ```
 
+Create a gridworld arena from the default map:
+
+```text
+CREATE gridworld map=default episodes=25
+```
+
+You can also point at a custom map directory:
+
+```text
+CREATE gridworld map=maze_a map_dir=../../maps/gridworld max_steps=80 episodes=0
+```
+
+For gridworld, `episodes` controls how many terminal episodes run inside the same arena:
+
+* `episodes=0` means unbounded episodic loop (arena remains active until players leave or admin cleanup)
+* `episodes=N` runs exactly `N` episodes, then emits normal `gameover`
+
+Gridworld also disables per-move clock enforcement, so time and handicap settings are ignored for gridworld arenas.
+
 Join an existing live arena from a second bot:
 
 ```text
@@ -197,6 +225,8 @@ REGISTER bot_one "" "" connect4 owner_token=owner_...
 
 Open `http://localhost:3000` to watch arena updates as they happen.
 
+If you launched with `--dash`, replace `3000` with your configured dashboard port.
+
 ## Project Layout
 
 * `cmd/bbs-server/`: TCP server and embedded dashboard
@@ -208,3 +238,41 @@ Open `http://localhost:3000` to watch arena updates as they happen.
 The stadium package also owns persistent bot profiles (`BotProfile`), match records (`MatchRecord`), and per-move history (`MatchMove`). All state is currently in-memory; a restart discards everything.
 
 Additional design notes live in `ARCHITECTURE.md`.
+
+## GridWorld Maps
+
+Gridworld map files are loaded at runtime from:
+
+1. `map_dir=...` in `CREATE`
+2. `BBS_GRIDWORLD_MAP_DIR`
+3. defaults: `maps/gridworld`, `../maps/gridworld`, `../../maps/gridworld`
+
+Map format is plain text with metadata, blank line, then integer grid values.
+
+Example (`maps/gridworld/default.map`):
+
+```text
+name: default
+rows: 6
+cols: 8
+max_steps: 64
+
+2 0 0 0 1 0 0 3
+1 1 1 0 1 0 1 0
+...
+```
+
+Cell codes:
+
+* `0` empty
+* `1` wall
+* `2` start
+* `3` goal (win)
+* `4` pit (loss)
+
+Supported `CREATE` args for gridworld:
+
+* `map=<name>` map basename (`default` => `default.map`)
+* `map_dir=<path>` map directory override
+* `max_steps=<n>` step horizon for each episode
+* `episodes=<n>` number of episodes in this arena (`0` means unbounded)

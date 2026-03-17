@@ -74,11 +74,12 @@ REGISTER &lt;name&gt; "" "" connect4 owner_token={{.OwnerToken}}</pre>
                         <h3>Create Arena</h3>
                         <label>Game</label>
                         <input type="text" name="game" value="connect4" required />
-                        <label>Time Limit (ms)</label>
-                        <input type="number" min="1" name="time_ms" value="1000" required />
-                        <label>Allow Handicap</label>
+                        <label>Time Limit (ms, optional)</label>
+                        <input type="number" min="1" name="time_ms" placeholder="default 1000" />
+                        <label>Allow Handicap (optional)</label>
                         <select name="allow_handicap">
-                            <option value="false" selected>false</option>
+                            <option value="" selected>auto</option>
+                            <option value="false">false</option>
                             <option value="true">true</option>
                         </select>
                         <label>Game Args (comma or space separated)</label>
@@ -219,14 +220,25 @@ REGISTER &lt;name&gt; "" "" connect4 owner_token={{.OwnerToken}}</pre>
                     <dl>
                         <dt>Game</dt>
                         <dd>{{.Game}}</dd>
-                        <dt>Time Limit</dt>
-                        <dd>{{fmtSeconds .TimeLimitMS}}</dd>
-                        <dt>Handicap Enabled</dt>
-                        <dd>{{.AllowHandicap}}</dd>
-                        <dt>P1 Move Limit</dt>
-                        <dd>{{fmtSeconds .Bot1TimeMS}} ({{if ge .Player1Handicap 0}}+{{end}}{{.Player1Handicap}}%)</dd>
-                        <dt>P2 Move Limit</dt>
-                        <dd>{{fmtSeconds .Bot2TimeMS}} ({{if ge .Player2Handicap 0}}+{{end}}{{.Player2Handicap}}%)</dd>
+                        <dt>Required Players</dt>
+                        <dd>{{if gt .RequiredPlayers 0}}{{.RequiredPlayers}}{{else}}2{{end}}</dd>
+                        {{if .MoveClockEnabled}}
+                            <dt>Time Limit</dt>
+                            <dd>{{fmtSeconds .TimeLimitMS}}</dd>
+                            {{if .HandicapSupported}}
+                                <dt>Handicap Enabled</dt>
+                                <dd>{{.AllowHandicap}}</dd>
+                            {{end}}
+                            <dt>P1 Move Limit</dt>
+                            <dd>{{fmtSeconds .Bot1TimeMS}} ({{if ge .Player1Handicap 0}}+{{end}}{{.Player1Handicap}}%)</dd>
+                            {{if ne .RequiredPlayers 1}}
+                                <dt>P2 Move Limit</dt>
+                                <dd>{{fmtSeconds .Bot2TimeMS}} ({{if ge .Player2Handicap 0}}+{{end}}{{.Player2Handicap}}%)</dd>
+                            {{end}}
+                        {{else}}
+                            <dt>Move Clock</dt>
+                            <dd><span class="muted">disabled for this game</span></dd>
+                        {{end}}
                         <dt>Last Move</dt>
                         <dd>{{fmtTime .LastMove}}</dd>
                         <dt>Move Count</dt>
@@ -240,13 +252,15 @@ REGISTER &lt;name&gt; "" "" connect4 owner_token={{.OwnerToken}}</pre>
                     </dl>
                     <div class="players">
                         <div>
-                            <strong>P1:</strong>
+                            <strong>{{if eq .RequiredPlayers 1}}Agent{{else}}P1{{end}}:</strong>
                             {{if .HasPlayer1}}{{.Player1Name}} (ID {{.Player1Session}}){{else}}<span class="muted">empty</span>{{end}}
                         </div>
-                        <div>
-                            <strong>P2:</strong>
-                            {{if .HasPlayer2}}{{.Player2Name}} (ID {{.Player2Session}}){{else}}<span class="muted">empty</span>{{end}}
-                        </div>
+                        {{if ne .RequiredPlayers 1}}
+                            <div>
+                                <strong>P2:</strong>
+                                {{if .HasPlayer2}}{{.Player2Name}} (ID {{.Player2Session}}){{else}}<span class="muted">empty</span>{{end}}
+                            </div>
+                        {{end}}
                     </div>
                     <div class="observers">
                         <strong>Observers ({{.ObserverCount}}):</strong>
@@ -409,11 +423,12 @@ REGISTER &lt;name&gt; "" "" connect4 owner_token={{.OwnerToken}}</pre>
                     <h3>Create Arena</h3>
                     <label>Game</label>
                     <input type="text" name="game" value="connect4" required />
-                    <label>Time Limit (ms)</label>
-                    <input type="number" min="1" name="time_ms" value="1000" required />
-                    <label>Allow Handicap</label>
+                    <label>Time Limit (ms, optional)</label>
+                    <input type="number" min="1" name="time_ms" placeholder="default 1000" />
+                    <label>Allow Handicap (optional)</label>
                     <select name="allow_handicap">
-                        <option value="false" selected>false</option>
+                        <option value="" selected>auto</option>
+                        <option value="false">false</option>
                         <option value="true">true</option>
                     </select>
                     <label>Game Args (comma or space separated)</label>

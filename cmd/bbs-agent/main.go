@@ -621,6 +621,24 @@ func (a *agent) handleServerLine(line string) {
 		}
 		a.pendingResponse = nil
 		_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
+	case "episode_end":
+		a.turnStep++
+		terminalPayload := map[string]interface{}{
+			"step":      a.turnStep,
+			"reward":    terminalReward(msgType, msg.Payload, a.joinedPlayerID, status),
+			"done":      true,
+			"truncated": false,
+			"response": map[string]interface{}{
+				"type":    msgType,
+				"status":  status,
+				"payload": msg.Payload,
+			},
+		}
+		if a.lastStatePayload != nil {
+			terminalPayload["obs"] = a.lastStatePayload
+		}
+		a.pendingResponse = nil
+		_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
 	default:
 		if status == "err" {
 			fmt.Fprintf(os.Stderr, "[agent] server err type=%s payload=%v\n", msgType, msg.Payload)
@@ -903,7 +921,7 @@ func terminalReward(msgType string, payload interface{}, joinedPlayerID int, sta
 		return -1.0
 	}
 
-	if msgType != "gameover" {
+	if msgType != "gameover" && msgType != "episode_end" {
 		return 0.0
 	}
 

@@ -1,0 +1,19 @@
+# GridWorld map format
+# Metadata block first, then a blank line, then grid integers.
+# Cell codes:
+# 0 = empty
+# 1 = wall / barrier
+# 2 = start
+# 3 = goal (win)
+# 4 = pit (loss)
+name: default
+rows: 6
+cols: 8
+max_steps: 64
+
+2 0 0 0 1 0 0 3
+1 1 1 0 1 0 1 0
+0 0 0 0 1 0 1 0
+0 1 1 0 0 0 1 0
+0 0 1 1 1 0 0 0
+4 0 0 0 0 0 1 0

@@ -330,20 +330,6 @@ func handleOwnerCreateArena(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timeLimitMS, err := strconv.Atoi(strings.TrimSpace(r.FormValue("time_ms")))
-	if err != nil || timeLimitMS <= 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		renderActionResult(w, false, "Time limit must be a positive integer in milliseconds.")
-		return
-	}
-
-	allowHandicap, err := strconv.ParseBool(strings.TrimSpace(r.FormValue("allow_handicap")))
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		renderActionResult(w, false, "allow_handicap must be true or false.")
-		return
-	}
-
 	args := parseGameArgs(r.FormValue("game_args"))
 	game, err := games.GetGame(gameType, args)
 	if err != nil {
@@ -352,7 +338,14 @@ func handleOwnerCreateArena(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	arenaID, err := stadium.DefaultManager.CreateArenaForOwner(ownerToken, game, args, time.Duration(timeLimitMS)*time.Millisecond, allowHandicap)
+	timeLimit, allowHandicap, err := resolveArenaRuntimeOptions(game, r.FormValue("time_ms"), r.FormValue("allow_handicap"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		renderActionResult(w, false, err.Error())
+		return
+	}
+
+	arenaID, err := stadium.DefaultManager.CreateArenaForOwner(ownerToken, game, args, timeLimit, allowHandicap)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		renderActionResult(w, false, err.Error())
@@ -565,20 +558,6 @@ func handleAdminCreateArena(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timeLimitMS, err := strconv.Atoi(strings.TrimSpace(r.FormValue("time_ms")))
-	if err != nil || timeLimitMS <= 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		renderActionResult(w, false, "Time limit must be a positive integer in milliseconds.")
-		return
-	}
-
-	allowHandicap, err := strconv.ParseBool(strings.TrimSpace(r.FormValue("allow_handicap")))
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		renderActionResult(w, false, "allow_handicap must be true or false.")
-		return
-	}
-
 	args := parseGameArgs(r.FormValue("game_args"))
 	game, err := games.GetGame(gameType, args)
 	if err != nil {
@@ -587,7 +566,14 @@ func handleAdminCreateArena(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	arenaID := stadium.DefaultManager.CreateArena(game, args, time.Duration(timeLimitMS)*time.Millisecond, allowHandicap)
+	timeLimit, allowHandicap, err := resolveArenaRuntimeOptions(game, r.FormValue("time_ms"), r.FormValue("allow_handicap"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		renderActionResult(w, false, err.Error())
+		return
+	}
+
+	arenaID := stadium.DefaultManager.CreateArena(game, args, timeLimit, allowHandicap)
 	renderActionResult(w, true, fmt.Sprintf("Created arena %d (%s).", arenaID, gameType))
 }
 

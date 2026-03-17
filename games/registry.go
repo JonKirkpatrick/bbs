@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/JonKirkpatrick/bbs/games/connect4"
+	"github.com/JonKirkpatrick/bbs/games/gridworld"
 )
 
 // GameFactory now receives the remainder of the command line parts
@@ -36,6 +37,9 @@ var registry = map[string]GameFactory{
 			}
 		}
 		return connect4.New(rows, cols), nil
+	},
+	"gridworld": func(args []string) (GameInstance, error) {
+		return gridworld.New(args)
 	},
 	// Future games can be added here with their own argument parsing
 }

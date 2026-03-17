@@ -175,6 +175,11 @@ func (m *Manager) applyOutcomeToProfilesLocked(arena *Arena, winnerPlayerID int,
 			profile.Draws++
 		}
 	} else {
+		if winnerPlayerID == 0 && arena.Player2 == nil && arena.Player1 != nil {
+			if p, ok := m.BotProfiles[arena.Player1.BotID]; ok {
+				p.Losses++
+			}
+		}
 		if winnerPlayerID == 1 && arena.Player1 != nil {
 			if p, ok := m.BotProfiles[arena.Player1.BotID]; ok {
 				p.Wins++

@@ -1,12 +1,12 @@
 # Build-a-Bot Stadium Protocol v1.1
 
-This document defines the bot protocol for the Build-a-Bot Stadium server. Bot communication is performed over TCP on port 8080, and server responses are sent as JSON objects.
+This document defines the bot protocol for the Build-a-Bot Stadium server. Bot communication is performed over TCP (default port `8080`, configurable at launch with `--stadium`), and server responses are sent as JSON objects.
 
-The browser dashboard is not a TCP client. It is served separately over HTTP on port 3000 and receives manager state updates through Server-Sent Events at `/dashboard-sse`.
+The browser dashboard is not a TCP client. It is served separately over HTTP (default port `3000`, configurable at launch with `--dash`) and receives manager state updates through Server-Sent Events at `/dashboard-sse`.
 
 ## Connection Lifecycle
 
-1. **Connect**: Open a TCP connection to the stadium server, for example `localhost:8080`.
+1. **Connect**: Open a TCP connection to the stadium server, for example `localhost:8080` (or your configured `--stadium` port).
 2. **Register**: Send `REGISTER <name> <bot_id_or_\"\"> <bot_secret_or_\"\"> [cap1,cap2,...] [owner_token=<token>]` immediately.
 3. **Interact**: Send commands and read newline-delimited JSON responses.
 4. **Disconnect**: The server handles cleanup via `QUIT` or an abrupt disconnect.
@@ -21,7 +21,7 @@ The browser dashboard is not a TCP client. It is served separately over HTTP on 
 | `REGISTER` | `<name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]` | Authenticates with persistent identity. Use `"" ""` to request a new bot identity and secret. If an `owner_token` is included, the active session is linked to the dashboard view that minted it. |
 | `WHOAMI` | (none) | Returns the current session identity and arena status. |
 | `UPDATE` | `<field> <value>` | Updates mutable session fields such as name or capabilities. |
-| `CREATE` | `<type> <time_ms> <handicap_bool> [args...]` | Creates a new arena for the requested game type. |
+| `CREATE` | `<type> [time_ms] [handicap_bool] [args...]` | Creates a new arena for the requested game type. `time_ms` and `handicap_bool` are optional; defaults are applied when omitted. Example for gridworld: `CREATE gridworld map=default [map_dir=...] [max_steps=...] [episodes=...]`. |
 | `JOIN` | `<id> <handicap_percent>` | Joins an existing arena by ID with a handicap percentage (`+20` gives 20% more move time, `-20` gives 20% less). |
 | `LIST` | (none) | Returns a human-readable list of currently open arenas. |
 | `WATCH` | `<arena_id>` | Enters spectator mode for a live arena. This is separate from the HTTP replay viewer used for archived matches. |
@@ -74,7 +74,7 @@ Server responds:
 
 ## Dashboard Transport
 
-The dashboard is embedded in the server process and is available at `http://localhost:3000`.
+The dashboard is embedded in the server process and is available at `http://localhost:3000` by default (or your configured `--dash` port).
 
 * `GET /` — serves the dashboard HTML.
 * `GET /dashboard-sse` — streams rendered manager state updates over SSE. Pass `?admin_key=<key>` to unlock admin controls in the UI and `?owner_token=<token>` to show owner-scoped controls for a claimed bot.

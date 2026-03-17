@@ -64,18 +64,21 @@ func (m *Manager) snapshotLocked() ManagerSnapshot {
 
 	for _, arena := range m.Arenas {
 		arenaSnap := ArenaSnapshot{
-			ID:              arena.ID,
-			Status:          arena.Status,
-			AllowHandicap:   arena.AllowHandicap,
-			Player1Handicap: arena.Player1Handicap,
-			Player2Handicap: arena.Player2Handicap,
-			TimeLimitMS:     arena.TimeLimit.Milliseconds(),
-			Bot1TimeMS:      arena.Bot1Time.Milliseconds(),
-			Bot2TimeMS:      arena.Bot2Time.Milliseconds(),
-			MoveCount:       len(arena.MoveHistory),
-			LastMove:        arena.LastMove.UTC().Format(time.RFC3339Nano),
-			CreatedAt:       arena.CreatedAt.UTC().Format(time.RFC3339Nano),
-			Observers:       make([]ObserverSnapshot, 0, len(arena.Observers)),
+			ID:                arena.ID,
+			Status:            arena.Status,
+			RequiredPlayers:   arena.RequiredPlayers,
+			MoveClockEnabled:  arena.MoveClockEnabled,
+			HandicapSupported: arena.HandicapSupported,
+			AllowHandicap:     arena.AllowHandicap,
+			Player1Handicap:   arena.Player1Handicap,
+			Player2Handicap:   arena.Player2Handicap,
+			TimeLimitMS:       arena.TimeLimit.Milliseconds(),
+			Bot1TimeMS:        arena.Bot1Time.Milliseconds(),
+			Bot2TimeMS:        arena.Bot2Time.Milliseconds(),
+			MoveCount:         len(arena.MoveHistory),
+			LastMove:          arena.LastMove.UTC().Format(time.RFC3339Nano),
+			CreatedAt:         arena.CreatedAt.UTC().Format(time.RFC3339Nano),
+			Observers:         make([]ObserverSnapshot, 0, len(arena.Observers)),
 		}
 
 		if !arena.ActivatedAt.IsZero() {

@@ -18,13 +18,20 @@ func (m *Manager) StartWatchdog() {
 
 				switch arena.Status {
 				case "active":
-					maxMoveLimit := arena.MaxMoveLimit()
-					if maxMoveLimit <= 0 {
-						maxMoveLimit = arena.TimeLimit
-					}
-					// Active games are strictly timed
-					if time.Since(arena.LastMove) > (maxMoveLimit * 3) {
-						m.terminateArena(id, "Arena closed: Active game timed out.")
+					if games.EnforceMoveClock(arena.Game) {
+						maxMoveLimit := arena.MaxMoveLimit()
+						if maxMoveLimit <= 0 {
+							maxMoveLimit = arena.TimeLimit
+						}
+						// Timed games are strictly monitored for stale active arenas.
+						if time.Since(arena.LastMove) > (maxMoveLimit * 3) {
+							m.terminateArena(id, "Arena closed: Active game timed out.")
+						}
+					} else {
+						// Untimed environments can run episodic loops; only clean up if idle for a long period.
+						if time.Since(arena.LastMove) > (24 * time.Hour) {
+							m.terminateArena(id, "Arena closed: Active arena idle too long.")
+						}
 					}
 				case "completed":
 					// Completed games can linger briefly for stats/spectators
@@ -157,17 +164,26 @@ func (m *Manager) createArenaLocked(game games.GameInstance, gameArgs []string, 
 	id := m.nextArenaID
 	m.nextArenaID++
 
+	moveClockEnabled := games.EnforceMoveClock(game)
+	handicapSupported := games.SupportsHandicap(game) && moveClockEnabled
+	if !handicapSupported {
+		allowHandicap = false
+	}
+
 	m.Arenas[id] = &Arena{
-		ID:            id,
-		Game:          game,
-		GameArgs:      append([]string(nil), gameArgs...),
-		TimeLimit:     timeLimit,
-		AllowHandicap: allowHandicap,
-		Status:        "waiting",
-		Observers:     make([]*Session, 0),
-		MoveHistory:   make([]MatchMove, 0),
-		CreatedAt:     time.Now(),
-		LastMove:      time.Now(),
+		ID:                id,
+		Game:              game,
+		GameArgs:          append([]string(nil), gameArgs...),
+		TimeLimit:         timeLimit,
+		MoveClockEnabled:  moveClockEnabled,
+		HandicapSupported: handicapSupported,
+		AllowHandicap:     allowHandicap,
+		RequiredPlayers:   games.RequiredPlayers(game),
+		Status:            "waiting",
+		Observers:         make([]*Session, 0),
+		MoveHistory:       make([]MatchMove, 0),
+		CreatedAt:         time.Now(),
+		LastMove:          time.Now(),
 	}
 	m.broadcastArenaListLocked()
 	return id
@@ -198,11 +214,16 @@ func (m *Manager) joinArenaLocked(arenaID int, s *Session, handicap int) error {
 		return err
 	}
 
+	requiredPlayers := arena.RequiredPlayers
+	if requiredPlayers <= 0 {
+		requiredPlayers = 2
+	}
+
 	if arena.Player1 == nil {
 		arena.Player1 = s
 		s.PlayerID = 1
 		arena.Player1Handicap = appliedHandicap
-	} else if arena.Player2 == nil {
+	} else if requiredPlayers >= 2 && arena.Player2 == nil {
 		arena.Player2 = s
 		s.PlayerID = 2
 		arena.Player2Handicap = appliedHandicap
@@ -219,6 +240,9 @@ func (m *Manager) joinArenaLocked(arenaID int, s *Session, handicap int) error {
 		"arena_id":                arena.ID,
 		"player_id":               s.PlayerID,
 		"game":                    arena.Game.GetName(),
+		"required_players":        requiredPlayers,
+		"move_clock_enabled":      arena.MoveClockEnabled,
+		"handicap_supported":      arena.HandicapSupported,
 		"time_limit_ms":           arena.TimeLimit.Milliseconds(),
 		"handicap_enabled":        arena.AllowHandicap,
 		"handicap_percent":        appliedHandicap,
@@ -229,7 +253,9 @@ func (m *Manager) joinArenaLocked(arenaID int, s *Session, handicap int) error {
 	s.SendJSON(Response{Status: "ok", Type: "join", Payload: manifest})
 
 	// 3. If the arena is now ready, kick off the game
-	if arena.Player1 != nil && arena.Player2 != nil {
+	if requiredPlayers == 1 && arena.Player1 != nil {
+		m.activateArena(arena)
+	} else if requiredPlayers >= 2 && arena.Player1 != nil && arena.Player2 != nil {
 		m.activateArena(arena)
 	}
 
@@ -384,10 +410,13 @@ func (m *Manager) activateArena(a *Arena) {
 	a.Bot1Time = a.MoveLimitForPlayer(1)
 	a.Bot2Time = a.MoveLimitForPlayer(2)
 
-	// Notify both bots that the game is ON
-	msg := "Game Start! Opponent: " + a.Player1.BotName + " vs " + a.Player2.BotName
-	a.Player1.SendJSON(Response{"ok", "info", msg})
-	a.Player2.SendJSON(Response{"ok", "info", msg})
+	if a.Player2 != nil {
+		msg := "Game Start! Opponent: " + a.Player1.BotName + " vs " + a.Player2.BotName
+		a.Player1.SendJSON(Response{"ok", "info", msg})
+		a.Player2.SendJSON(Response{"ok", "info", msg})
+	} else if a.Player1 != nil {
+		a.Player1.SendJSON(Response{"ok", "info", "Game Start! Solo environment active."})
+	}
 
 	// Send the initial game state so bots receive the same "data" message
 	// they would get after any move — this lets player 1's bot know it's

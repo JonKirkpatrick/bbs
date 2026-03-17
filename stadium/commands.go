@@ -17,7 +17,7 @@ func GetHelpText(isRegistered bool) string {
 		fmt.Fprintf(&sb, format, "QUIT", "Exit")
 	} else {
 		fmt.Fprintf(&sb, format, "LIST", "View arenas")
-		fmt.Fprintf(&sb, format, "CREATE <type> <ms> <h_bool>", "Start new game")
+		fmt.Fprintf(&sb, format, "CREATE <type> [ms] [h_bool] [args...]", "Start new game")
 		fmt.Fprintf(&sb, format, "JOIN <id> <handi_pct>", "Enter game (e.g. +20 or -20)")
 		fmt.Fprintf(&sb, format, "WATCH <id>", "Spectate")
 		fmt.Fprintf(&sb, format, "MOVE <move>", "Make a move")
