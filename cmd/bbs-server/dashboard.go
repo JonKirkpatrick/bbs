@@ -282,7 +282,10 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		DashboardVersion: currentDashboardVersion(),
 		GameCatalogJSON:  marshalJSONForTemplate(catalog),
 	}
-	dashTemplates.ExecuteTemplate(w, "index.html", data)
+	if err := dashTemplates.ExecuteTemplate(w, "index.html", data); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Template error: %v\n", err)
+	}
 }
 
 func requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
