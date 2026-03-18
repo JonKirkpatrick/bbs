@@ -1,33 +1,35 @@
 # GridWorld Map Files
 
-Gridworld environments are loaded from text files at arena creation time.
+Gridworld is a built-in environment that runs inside the same arena/runtime model as competitive games.
 
-Create command example:
+Maps are loaded from text files at arena creation time.
+
+Example create:
 
 ```text
 CREATE gridworld map=default
 ```
 
-Optional args:
+Supported args:
 
-- `map=<name>` map file basename (for example `default` -> `default.map`)
-- `map_dir=<path>` override map directory search path
-- `max_steps=<n>` override episode horizon
-- `episodes=<n>` number of episodes to run before `gameover` (`0` means unbounded)
+- `map=<name>` map basename (`default` -> `default.map`)
+- `map_dir=<path>` map directory override
+- `max_steps=<n>` episode horizon override
+- `episodes=<n>` number of episodes before `gameover` (`0` means unbounded)
 
 ## Search Order
 
-When loading `map=<name>`, the server searches:
+Map resolution order:
 
-1. `map_dir=...` (if provided)
-2. `BBS_GRIDWORLD_MAP_DIR` env var
+1. `map_dir=...` in create args
+2. `BBS_GRIDWORLD_MAP_DIR`
 3. `maps/gridworld`
 4. `../maps/gridworld`
 5. `../../maps/gridworld`
 
-## Format
+## File Format
 
-Metadata block first, then a blank line, then integer grid values.
+Metadata header, blank line, then integer grid rows.
 
 ```text
 name: default

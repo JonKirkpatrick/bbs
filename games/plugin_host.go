@@ -21,11 +21,38 @@ const (
 	pluginRefreshInterval   = 2 * time.Second
 )
 
+const (
+	pluginManifestStatusLoaded  = "loaded"
+	pluginManifestStatusSkipped = "skipped"
+)
+
+// PluginManifestStatus describes discovery status for one plugin manifest file.
+type PluginManifestStatus struct {
+	ManifestPath    string `json:"manifest_path"`
+	Name            string `json:"name,omitempty"`
+	DisplayName     string `json:"display_name,omitempty"`
+	Executable      string `json:"executable,omitempty"`
+	ProtocolVersion int    `json:"protocol_version,omitempty"`
+	Status          string `json:"status"`
+	Reason          string `json:"reason,omitempty"`
+}
+
+// PluginDiagnostics summarizes plugin discovery state for runtime and dashboard views.
+type PluginDiagnostics struct {
+	Enabled      bool                   `json:"enabled"`
+	Directory    string                 `json:"directory"`
+	RefreshedAt  string                 `json:"refreshed_at,omitempty"`
+	LoadedCount  int                    `json:"loaded_count"`
+	SkippedCount int                    `json:"skipped_count"`
+	Manifests    []PluginManifestStatus `json:"manifests,omitempty"`
+}
+
 type pluginRegistryCacheState struct {
 	mu          sync.Mutex
 	refreshedAt time.Time
 	directory   string
 	entries     map[string]gameRegistration
+	diagnostics PluginDiagnostics
 }
 
 var pluginRegistryCache pluginRegistryCacheState
@@ -68,6 +95,15 @@ func pluginsDirectory() string {
 
 func dynamicPluginRegistrations() map[string]gameRegistration {
 	if !pluginsEnabled() {
+		pluginRegistryCache.mu.Lock()
+		pluginRegistryCache.directory = pluginsDirectory()
+		pluginRegistryCache.entries = nil
+		pluginRegistryCache.refreshedAt = time.Time{}
+		pluginRegistryCache.diagnostics = PluginDiagnostics{
+			Enabled:   false,
+			Directory: pluginsDirectory(),
+		}
+		pluginRegistryCache.mu.Unlock()
 		return nil
 	}
 
@@ -77,17 +113,25 @@ func dynamicPluginRegistrations() map[string]gameRegistration {
 	pluginRegistryCache.mu.Lock()
 	defer pluginRegistryCache.mu.Unlock()
 
-	if pluginRegistryCache.entries != nil &&
-		pluginRegistryCache.directory == directory &&
+	if pluginRegistryCache.directory == directory &&
+		!pluginRegistryCache.refreshedAt.IsZero() &&
 		now.Sub(pluginRegistryCache.refreshedAt) < pluginRefreshInterval {
 		return cloneGameRegistrations(pluginRegistryCache.entries)
 	}
 
-	scanned := scanPluginDirectory(directory)
-	pluginRegistryCache.entries = scanned
+	scanResult := scanPluginDirectory(directory)
+	pluginRegistryCache.entries = scanResult.entries
 	pluginRegistryCache.directory = directory
 	pluginRegistryCache.refreshedAt = now
-	return cloneGameRegistrations(scanned)
+	pluginRegistryCache.diagnostics = PluginDiagnostics{
+		Enabled:      true,
+		Directory:    directory,
+		RefreshedAt:  now.UTC().Format(time.RFC3339Nano),
+		LoadedCount:  scanResult.loadedCount,
+		SkippedCount: scanResult.skippedCount,
+		Manifests:    clonePluginManifestStatuses(scanResult.manifests),
+	}
+	return cloneGameRegistrations(scanResult.entries)
 }
 
 func cloneGameRegistrations(source map[string]gameRegistration) map[string]gameRegistration {
@@ -101,62 +145,158 @@ func cloneGameRegistrations(source map[string]gameRegistration) map[string]gameR
 	return copyMap
 }
 
-func scanPluginDirectory(directory string) map[string]gameRegistration {
-	files, err := filepath.Glob(filepath.Join(directory, "*.json"))
-	if err != nil || len(files) == 0 {
+func clonePluginManifestStatuses(source []PluginManifestStatus) []PluginManifestStatus {
+	if len(source) == 0 {
 		return nil
+	}
+	copySlice := make([]PluginManifestStatus, len(source))
+	copy(copySlice, source)
+	return copySlice
+}
+
+func clonePluginDiagnostics(source PluginDiagnostics) PluginDiagnostics {
+	copyValue := source
+	copyValue.Manifests = clonePluginManifestStatuses(source.Manifests)
+	return copyValue
+}
+
+// CurrentPluginDiagnostics returns plugin discovery status suitable for UI diagnostics.
+func CurrentPluginDiagnostics() PluginDiagnostics {
+	if !pluginsEnabled() {
+		return PluginDiagnostics{
+			Enabled:   false,
+			Directory: pluginsDirectory(),
+		}
+	}
+
+	_ = dynamicPluginRegistrations()
+
+	pluginRegistryCache.mu.Lock()
+	defer pluginRegistryCache.mu.Unlock()
+
+	if pluginRegistryCache.diagnostics.Directory == "" {
+		return PluginDiagnostics{
+			Enabled:   true,
+			Directory: pluginsDirectory(),
+		}
+	}
+
+	return clonePluginDiagnostics(pluginRegistryCache.diagnostics)
+}
+
+type pluginDirectoryScan struct {
+	entries      map[string]gameRegistration
+	manifests    []PluginManifestStatus
+	loadedCount  int
+	skippedCount int
+}
+
+func scanPluginDirectory(directory string) pluginDirectoryScan {
+	files, err := filepath.Glob(filepath.Join(directory, "*.json"))
+	if err != nil {
+		return pluginDirectoryScan{
+			manifests: []PluginManifestStatus{
+				{
+					ManifestPath: filepath.Join(directory, "*.json"),
+					Status:       pluginManifestStatusSkipped,
+					Reason:       fmt.Sprintf("invalid manifest glob: %v", err),
+				},
+			},
+			skippedCount: 1,
+		}
+	}
+
+	if len(files) == 0 {
+		return pluginDirectoryScan{}
 	}
 
 	sort.Strings(files)
 	entries := make(map[string]gameRegistration)
+	statuses := make([]PluginManifestStatus, 0, len(files))
+	loadedCount := 0
+	skippedCount := 0
 
 	for _, manifestPath := range files {
-		registration, name, ok := registrationFromManifest(directory, manifestPath)
-		if !ok {
-			continue
+		registration, name, status := registrationFromManifest(directory, manifestPath)
+
+		if status.Status == pluginManifestStatusLoaded {
+			if _, exists := entries[name]; exists {
+				status.Status = pluginManifestStatusSkipped
+				status.Reason = fmt.Sprintf("duplicate plugin name %q", name)
+			}
 		}
-		entries[name] = registration
+
+		if status.Status == pluginManifestStatusLoaded {
+			entries[name] = registration
+			loadedCount++
+		} else {
+			skippedCount++
+		}
+
+		statuses = append(statuses, status)
 	}
 
 	if len(entries) == 0 {
-		return nil
+		entries = nil
 	}
 
-	return entries
+	return pluginDirectoryScan{
+		entries:      entries,
+		manifests:    statuses,
+		loadedCount:  loadedCount,
+		skippedCount: skippedCount,
+	}
 }
 
-func registrationFromManifest(directory, manifestPath string) (gameRegistration, string, bool) {
+func registrationFromManifest(directory, manifestPath string) (gameRegistration, string, PluginManifestStatus) {
+	status := PluginManifestStatus{
+		ManifestPath: manifestPath,
+		Status:       pluginManifestStatusSkipped,
+	}
+
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
-		fmt.Printf("[game-plugin] failed reading manifest %s: %v\n", manifestPath, err)
-		return gameRegistration{}, "", false
+		status.Reason = fmt.Sprintf("failed reading manifest: %v", err)
+		fmt.Printf("[game-plugin] %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", status
 	}
 
 	var manifest pluginapi.Manifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
-		fmt.Printf("[game-plugin] failed decoding manifest %s: %v\n", manifestPath, err)
-		return gameRegistration{}, "", false
+		status.Reason = fmt.Sprintf("failed decoding manifest: %v", err)
+		fmt.Printf("[game-plugin] %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", status
 	}
+
+	status.Name = strings.ToLower(strings.TrimSpace(manifest.Name))
+	status.DisplayName = strings.TrimSpace(manifest.DisplayName)
+	status.Executable = strings.TrimSpace(manifest.Executable)
+	status.ProtocolVersion = manifest.ProtocolVersion
 
 	if manifest.ProtocolVersion == 0 {
 		manifest.ProtocolVersion = pluginapi.ProtocolVersion
+		status.ProtocolVersion = manifest.ProtocolVersion
 	}
 	if manifest.ProtocolVersion != pluginapi.ProtocolVersion {
-		fmt.Printf("[game-plugin] skipping %s: protocol_version=%d (expected %d)\n", manifestPath, manifest.ProtocolVersion, pluginapi.ProtocolVersion)
-		return gameRegistration{}, "", false
+		status.Reason = fmt.Sprintf("protocol_version=%d (expected %d)", manifest.ProtocolVersion, pluginapi.ProtocolVersion)
+		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", status
 	}
 
 	name := strings.ToLower(strings.TrimSpace(manifest.Name))
 	if name == "" {
-		fmt.Printf("[game-plugin] skipping %s: missing name\n", manifestPath)
-		return gameRegistration{}, "", false
+		status.Reason = "missing name"
+		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", status
 	}
 
 	execPath, err := resolvePluginExecutable(directory, manifestPath, manifest.Executable)
 	if err != nil {
-		fmt.Printf("[game-plugin] skipping %s: %v\n", manifestPath, err)
-		return gameRegistration{}, "", false
+		status.Reason = err.Error()
+		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", status
 	}
+	status.Executable = execPath
 
 	args := make([]GameArgSpec, 0, len(manifest.Args))
 	for _, arg := range manifest.Args {
@@ -191,7 +331,14 @@ func registrationFromManifest(directory, manifestPath string) (gameRegistration,
 		},
 	}
 
-	return registration, capturedName, true
+	status.Status = pluginManifestStatusLoaded
+	status.Reason = ""
+	status.Name = capturedName
+	if status.DisplayName == "" {
+		status.DisplayName = displayName
+	}
+
+	return registration, capturedName, status
 }
 
 func resolvePluginExecutable(directory, manifestPath, executable string) (string, error) {

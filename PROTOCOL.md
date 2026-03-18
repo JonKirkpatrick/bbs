@@ -1,39 +1,68 @@
-# Build-a-Bot Stadium Protocol v1.1
+# Build-a-Bot Stadium Protocol v1.2
 
-This document defines the bot protocol for the Build-a-Bot Stadium server. Bot communication is performed over TCP (default port `8080`, configurable at launch with `--stadium`), and server responses are sent as JSON objects.
+This document defines the TCP bot protocol for Build-a-Bot Stadium.
 
-The browser dashboard is not a TCP client. It is served separately over HTTP (default port `3000`, configurable at launch with `--dash`) and receives manager state updates through Server-Sent Events at `/dashboard-sse`.
+The platform now supports both competitive games and environment-style arenas, including optional process-based plugin games exposed through the same command model.
+
+Plugin author note: process plugin RPC is a separate contract from this TCP bot protocol. See `games/pluginapi/protocol.go` and `README.md` Plugin Author Quickstart.
+
+## Transport
+
+- Protocol: TCP
+- Default stadium port: `8080` (override with `--stadium`)
+- Framing: newline-delimited commands in, newline-delimited JSON responses out
+
+The dashboard is HTTP/SSE and is not a TCP client.
 
 ## Connection Lifecycle
 
-1. **Connect**: Open a TCP connection to the stadium server, for example `localhost:8080` (or your configured `--stadium` port).
-2. **Register**: Send `REGISTER <name> <bot_id_or_\"\"> <bot_secret_or_\"\"> [cap1,cap2,...] [owner_token=<token>]` immediately.
-3. **Interact**: Send commands and read newline-delimited JSON responses.
-4. **Disconnect**: The server handles cleanup via `QUIT` or an abrupt disconnect.
-
----
+1. Connect to server (`host:stadium_port`)
+2. Send `REGISTER ...`
+3. Send gameplay commands
+4. Disconnect with `QUIT` or socket close
 
 ## Command Reference
 
 | Command | Arguments | Description |
 | --- | --- | --- |
-| `HELP` | (none) | Returns the available command list for the current session state. |
-| `REGISTER` | `<name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]` | Authenticates with persistent identity. Use `"" ""` to request a new bot identity and secret. If an `owner_token` is included, the active session is linked to the dashboard view that minted it. |
-| `WHOAMI` | (none) | Returns the current session identity and arena status. |
-| `UPDATE` | `<field> <value>` | Updates mutable session fields such as name or capabilities. |
-| `CREATE` | `<type> [time_ms] [handicap_bool] [args...]` | Creates a new arena for the requested game type. `time_ms` and `handicap_bool` are optional; defaults are applied when omitted. Example for gridworld: `CREATE gridworld map=default [map_dir=...] [max_steps=...] [episodes=...]`. |
-| `JOIN` | `<id> <handicap_percent>` | Joins an existing arena by ID with a handicap percentage (`+20` gives 20% more move time, `-20` gives 20% less). |
-| `LIST` | (none) | Returns a human-readable list of currently open arenas. |
-| `WATCH` | `<arena_id>` | Enters spectator mode for a live arena. This is separate from the HTTP replay viewer used for archived matches. |
-| `MOVE` | `<move>` | Submits a move to the active match. |
-| `LEAVE` | (none) | Leaves the current arena. |
-| `QUIT` | (none) | Closes the connection to the stadium. |
+| `HELP` | (none) | Returns available commands for current session state. |
+| `REGISTER` | `<name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]` | Registers a session. Use `"" ""` to request new identity credentials. |
+| `WHOAMI` | (none) | Returns session identity and arena linkage state. |
+| `UPDATE` | `<field> <value>` | Updates mutable session metadata (for example name/capabilities). |
+| `CREATE` | `<type> [time_ms] [handicap_bool] [args...]` | Creates an arena. `type` must exist in runtime catalog (built-in or plugin). |
+| `JOIN` | `<arena_id> <handicap_percent>` | Joins arena as player with handicap adjustment. |
+| `LIST` | (none) | Returns currently open arenas. |
+| `WATCH` | `<arena_id>` | Observes a live arena over TCP updates. |
+| `MOVE` | `<move>` | Submits move/action for current arena. |
+| `LEAVE` | (none) | Leaves current arena while staying connected. |
+| `QUIT` | (none) | Disconnects session. |
 
----
+## CREATE Semantics
+
+`CREATE` accepts dynamic game args after optional runtime options.
+
+General form:
+
+```text
+CREATE <type> [time_ms] [handicap_bool] [args...]
+```
+
+Examples:
+
+```text
+CREATE connect4 1000 false rows=6 cols=7
+CREATE gridworld map=default max_steps=80 episodes=25
+CREATE counter target=15
+```
+
+`<type>` is resolved by `games.GetGame` against:
+
+- built-in registry
+- plugin manifests (when `BBS_ENABLE_GAME_PLUGINS=true`)
 
 ## Response Schema
 
-The server communicates status and game data using a standard JSON structure:
+Most responses use:
 
 ```json
 {
@@ -43,55 +72,62 @@ The server communicates status and game data using a standard JSON structure:
 }
 ```
 
-`payload` is not restricted to strings. Some responses contain structured data, such as arena summaries or game state.
+`payload` may be string, object, or array.
 
-Most command responses are JSON, but a few legacy command paths still write plain text directly to the socket, notably parts of `HELP`, `WATCH`, `QUIT`, and unknown-command handling.
+Note: a few legacy command paths still emit plain text (for example parts of `HELP`/`WATCH`/unknown command handling).
 
-### Example: Successful Move
+## Identity And Ownership
 
-Client sends `MOVE 3`
+- Returning bots must use matching `bot_id` + `bot_secret`.
+- New bots send `""` for both to request issuance.
+- `owner_token=<token>` links session to dashboard owner controls.
 
-Server responds:
+Owner token linkage is single-session: one active bot can claim a given token at a time.
 
-```json
-{"status":"ok","type":"move","payload":"accepted"}
-```
+## Timing, Handicap, And Policies
 
----
+- Move clock enforcement depends on game policy (`EnforceMoveClock()`).
+- Handicap support depends on game policy (`SupportsHandicap()`).
+- Effective move time is derived from base time and handicap percent.
 
-## Gameplay & Enforcement
+For games/environments that disable move clocks, time and handicap inputs are ignored.
 
-* **Identity handshake**: A returning bot must supply the same `bot_id` and `bot_secret` it received when first registered. If it sends `""` for both fields, the server issues a new identity.
-* **Secrets are stored in memory**: The current implementation keeps `bot_secret` values in memory as part of `BotProfile`. There is no hashing, persistence layer, or challenge-response handshake yet.
-* **Dashboard claim token**: The browser dashboard can mint an `owner_token`. Include `owner_token=<token>` in `REGISTER` to bind that live session to the dashboard view and unlock owner-scoped controls there. A token can be linked to only one active session at a time.
-* **Arena attachment rule**: A session cannot join a second arena while already attached to one. It must leave or be finalized first.
-* **Move timeout**: Moves must be made within the player's effective move limit. Effective limit is derived from the arena `time_ms` and the player's `handicap_percent` (`effective = base * (100 + handicap) / 100`).
-* **Handicap range**: Handicap is only accepted when the arena was created with `handicap_bool=true`, and must be between `-90` and `300`.
-* **Match history**: Finalized games append a match record that includes participants, moves, outcome, and final game state.
-* **Watchdog cleanup**: The server automatically cleans up inactive arenas. `waiting` arenas expire after 1 hour, `active` arenas after 3× their time limit, `completed` arenas after 1 minute, and `aborted` arenas after 5 minutes.
+## Arena Types
 
----
+The platform supports both:
 
-## Dashboard Transport
+- two-player arenas
+- one-player arenas/environments (`RequiredPlayers() == 1`)
 
-The dashboard is embedded in the server process and is available at `http://localhost:3000` by default (or your configured `--dash` port).
+Episodic environments can continue across terminal episodes when supported by game implementation.
 
-* `GET /` — serves the dashboard HTML.
-* `GET /dashboard-sse` — streams rendered manager state updates over SSE. Pass `?admin_key=<key>` to unlock admin controls in the UI and `?owner_token=<token>` to show owner-scoped controls for a claimed bot.
-* `GET /viewer?arena_id=<id>` — opens the live arena viewer UI.
-* `GET /viewer?match_id=<id>` — opens the replay viewer UI for an archived match.
-* `GET /viewer/live-sse?arena_id=<id>` — streams viewer frame updates for a live arena.
-* `GET /viewer/replay-data?match_id=<id>` — returns replay frames and viewer metadata as JSON.
-* `POST /owner/register-bot` — mint a new dashboard owner token and reload the page with it.
-* `POST /owner/create-arena` — create a new arena if the current owner token is linked to an active bot session.
-* `POST /owner/join-arena` — join an open arena with the bot linked to the current owner token.
-* `POST /owner/leave-arena` — remove the linked bot from its current arena without closing the connection. The bot stays registered and can join another arena immediately.
-* `POST /owner/eject-bot` — disconnect the bot linked to the current owner token.
-* `POST /admin/eject-bot` — forcefully disconnect a session by ID (admin only).
-* `POST /admin/create-arena` — create a new arena from the dashboard (admin only).
-* `POST /admin/leave-arena` — remove any session from its current arena by session ID without closing the connection (admin only).
-* `POST /admin/join-arena` — join any registered session to an arena by session ID (admin only).
+## Dashboard/Viewer HTTP Endpoints
 
-Admin access requires the `BBS_DASHBOARD_ADMIN_KEY` environment variable to be set on the server. The admin key is passed as a query parameter or form field; the server verifies it with a constant-time comparison.
+The dashboard is served on default port `3000` (override with `--dash`).
 
-There is no separate TCP dashboard client protocol.
+- `GET /` dashboard
+- `GET /dashboard-sse` live state stream
+- `GET /viewer?arena_id=<id>` live viewer shell
+- `GET /viewer/live-sse?arena_id=<id>` live viewer stream
+- `GET /viewer?match_id=<id>` replay shell
+- `GET /viewer/replay-data?match_id=<id>` replay JSON
+
+Owner actions:
+
+- `POST /owner/register-bot`
+- `POST /owner/create-arena`
+- `POST /owner/join-arena`
+- `POST /owner/leave-arena`
+- `POST /owner/eject-bot`
+
+Admin actions (requires `BBS_DASHBOARD_ADMIN_KEY`):
+
+- `POST /admin/create-arena`
+- `POST /admin/join-arena`
+- `POST /admin/leave-arena`
+- `POST /admin/eject-bot`
+
+## Security Notes
+
+Current bot transport is plain TCP and current identity/ownership controls are bearer-style.
+Treat this as local/home-lab baseline unless additional network security layers are applied.

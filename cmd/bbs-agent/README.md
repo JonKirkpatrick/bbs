@@ -1,14 +1,20 @@
 # bbs-agent (Local Bridge)
 
-`bbs-agent` connects to the BBS TCP server and exposes a local bot endpoint.
+`bbs-agent` connects to the BBS TCP server and exposes a local JSONL endpoint for bot logic.
 
-Primary mode (linux/mac):
+Primary mode on linux/mac:
 
-- agent listens on a Unix socket (`--listen`)
-- bot connects locally and sends a `hello` message
-- bot and agent exchange `welcome`/`turn`/`action` messages over JSONL
+- agent listens on Unix socket (`--listen`)
+- local bot connects and sends `hello`
+- bot receives `welcome`/`turn` and returns `action`
 
-Protocol details: `BBS_AGENT_CONTRACT.md`
+Protocol reference: `BBS_AGENT_CONTRACT.md`
+
+## Why Use It
+
+- isolates bot code from raw BBS TCP protocol details
+- supports both competitive games and environment-style arenas
+- central place for credentials/session handling
 
 ## Quick Run
 
@@ -20,7 +26,7 @@ go run ./cmd/bbs-agent \
   --listen /tmp/bbs-agent.sock
 ```
 
-Terminal 2 (python template bot):
+Terminal 2 (Python template bot):
 
 ```bash
 python3 examples/python_socket_bot_template.py \
@@ -31,9 +37,8 @@ python3 examples/python_socket_bot_template.py \
 
 ## Flags
 
-- `--server host:port` BBS server endpoint
-- `--listen` local Unix socket endpoint (`unix:///tmp/bbs-agent.sock` or `/tmp/bbs-agent.sock`)
+- `--server host:port` BBS endpoint
+- `--listen` local endpoint (`unix:///tmp/bbs-agent.sock` or `/tmp/bbs-agent.sock`)
 - `--register-timeout` registration response timeout
 
-Bot registration fields (`name`, `owner_token`, `capabilities`, credentials) are supplied by the bot in the initial `hello` payload.
-
+Registration fields (`name`, `owner_token`, capabilities, credentials) come from bot `hello` payload.

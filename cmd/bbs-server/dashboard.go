@@ -45,6 +45,7 @@ type dashboardStateView struct {
 	BotPort         string
 	BotEndpoint     string
 	GameCatalog     []games.GameCatalogEntry
+	PluginInfo      games.PluginDiagnostics
 }
 
 func initDashboard() {
@@ -198,6 +199,7 @@ func buildDashboardStateView(r *http.Request, snapshot stadium.ManagerSnapshot, 
 		BotPort:         botServerPort,
 		BotEndpoint:     dashboardBotEndpoint(r),
 		GameCatalog:     games.AvailableGameCatalog(),
+		PluginInfo:      games.CurrentPluginDiagnostics(),
 	}
 
 	if ownerToken != "" {

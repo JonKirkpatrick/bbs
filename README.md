@@ -1,75 +1,229 @@
 # Build-a-Bot Stadium
 
-Build-a-Bot Stadium is a Go server for running perfect-information bot matches, tracking active arenas, and exposing a browser dashboard for spectators, admins, and bot owners.
+Build-a-Bot Stadium is an extensible bot-arena platform.
 
-The project currently runs as a single process with two public surfaces:
+It started as a host for two-player perfect-information games, but now supports a wider model:
 
-* A TCP bot server on port `8080` by default
-* An embedded HTTP dashboard on port `3000` by default
+- competitive games (for example Connect4)
+- single-agent episodic environments (for example Gridworld)
+- dynamically discoverable process-based game plugins
 
-## Current Status
+The server runs as one Go process with two surfaces:
 
-The live game registry currently exposes `connect4` and `gridworld`.
+- TCP bot server (default `:8080`)
+- HTTP dashboard and viewers (default `:3000`)
 
-The repository contains code for other games and earlier experiments, but only games registered in `games/registry.go` can be created through the running server.
+## Current Runtime Model
+
+The runtime game catalog is composed from:
+
+- built-in games compiled into the server (`connect4`, `gridworld`)
+- optional process plugins loaded from manifests (`plugins/games/*.json` by default)
+
+The dashboard create-arena forms are populated directly from this live catalog, so new plugin games can appear without changing dashboard code.
 
 ## Prerequisites
 
-* Go `1.26.1` or newer
+- Go `1.26.1` or newer
 
 ## Run The Server
 
-The dashboard templates are loaded from a relative `templates/` directory, so the server should be started from `cmd/bbs-server`.
+The dashboard templates are loaded from a relative `templates/` directory, so start from `cmd/bbs-server`:
 
 ```bash
 cd cmd/bbs-server
 go run .
 ```
 
-Optional custom ports at launch:
+Optional custom ports:
 
 ```bash
 cd cmd/bbs-server
 go run . --stadium 18080 --dash 13000
 ```
 
-When the process starts successfully, it brings up:
-
-* The bot server at `localhost:8080` (or your `--stadium` value)
-* The dashboard at `http://localhost:3000` (or your `--dash` value)
-
-### Dashboard Admin Mode
-
-Set `BBS_DASHBOARD_ADMIN_KEY` to enable admin controls in the dashboard (eject sessions, create arenas, forcibly move sessions between arenas):
+Optional dashboard admin mode:
 
 ```bash
-BBS_DASHBOARD_ADMIN_KEY='mysecretkey' go run . --stadium 8080 --dash 3000
+cd cmd/bbs-server
+BBS_DASHBOARD_ADMIN_KEY='mysecretkey' go run .
 ```
 
-Then open `http://localhost:<dash_port>/?admin_key=mysecretkey` (default `3000`). Use single quotes around keys that contain shell-special characters.
+Then open:
 
-### Dashboard Bot Control Mode
+- `http://localhost:3000` for normal dashboard mode
+- `http://localhost:3000/?admin_key=mysecretkey` for admin mode
 
-The dashboard also exposes a public Register Bot flow. Clicking Register Bot mints an owner token for the current browser view.
+## Process Plugin Support
 
-The control panel then shows:
+Process plugins are available behind feature flags.
 
-* the TCP host/IP the bot should connect to
-* the bot TCP port
-* the owner token to include in `REGISTER`
+- `BBS_ENABLE_GAME_PLUGINS=true` enables plugin discovery.
+- `BBS_GAME_PLUGIN_DIR=/path/to/plugins` overrides plugin directory.
+- Default plugin directory is `plugins/games`.
 
-Once a live bot session registers with that token, the dashboard unlocks owner-scoped actions for that bot:
+When enabled, the server scans `*.json` manifests in the plugin directory and merges valid plugins into the runtime catalog.
 
-* create an arena
-* join an open arena
-* leave the current arena (without disconnecting)
-* disconnect the bot
+### Minimal Manifest
 
-This is separate from admin mode. Admin mode can operate on any session. Owner mode is limited to the session currently linked to the minted token.
+```json
+{
+  "protocol_version": 1,
+  "name": "counter",
+  "display_name": "Counter Plugin",
+  "executable": "counter-plugin",
+  "supports_move_clock": true,
+  "supports_handicap": true,
+  "args": [
+    {
+      "key": "target",
+      "label": "Target",
+      "input_type": "number",
+      "default_value": "10",
+      "help": "Winning total."
+    }
+  ]
+}
+```
+
+### Sample Plugin Command Included
+
+A reference plugin command is included at `cmd/bbs-game-counter-plugin`.
+
+```bash
+go build -o /tmp/bbs-plugin-smoke/counter-plugin ./cmd/bbs-game-counter-plugin
+```
+
+Example local plugin run:
+
+```bash
+mkdir -p /tmp/bbs-plugin-smoke
+# add manifest /tmp/bbs-plugin-smoke/counter.json
+
+cd cmd/bbs-server
+BBS_ENABLE_GAME_PLUGINS=true \
+BBS_GAME_PLUGIN_DIR=/tmp/bbs-plugin-smoke \
+go run .
+```
+
+## Plugin Author Quickstart
+
+This section is for developers building new game plugins for BBS.
+
+For a complete field-by-field reference and release checklist, see `PLUGIN_AUTHORING.md`.
+
+### 1. Implement a Plugin Command
+
+Create a Go command similar to `cmd/bbs-game-counter-plugin/main.go` and use `pluginapi.Serve(...)`.
+
+Required gameplay interface (`games/pluginapi.Game`):
+
+- `GetName() string`
+- `GetState() string`
+- `ValidateMove(playerID int, move string) error`
+- `ApplyMove(playerID int, move string) error`
+- `IsGameOver() (bool, string)`
+
+Optional interfaces:
+
+- `PlayerCountProvider` for one-player environments (`RequiredPlayers() int`)
+- `MoveClockPolicy` to disable move clock enforcement (`EnforceMoveClock() bool`)
+- `HandicapPolicy` to disable handicap controls (`SupportsHandicap() bool`)
+- `EpisodicGame` for episodic continuation (`AdvanceEpisode() ...`)
+
+Minimal plugin entrypoint pattern:
+
+```go
+func main() {
+    if err := pluginapi.Serve(newMyGame); err != nil {
+        fmt.Fprintln(os.Stderr, "my plugin error:", err)
+        os.Exit(1)
+    }
+}
+```
+
+### 2. Build the Plugin Binary
+
+```bash
+go build -o /tmp/bbs-plugin-smoke/my-game-plugin ./cmd/bbs-game-my-plugin
+```
+
+### 3. Create a Manifest
+
+Add `/tmp/bbs-plugin-smoke/my-game.json`:
+
+```json
+{
+  "protocol_version": 1,
+  "name": "mygame",
+  "display_name": "My Game",
+  "executable": "my-game-plugin",
+  "supports_move_clock": true,
+  "supports_handicap": true,
+  "args": [
+    {
+      "key": "board_size",
+      "label": "Board Size",
+      "input_type": "number",
+      "default_value": "8",
+      "help": "Board edge length."
+    }
+  ]
+}
+```
+
+### 4. Enable Plugin Loading
+
+```bash
+cd cmd/bbs-server
+BBS_ENABLE_GAME_PLUGINS=true \
+BBS_GAME_PLUGIN_DIR=/tmp/bbs-plugin-smoke \
+go run .
+```
+
+### 5. Verify Discovery
+
+- Open dashboard create-arena form and confirm your game appears in dropdown.
+- Confirm manifest arg fields render in UI.
+- Create arena and execute a few moves.
+
+You can also test via TCP:
+
+```text
+CREATE mygame board_size=8
+```
+
+### Compatibility Notes
+
+- `protocol_version` must match `games/pluginapi.ProtocolVersion` (currently `1`).
+- Plugin process contract uses JSONL requests/responses over stdin/stdout.
+- Use stderr for plugin logs; stdout is reserved for protocol messages.
+
+### Authoring Best Practices
+
+- Keep `GetState()` deterministic and machine-parseable JSON.
+- Return actionable errors from `ValidateMove` and `ApplyMove`.
+- Parse args defensively and provide clear validation messages.
+- Treat plugin startup and `init` as fast-path operations.
+- Avoid hidden global mutable state that can leak across arenas.
+
+### Troubleshooting (Plugin Authors)
+
+- Game not visible in dashboard:
+  - verify `BBS_ENABLE_GAME_PLUGINS=true`
+  - verify manifest path and `*.json` extension
+  - verify `name` is non-empty and unique
+- Manifest loads but game creation fails:
+  - check executable path in `executable`
+  - run plugin binary directly to confirm it starts
+  - check server logs for `[game-plugin]` messages
+- Plugin appears to hang:
+  - ensure protocol writes only JSON responses on stdout
+  - ensure logging is written to stderr
 
 ## Build
 
-From the repository root:
+From repository root:
 
 ```bash
 go build ./...
@@ -81,198 +235,114 @@ Bots connect over raw TCP and exchange newline-delimited commands and JSON respo
 
 Typical flow:
 
-1. Connect to `localhost:<stadium_port>` (default `8080`)
-2. Send `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
-3. Create, join, watch, or play in arenas
-
-If a bot has no identity yet, it sends `""` for both `bot_id` and `bot_secret` to request a new identity pair.
+1. Connect to `localhost:<stadium_port>`
+2. `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
+3. Create/join/watch arenas and send moves
 
 Common commands:
 
-* `HELP`
-* `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
-* `WHOAMI`
-* `UPDATE <field> <value>`
-* `CREATE <type> [time_ms] [handicap_bool] [args...]`
-* `JOIN <arena_id> <handicap_percent>`
-* `LIST`
-* `WATCH <arena_id>`
-* `MOVE <move>`
-* `LEAVE`
-* `QUIT`
+- `HELP`
+- `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
+- `WHOAMI`
+- `UPDATE <field> <value>`
+- `CREATE <type> [time_ms] [handicap_bool] [args...]`
+- `JOIN <arena_id> <handicap_percent>`
+- `LIST`
+- `WATCH <arena_id>`
+- `MOVE <move>`
+- `LEAVE`
+- `QUIT`
 
-For the full wire protocol, see `PROTOCOL.md`.
-
-## Agent Abstraction
-
-If you want bot authors to avoid handling raw TCP and BBS JSON directly, see:
-
-* `BBS_AGENT_CONTRACT.md` - local bridge protocol (`bbs-agent` <-> bot over Unix socket JSONL)
-* `examples/python_socket_bot_template.py` - minimal socket bot template for bridge mode
-
-The intended model is:
-
-1. `bbs-agent` handles server networking/registration/reconnect
-2. bot code connects locally and handles decision logic (`turn` in, `action` out)
-
-### bbs-agent MVP Command
-
-From repository root:
-
-```bash
-go run ./cmd/bbs-agent \
-	--server localhost:8080 \
-	--listen /tmp/bbs-agent.sock
-```
-
-Then connect a local bot:
-
-```bash
-python3 examples/python_socket_bot_template.py \
-	--socket /tmp/bbs-agent.sock \
-	--name agent_python_bot \
-	--owner-token owner_...
-```
-
-See `cmd/bbs-agent/README.md` for details.
-
-### Fhourstones Worker Example
-
-If you want to drive moves through the imported Fhourstones solver:
-
-Fhourstones native local-bridge adapter is planned as part of the migration.
-Solver assets remain in `examples/Fhourstones/README.md`.
+See `PROTOCOL.md` for full details.
 
 ## Dashboard
 
-Open `http://localhost:3000` in a browser to view active arenas. The dashboard shows live session state, arena state, a persistent bot registry, recent match records, live and replay viewer links, and owner/admin action panels.
+Open `http://localhost:3000`.
 
-If you launched with `--dash`, replace `3000` with your configured dashboard port.
+The dashboard includes:
 
-The dashboard receives pushed updates over Server-Sent Events from `/dashboard-sse`. It is not a separate TCP client and does not register with the stadium server.
+- runtime overview and active sessions
+- arena cards with live state and viewer links
+- archived match replay links
+- owner-scoped bot controls via minted owner tokens
+- admin controls via `BBS_DASHBOARD_ADMIN_KEY`
 
-The match viewer is served at `/viewer`:
+Viewer routes:
 
-* `GET /viewer?arena_id=<id>` opens a live arena viewer
-* `GET /viewer?match_id=<id>` opens a replay viewer for an archived match
+- `GET /viewer?arena_id=<id>` for live viewer
+- `GET /viewer?match_id=<id>` for replay viewer
 
-The replay viewer loads frame data from `/viewer/replay-data`, and the live viewer streams frame updates over `/viewer/live-sse`.
+Data routes:
 
-For an always-on home-lab deployment, see `deploy/truenas/README.md` (Docker) or `deploy/truenas-no-docker/README.md` (no Docker).
-Those guides use `/mnt/<pool>/apps` placeholders; replace `<pool>` with your dataset path (for example, `/mnt/DeepEnd/apps`).
+- `GET /viewer/live-sse?arena_id=<id>`
+- `GET /viewer/replay-data?match_id=<id>`
+
+## Agent Abstraction (`bbs-agent`)
+
+For bot authors who do not want raw TCP protocol handling:
+
+- `cmd/bbs-agent` bridges BBS TCP to a local JSONL socket
+- local bots receive `welcome`/`turn` and send `action`
+
+Docs and templates:
+
+- `BBS_AGENT_CONTRACT.md`
+- `cmd/bbs-agent/README.md`
+- `examples/python_socket_bot_template.py`
 
 ## Quick Manual Test
 
-Start the server in one terminal:
+Start server:
 
 ```bash
 cd cmd/bbs-server
 go run .
 ```
 
-Connect a bot in another terminal:
+Connect bot:
 
 ```bash
 nc localhost 8080
 ```
 
-Then send commands like:
+Try commands:
 
 ```text
 REGISTER bot_one "" "" connect4
-CREATE connect4 1000 false
+CREATE connect4 1000 false rows=6 cols=7
 LIST
 ```
 
-Create a gridworld arena from the default map:
+Gridworld example:
 
 ```text
 CREATE gridworld map=default episodes=25
 ```
 
-You can also point at a custom map directory:
+Custom map directory:
 
 ```text
 CREATE gridworld map=maze_a map_dir=../../maps/gridworld max_steps=80 episodes=0
 ```
 
-For gridworld, `episodes` controls how many terminal episodes run inside the same arena:
-
-* `episodes=0` means unbounded episodic loop (arena remains active until players leave or admin cleanup)
-* `episodes=N` runs exactly `N` episodes, then emits normal `gameover`
-
-Gridworld also disables per-move clock enforcement, so time and handicap settings are ignored for gridworld arenas.
-
-Join an existing live arena from a second bot:
-
-```text
-REGISTER bot_two "" "" connect4
-JOIN 1 0
-```
-
-Watch a live arena without playing:
-
-```text
-REGISTER spectator "" ""
-WATCH 1
-```
-
-Or claim dashboard controls with a token minted from the browser:
-
-```text
-REGISTER bot_one "" "" connect4 owner_token=owner_...
-```
-
-Open `http://localhost:3000` to watch arena updates as they happen.
-
-If you launched with `--dash`, replace `3000` with your configured dashboard port.
-
 ## Project Layout
 
-* `cmd/bbs-server/`: TCP server and embedded dashboard
-* `cmd/bbs-agent/`: sidecar bridge that abstracts BBS TCP from bot authors
-* `stadium/`: arena, session, manager, and subscription management
-* `games/`: game interfaces and registry
-* `games/connect4/`: current live game implementation
+- `cmd/bbs-server/`: TCP server + embedded dashboard/viewers
+- `cmd/bbs-agent/`: local bridge for bot authors
+- `cmd/bbs-game-counter-plugin/`: reference process plugin command
+- `stadium/`: session, arena, manager, snapshots, match history
+- `games/`: game interfaces, built-in registry, plugin host
+- `games/pluginapi/`: shared process-plugin RPC contract and server helper
+- `maps/gridworld/`: map files for built-in gridworld environment
 
-The stadium package also owns persistent bot profiles (`BotProfile`), match records (`MatchRecord`), and per-move history (`MatchMove`). All state is currently in-memory; a restart discards everything.
+All runtime state is currently in memory. Process restart clears sessions, arenas, bot profiles, and match history.
 
-Additional design notes live in `ARCHITECTURE.md`.
+## Security Notes
 
-## GridWorld Maps
+Current transport is plain TCP and current secrets/token handling is bearer-style.
+Treat these as local/home-lab friendly defaults, not internet-hardened production controls.
 
-Gridworld map files are loaded at runtime from:
+## Deployment Guides
 
-1. `map_dir=...` in `CREATE`
-2. `BBS_GRIDWORLD_MAP_DIR`
-3. defaults: `maps/gridworld`, `../maps/gridworld`, `../../maps/gridworld`
-
-Map format is plain text with metadata, blank line, then integer grid values.
-
-Example (`maps/gridworld/default.map`):
-
-```text
-name: default
-rows: 6
-cols: 8
-max_steps: 64
-
-2 0 0 0 1 0 0 3
-1 1 1 0 1 0 1 0
-...
-```
-
-Cell codes:
-
-* `0` empty
-* `1` wall
-* `2` start
-* `3` goal (win)
-* `4` pit (loss)
-
-Supported `CREATE` args for gridworld:
-
-* `map=<name>` map basename (`default` => `default.map`)
-* `map_dir=<path>` map directory override
-* `max_steps=<n>` step horizon for each episode
-* `episodes=<n>` number of episodes in this arena (`0` means unbounded)
+- Docker on TrueNAS SCALE: `deploy/truenas/README.md`
+- No Docker on TrueNAS SCALE: `deploy/truenas-no-docker/README.md`

@@ -1,24 +1,25 @@
 # Dashboard Remote Quickstart
 
-This guide is for users who want to connect a bot to an existing Build-a-Bot Stadium server.
+This guide is for connecting a bot to an existing Build-a-Bot Stadium server.
 
-It assumes you can open the dashboard URL in a browser, but you are not running the server locally.
+It assumes:
+
+- you can open the dashboard URL in a browser
+- the server is running elsewhere (not your local machine)
 
 ## What You Need
 
-- Dashboard URL (for example: `https://bbs.example.com`)
-- Bot TCP endpoint (for example: `bbs.example.com:8080`)
-- Python 3.9+ for the included bot templates
+- dashboard URL (for example `https://bbs.example.com`)
+- bot TCP endpoint (for example `bbs.example.com:8080`)
+- Python 3.9+ for included templates (optional but convenient)
 
-## Fast Path (Dashboard + bbs-agent)
+## Recommended Path: Dashboard + `bbs-agent`
 
-The recommended approach is `bbs-agent` local bridge mode. The agent handles BBS TCP networking and exposes a local Unix socket endpoint for your bot.
-
-1. Open the dashboard in your browser.
+1. Open dashboard in browser.
 2. Click `Register Bot`.
-3. In `Bot Control`, copy the token using `Copy token`.
-4. Note the `Bot Host/IP` and `Bot Port` shown in the same panel.
-5. From the repository root, start the bridge agent:
+3. Copy owner token from Bot Control panel.
+4. Note Bot Host/IP and Bot Port from same panel.
+5. Start local bridge agent:
 
 ```bash
 go run ./cmd/bbs-agent \
@@ -26,7 +27,7 @@ go run ./cmd/bbs-agent \
   --listen /tmp/bbs-agent.sock
 ```
 
-6. In a second terminal, connect a bot:
+6. Start local bot connected to bridge:
 
 ```bash
 python3 examples/python_socket_bot_template.py \
@@ -35,24 +36,22 @@ python3 examples/python_socket_bot_template.py \
   --owner-token owner_abc123...
 ```
 
-7. Return to the dashboard and wait for `Linked to session #...`.
-8. Use the owner controls to create an arena, join an arena, leave an arena, or disconnect your bot.
+7. Return to dashboard and wait for linked session status.
+8. Use owner controls to create/join/leave/disconnect arenas.
 
-See `BBS_AGENT_CONTRACT.md` for the bridge JSONL protocol.
-See `examples/python_socket_bot_template.py` for a ready-to-run Python bot.
-See `cmd/bbs-agent/README.md` for all `bbs-agent` flags.
+## Arena Creation UX
 
-### Fhourstones Solver Worker
+Create Arena in both owner and admin panels now uses the live runtime game catalog.
 
-Fhourstones local-bridge adapter is planned as a follow-up. Solver source and build instructions remain in `examples/Fhourstones/README.md`.
+- Game is selected from dropdown (not free-text)
+- Per-game args are rendered dynamically
+- Time/handicap controls auto-adjust for games that do not use move clocks
 
----
+So if server operators enable plugins and install valid manifests, those games can appear in your dropdown without dashboard code changes.
 
-## Alternative: Direct TCP Template (Legacy)
+## Alternative: Direct TCP Bot (Legacy Style)
 
-If you prefer to handle the wire protocol yourself, a direct TCP template is at `examples/python_bot_template.py`. This requires no extra processes but gives you raw BBS JSON directly rather than the enriched state the agent provides.
-
-### First Run (new identity)
+If you prefer to handle protocol directly:
 
 ```bash
 python3 examples/python_bot_template.py \
@@ -61,11 +60,7 @@ python3 examples/python_bot_template.py \
   --owner-token owner_abc123...
 ```
 
-If no credentials file is provided, the bot writes a credentials file in the current directory after a successful new registration:
-
-- `<bot_name>_credentials.txt`
-
-### Returning Run (reuse identity)
+Returning identity run:
 
 ```bash
 python3 examples/python_bot_template.py \
@@ -75,45 +70,32 @@ python3 examples/python_bot_template.py \
   --owner-token owner_abc123...
 ```
 
-### Optional Flags
-
-- `--capabilities connect4,chess` to advertise capability tags during `REGISTER`
-- `--credentials-file <path>` to control where credentials are read/written
-
----
-
-## Dashboard Owner Controls
-
-Once your bot is linked, the dashboard Bot Control panel shows:
-
-| Action | Effect |
-|---|---|
-| Create Arena | Create a new waiting arena |
-| Join Arena | Enter an existing arena as a player |
-| Leave Arena | Exit the current arena; bot stays connected and can rejoin |
-| Disconnect Bot | Close the TCP connection entirely |
-
-## Common TCP Commands After Register
+## Useful Commands (after register)
 
 ```text
 LIST
-CREATE connect4 1000 false
+CREATE connect4 1000 false rows=6 cols=7
 JOIN 1 0
 MOVE 3
 LEAVE
 QUIT
 ```
 
+Gridworld example:
+
+```text
+CREATE gridworld map=default episodes=25
+```
+
 ## Troubleshooting
 
-- `Must REGISTER first`: Registration failed or was not sent.
-- `owner token is invalid`: Re-copy from dashboard and retry.
-- `owner token is already linked to another active session`: Disconnect the existing linked bot first.
-- `arena full`: The target arena already has two players.
-- `Clipboard copy failed`: Copy manually from the token field.
+- `Must REGISTER first`: registration not completed before command.
+- `owner token is invalid`: refresh token from dashboard and retry.
+- `owner token is already linked`: disconnect old linked bot first.
+- `arena full`: chosen arena already has required players.
 
 ## Security Notes
 
 - `owner_token`, `bot_id`, and `bot_secret` are sensitive.
-- Treat the credentials file like a secret.
-- Current transport is plain TCP; avoid exposing secrets on untrusted networks.
+- Treat credentials files like secrets.
+- Current bot channel is plain TCP; prefer trusted networks or external tunnel/TLS.

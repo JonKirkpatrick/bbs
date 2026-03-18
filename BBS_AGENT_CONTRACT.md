@@ -2,23 +2,31 @@
 
 This contract defines the local JSONL protocol between:
 
-- `bbs-agent` (network bridge to BBS server)
-- local bot process (connected over Unix socket on linux/mac)
+- `bbs-agent` (bridge to BBS TCP server)
+- a local bot process (usually over Unix socket on linux/mac)
 
-`bbs-agent` no longer launches bot subprocesses. Bot authors connect to the
-local endpoint exposed by `--listen`.
+`bbs-agent` does not launch bot subprocesses. Bot authors connect to the endpoint exposed by `--listen`.
+
+## Purpose
+
+The bridge keeps server/network details inside `bbs-agent` so bot code can focus on decisions.
+
+This applies to both:
+
+- competitive games
+- single-agent environment-style arenas
 
 ## Design
 
-- Agent owns BBS TCP networking and registration.
-- Bot owns decision logic only.
-- First local bot message is a handshake (`hello`).
-- Runtime loop is `welcome`/`turn`/`shutdown` from agent and `action` from bot.
+- Agent owns BBS networking, registration, reconnection behavior.
+- Bot owns policy/model and action selection.
+- First local message is `hello`.
+- Runtime loop is agent `welcome`/`turn`/`shutdown` and bot `action`.
 
 ## Transport
 
-- Encoding: UTF-8
-- Framing: one JSON object per line
+- UTF-8
+- one JSON object per line (JSONL)
 
 Envelope:
 
@@ -33,7 +41,7 @@ Envelope:
 
 ## Bot -> Agent
 
-### `hello` (required first message)
+### `hello` (required first)
 
 ```json
 {
@@ -52,10 +60,10 @@ Envelope:
 
 Notes:
 
-- `name` defaults to `agent_bot` if omitted.
+- `name` defaults to `agent_bot` when omitted.
 - `capabilities` may be array or CSV (`capabilities_csv`).
-- `credentials_file` is optional; default is `<name>_credentials.txt`.
-- Empty `bot_id`/`bot_secret` requests new identity issuance during register.
+- `credentials_file` optional; default `<name>_credentials.txt`.
+- empty `bot_id`/`bot_secret` requests new identity issuance.
 
 ### `action`
 
@@ -86,7 +94,7 @@ Notes:
 
 ### `welcome`
 
-Sent once after successful `JOIN`.
+Sent once after successful registration and first arena attach.
 
 ```json
 {
@@ -109,7 +117,7 @@ Sent once after successful `JOIN`.
 
 ### `turn`
 
-Sent when an actionable state is available.
+Sent when actionable state is available.
 
 ```json
 {
@@ -121,7 +129,7 @@ Sent when an actionable state is available.
     "obs": {
       "raw_state": "{\"board\":[...],\"turn\":1}",
       "state_obj": {
-        "board": [[0,0,0,0,0,0,0], [0,0,0,0,0,0,0]],
+        "board": [[0,0,0,0,0,0,0]],
         "turn": 1
       },
       "turn_player": 1,
@@ -140,12 +148,12 @@ Sent when an actionable state is available.
 }
 ```
 
-Notes:
+Interpretation notes:
 
-- `obs` is game/environment state.
-- `response` carries result of a prior action when available.
-- `done` and `truncated` indicate terminal conditions.
-- Terminal rewards: `1.0` win, `-1.0` loss, `0.0` draw.
+- In two-player games, `your_turn` indicates when to act.
+- In single-agent environments, each actionable step is still sent through `turn`.
+- `done`/`truncated` indicate terminal/truncated rollout conditions.
+- Rewards are normalized by current bridge logic (`1.0` win, `-1.0` loss, `0.0` draw/default).
 
 ### `shutdown`
 

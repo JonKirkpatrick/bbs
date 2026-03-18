@@ -165,6 +165,58 @@ REGISTER &lt;name&gt; "" "" connect4 owner_token={{.OwnerToken}}</pre>
         <p class="generated-at">Snapshot generated: {{fmtTime .Snapshot.GeneratedAt}}</p>
     </section>
 
+    <section class="panel plugin-panel">
+        <h2>Plugin Discovery</h2>
+        <div class="plugin-summary-row">
+            <span class="pill">enabled: {{.PluginInfo.Enabled}}</span>
+            <span class="pill">dir: {{.PluginInfo.Directory}}</span>
+            {{if .PluginInfo.Enabled}}
+                <span class="pill">loaded: {{.PluginInfo.LoadedCount}}</span>
+                <span class="pill">skipped: {{.PluginInfo.SkippedCount}}</span>
+            {{end}}
+        </div>
+        {{if .PluginInfo.RefreshedAt}}
+            <p class="generated-at">Last scan: {{fmtTime .PluginInfo.RefreshedAt}}</p>
+        {{end}}
+
+        {{if .PluginInfo.Enabled}}
+            {{if .PluginInfo.Manifests}}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Manifest</th>
+                                <th>Plugin</th>
+                                <th>Status</th>
+                                <th>Executable</th>
+                                <th>Protocol</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .PluginInfo.Manifests}}
+                                <tr>
+                                    <td><code>{{.ManifestPath}}</code></td>
+                                    <td>{{if .DisplayName}}{{.DisplayName}}{{else if .Name}}{{.Name}}{{else}}<span class="muted">unknown</span>{{end}}</td>
+                                    <td>
+                                        <span class="pill {{if eq .Status "loaded"}}pill-good{{else}}pill-bad{{end}}">{{.Status}}</span>
+                                    </td>
+                                    <td>{{if .Executable}}<code>{{.Executable}}</code>{{else}}<span class="muted">n/a</span>{{end}}</td>
+                                    <td>{{if gt .ProtocolVersion 0}}{{.ProtocolVersion}}{{else}}<span class="muted">n/a</span>{{end}}</td>
+                                    <td>{{if .Reason}}{{.Reason}}{{else}}<span class="muted">ok</span>{{end}}</td>
+                                </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            {{else}}
+                <p class="empty">No plugin manifests were found in <code>{{.PluginInfo.Directory}}</code>.</p>
+            {{end}}
+        {{else}}
+            <p class="empty">Plugin loading is disabled. Set <code>BBS_ENABLE_GAME_PLUGINS=true</code> to enable scanning.</p>
+        {{end}}
+    </section>
+
     <section class="panel sessions-panel">
         <h2>Active Sessions</h2>
         {{if .Snapshot.Sessions}}
