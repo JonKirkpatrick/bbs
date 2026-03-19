@@ -113,57 +113,34 @@ The linter validates:
 
 ## Viewer Integration
 
-Plugin games now support plugin-defined visuals over RPC.
+Viewer rendering is now fully externalized to plugin-provided JavaScript bundles.
 
-Optional methods:
+Required manifest fields:
 
-- `get_viewer_spec`
-- `get_viewer_frame`
+- `viewer_client_entry`: path to the plugin viewer JS file.
+- `supports_replay`: set `true` when the renderer supports replay timelines.
 
-When implemented, `init` should return:
+How rendering works:
 
-- `supports_viewer: true`
+- BBS sends raw frame data (`raw_state`, move metadata, terminal/winner flags).
+- The viewer page loads the plugin bundle from `/viewer/plugin-entry?game=<name>`.
+- The bundle registers a renderer with:
+  - `window.BBSViewerPluginRuntime.register("<game_name>", { render(payload) { ... } })`
 
-Expected result payloads:
+Renderer payload shape:
 
-- `get_viewer_spec` result fields:
-  - `game`
-  - `kind`
-  - `rows`
-  - `cols`
-  - `player_colors`
-- `get_viewer_frame` result fields:
-  - `move_index`
-  - `turn_player`
-  - `tokens` (`[{player,row,col}, ...]`)
-  - `timestamp`
-  - `is_terminal`
-  - `winner`
-  - `raw_state`
-
-If viewer methods are not implemented, BBS falls back to `raw-state` mode, which still provides useful observability in the viewer.
-
-Built-in frontend renderer options:
-
-- `raw-state`: always available fallback, shows protocol metadata and raw JSON.
-- `plugin-panel`: generic plugin-driven panel renderer. Populate `raw_state` JSON with a `viewer` object to control:
-  - `title`, `subtitle`, `status`, `hint`
-  - `progress`: `{label, value, max}`
-  - `stats`: `[{label, value}, ...]`
-
-With `plugin-panel`, game authors can customize the viewer presentation without changing server-side Go code or frontend template logic.
-If you choose a brand-new `spec.kind`, add a matching renderer branch in `cmd/bbs-server/templates/viewer.html`.
-
-For Go-based plugins using `pluginapi.Serve`, implement the optional `ViewerProvider` interface:
-
-- `GetViewerSpec() (ViewerSpecResult, error)`
-- `GetViewerFrame(moveIndex int, timestamp string) (ViewerFrameResult, error)`
+- `canvas`, `ctx`
+- `frame` (contains `raw_state`, `move_index`, `timestamp`, `is_terminal`, `winner`)
+- `frames` / `frameIndex` for replay mode
+- `players`
+- `mode` (`live` or `replay`)
 
 Practical guidance:
 
-- Keep `GetState()` and viewer payloads stable and forward-compatible.
-- Choose a unique `spec.kind` string if you plan to add a dedicated frontend renderer branch later.
-- Include all visual primitives needed by the frontend in frame data.
+- Keep `GetState()` deterministic and machine-parseable JSON.
+- Put all visual data the renderer needs into `raw_state`.
+- Return `true` from renderer `render(payload)` when the frame is handled.
+- Keep bundle startup side effects minimal and register exactly once.
 
 ## Release Checklist
 

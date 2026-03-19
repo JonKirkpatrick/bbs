@@ -306,7 +306,7 @@ func handleBot(conn net.Conn) {
 
 					record, finalizeErr := stadium.DefaultManager.FinalizeArena(arenaRef.ID, "game_over", winnerPlayerID, isDraw)
 					if finalizeErr == nil {
-						stadium.SendJSONToSessions(audience, stadium.Response{Status: "ok", Type: "gameover", Payload: record})
+						stadium.SendJSONToSessions(audience, stadium.Response{Status: "ok", Type: "gameover", Payload: compactGameoverPayload(record)})
 					}
 				}
 			}
@@ -414,4 +414,21 @@ func parseWinnerResult(raw string) (winnerPlayerID int, isDraw bool) {
 	}
 
 	return 0, false
+}
+
+func compactGameoverPayload(record stadium.MatchRecord) map[string]interface{} {
+	return map[string]interface{}{
+		"match_id":         record.MatchID,
+		"arena_id":         record.ArenaID,
+		"game":             record.Game,
+		"terminal_status":  record.TerminalStatus,
+		"end_reason":       record.EndReason,
+		"winner_player_id": record.WinnerPlayerID,
+		"winner_bot_id":    record.WinnerBotID,
+		"winner_bot_name":  record.WinnerBotName,
+		"is_draw":          record.IsDraw,
+		"move_count":       record.MoveCount,
+		"started_at":       record.StartedAt,
+		"ended_at":         record.EndedAt,
+	}
 }

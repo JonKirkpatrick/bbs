@@ -2,7 +2,7 @@
 
 This document describes the current architecture of Build-a-Bot Stadium as an extensible arena platform.
 
-The runtime now supports both built-in games and optional process-based game plugins.
+The runtime now uses process-based game plugins as the only game source.
 
 ## Runtime Surfaces
 
@@ -25,16 +25,14 @@ flowchart LR
     Browser[Dashboard Browser]
     Server[cmd/bbs-server]
     Manager[stadium.DefaultManager]
-    Registry[games registry]
-    Builtins[Built-in Games]
+    Registry[games plugin registry]
     PluginHost[Process Plugin Host]
     PluginProc[Game Plugin Process]
 
     Bot -->|TCP| Server
-    Browser -->|HTTP/SSE| Server
+    Browser -->|HTTP/SSE/WS| Server
     Server --> Manager
     Server --> Registry
-    Registry --> Builtins
     Registry --> PluginHost
     PluginHost --> PluginProc
     Manager -->|snapshots| Browser
@@ -69,7 +67,7 @@ Concurrency model:
 
 - coarse manager mutex for state maps/counters
 - per-session write lock for socket writes
-- buffered subscriber channels for SSE fans
+- buffered subscriber channels for dashboard/viewer stream subscribers
 
 ### Game Boundary (`games/engine.go`)
 
@@ -83,10 +81,7 @@ Server logic depends on `games.GameInstance` plus optional policy interfaces:
 
 ### Dynamic Registry (`games/registry.go` + `games/plugin_host.go`)
 
-`GetGame` and `AvailableGameCatalog` now resolve from a merged catalog:
-
-- `builtinRegistry` (compiled games)
-- dynamically discovered plugin manifests
+`GetGame` and `AvailableGameCatalog` resolve from dynamically discovered plugin manifests.
 
 Plugin discovery controls:
 
@@ -116,6 +111,8 @@ Key fields:
 - `name`
 - `display_name`
 - `executable`
+- `viewer_client_entry` (required)
+- `supports_replay`
 - `supports_move_clock`
 - `supports_handicap`
 - `args[]` for dashboard/runtime schema
@@ -153,6 +150,35 @@ Server-side wrapper:
 
 The manifest `args` schema is intentionally shared with the dashboard's dynamic arena form renderer so plugin authors can define self-describing configuration inputs without dashboard code changes.
 
+## Viewer Architecture
+
+The viewer uses a client-side rendering model where all game visualization logic runs in the browser.
+
+### Live Viewing
+
+- `/viewer?arena_id=<id>` serves an HTML shell
+- `/viewer/live-sse?arena_id=<id>` (or `/viewer/live-ws`) streams raw game state frames + plugin metadata
+- server emits only the raw state string from `game.GetState()`; structured frame data is built by client JS
+
+### Replay Viewing
+
+- `/viewer?match_id=<id>` serves an HTML shell for archived matches
+- `/viewer/replay-data?match_id=<id>` returns a JSON object with frame history (downsampled by `max_frames` query param)
+- client reconstructs frames by parsing raw state and applying game plugin logic
+
+### Plugin Client Entry Point
+
+- Each plugin manifest declares `viewer_client_entry`: a relative or absolute path to a JavaScript file
+- `/viewer/plugin-entry?game=<name>` serves the JS bundle for a specific game
+- Client runtime calls `window.BBSViewerPluginRuntime.register(gameName, { render: ... })` to install the renderer
+- Renderer receives raw state and renders to a canvas
+
+This model ensures:
+- zero server-side render coupling
+- game developers own visualization entirely
+- replay viewing works identically to live viewing
+- viewer bundle is versioned with the game plugin
+
 ## Dashboard Integration
 
 Dashboard create-arena forms are generated from `AvailableGameCatalog()`.
@@ -162,8 +188,9 @@ Effects:
 - dropdown is always in sync with runtime game catalog
 - per-game arg fields are schema-driven
 - move-clock/handicap controls auto-adjust by game capability
+- viewer pages load plugin-provided client bundles via `/viewer/plugin-entry`
 
-This means built-ins and valid plugins are presented uniformly in owner and admin create flows.
+This means valid plugins are presented uniformly in owner and admin create flows.
 
 ## Arena Lifecycle
 

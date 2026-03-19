@@ -2,11 +2,11 @@
 
 Build-a-Bot Stadium is an extensible bot-arena platform.
 
-It started as a host for two-player perfect-information games, but now supports a wider model:
+It supports a wide game model through dynamically discoverable process-based plugins:
 
-- competitive games (for example Connect4)
-- single-agent episodic environments (for example Gridworld)
-- dynamically discoverable process-based game plugins
+- competitive games
+- single-agent environments
+- episodic environments
 
 The server runs as one Go process with two surfaces:
 
@@ -15,10 +15,7 @@ The server runs as one Go process with two surfaces:
 
 ## Current Runtime Model
 
-The runtime game catalog is composed from:
-
-- built-in games compiled into the server (`connect4`, `gridworld`)
-- optional process plugins loaded from manifests (`plugins/games/*.json` by default)
+The runtime game catalog is sourced from process plugins loaded from manifests (`plugins/games/*.json` by default when plugins are enabled).
 
 The dashboard create-arena forms are populated directly from this live catalog, so new plugin games can appear without changing dashboard code.
 
@@ -72,6 +69,8 @@ When enabled, the server scans `*.json` manifests in the plugin directory and me
   "name": "counter",
   "display_name": "Counter Plugin",
   "executable": "counter-plugin",
+  "viewer_client_entry": "counter_viewer.js",
+  "supports_replay": true,
   "supports_move_clock": true,
   "supports_handicap": true,
   "args": [
@@ -130,7 +129,6 @@ Optional interfaces:
 - `MoveClockPolicy` to disable move clock enforcement (`EnforceMoveClock() bool`)
 - `HandicapPolicy` to disable handicap controls (`SupportsHandicap() bool`)
 - `EpisodicGame` for episodic continuation (`AdvanceEpisode() ...`)
-- `ViewerProvider` for plugin-defined visuals (`GetViewerSpec()`, `GetViewerFrame(...)`)
 
 Minimal plugin entrypoint pattern:
 
@@ -159,6 +157,8 @@ Add `/tmp/bbs-plugin-smoke/my-game.json`:
   "name": "mygame",
   "display_name": "My Game",
   "executable": "my-game-plugin",
+  "viewer_client_entry": "my_game_viewer.js",
+  "supports_replay": true,
   "supports_move_clock": true,
   "supports_handicap": true,
   "args": [
@@ -199,8 +199,8 @@ CREATE mygame board_size=8
 - `protocol_version` must match `games/pluginapi.ProtocolVersion` (currently `1`).
 - Plugin process contract uses JSONL requests/responses over stdin/stdout.
 - Use stderr for plugin logs; stdout is reserved for protocol messages.
-- Viewer methods (`get_viewer_spec` / `get_viewer_frame`) are optional; if absent, BBS uses raw-state fallback rendering.
-- Returning `kind: "plugin-panel"` in `get_viewer_spec` lets plugins drive a richer built-in panel renderer using `raw_state.viewer` fields (title/status/progress/stats).
+- `viewer_client_entry` is required and must resolve to a JavaScript file in the plugin directory (or an absolute path).
+- BBS viewer payloads contain raw frame state; all rendering is handled by the plugin client bundle loaded from `/viewer/plugin-entry?game=<name>`.
 
 ### Authoring Best Practices
 
@@ -220,6 +220,8 @@ CREATE mygame board_size=8
   - check executable path in `executable`
   - run plugin binary directly to confirm it starts
   - check server logs for `[game-plugin]` messages
+- Manifest skipped during plugin discovery:
+  - verify `viewer_client_entry` exists and does not contain `..`
 - Plugin appears to hang:
   - ensure protocol writes only JSON responses on stdout
   - ensure logging is written to stderr
@@ -278,7 +280,9 @@ Viewer routes:
 Data routes:
 
 - `GET /viewer/live-sse?arena_id=<id>`
+- `GET /viewer/live-ws?arena_id=<id>`
 - `GET /viewer/replay-data?match_id=<id>`
+- `GET /viewer/plugin-entry?game=<name>`
 
 ## Agent Abstraction (`bbs-agent`)
 
@@ -299,7 +303,7 @@ Start server:
 
 ```bash
 cd cmd/bbs-server
-go run .
+BBS_ENABLE_GAME_PLUGINS=true go run .
 ```
 
 Connect bot:
@@ -311,21 +315,9 @@ nc localhost 8080
 Try commands:
 
 ```text
-REGISTER bot_one "" "" connect4
-CREATE connect4 1000 false rows=6 cols=7
+REGISTER bot_one "" "" any
+CREATE guess_number max_range=100
 LIST
-```
-
-Gridworld example:
-
-```text
-CREATE gridworld map=default episodes=25
-```
-
-Custom map directory:
-
-```text
-CREATE gridworld map=maze_a map_dir=../../maps/gridworld max_steps=80 episodes=0
 ```
 
 ## Project Layout
@@ -334,9 +326,8 @@ CREATE gridworld map=maze_a map_dir=../../maps/gridworld max_steps=80 episodes=0
 - `cmd/bbs-agent/`: local bridge for bot authors
 - `cmd/bbs-game-counter-plugin/`: reference process plugin command
 - `stadium/`: session, arena, manager, snapshots, match history
-- `games/`: game interfaces, built-in registry, plugin host
+- `games/`: game interfaces and plugin host/registry
 - `games/pluginapi/`: shared process-plugin RPC contract and server helper
-- `maps/gridworld/`: map files for built-in gridworld environment
 
 All runtime state is currently in memory. Process restart clears sessions, arenas, bot profiles, and match history.
 

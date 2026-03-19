@@ -3,13 +3,21 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/JonKirkpatrick/bbs/games"
 	"github.com/JonKirkpatrick/bbs/stadium"
+	"github.com/gorilla/websocket"
 )
+
+const viewerPluginEntryRoute = "/viewer/plugin-entry"
 
 type viewerPageData struct {
 	ArenaID  int
@@ -27,20 +35,43 @@ type viewerParticipant struct {
 	Draws    int    `json:"draws"`
 }
 
+// rawViewerFrame is a minimal frame model with just raw game state and metadata.
+// The client plugin renderer is responsible for parsing and rendering the raw state.
+type rawViewerFrame struct {
+	MoveIndex  int    `json:"move_index"`
+	Timestamp  string `json:"timestamp,omitempty"`
+	RawState   string `json:"raw_state"`
+	IsTerminal bool   `json:"is_terminal"`
+	Winner     string `json:"winner,omitempty"`
+}
+
 type viewerReplayResponse struct {
-	MatchID int                 `json:"match_id"`
-	Game    string              `json:"game"`
-	Spec    games.ViewerSpec    `json:"spec"`
-	Frames  []games.ViewerFrame `json:"frames"`
-	Players []viewerParticipant `json:"players"`
+	MatchID         int                 `json:"match_id"`
+	Game            string              `json:"game"`
+	Frames          []rawViewerFrame    `json:"frames"`
+	Players         []viewerParticipant `json:"players"`
+	Plugin          *viewerPluginClient `json:"plugin,omitempty"`
+	FrameCountTotal int                 `json:"frame_count_total"`
+	FrameTruncated  bool                `json:"frame_truncated"`
+}
+
+type viewerPluginClient struct {
+	EntryURL       string `json:"entry_url"`
+	SupportsReplay bool   `json:"supports_replay"`
 }
 
 type viewerLiveEvent struct {
 	ArenaID int                 `json:"arena_id"`
 	Status  string              `json:"status"`
-	Spec    games.ViewerSpec    `json:"spec"`
-	Frame   games.ViewerFrame   `json:"frame"`
+	Frame   rawViewerFrame      `json:"frame"`
 	Players []viewerParticipant `json:"players"`
+	Plugin  *viewerPluginClient `json:"plugin,omitempty"`
+}
+
+var viewerLiveWSUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 4096,
+	CheckOrigin:     wsCheckOriginSameHost,
 }
 
 func handleViewerPage(w http.ResponseWriter, r *http.Request) {
@@ -65,24 +96,45 @@ func handleViewerReplayData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	maxFrames := 2000
+	if raw := strings.TrimSpace(r.URL.Query().Get("max_frames")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 100 {
+			http.Error(w, "max_frames must be an integer >= 100", http.StatusBadRequest)
+			return
+		}
+		maxFrames = parsed
+	}
+
 	record, exists := stadium.DefaultManager.GetMatchRecord(matchID)
 	if !exists {
 		http.Error(w, "match not found", http.StatusNotFound)
 		return
 	}
 
-	spec, frames, err := buildReplayFrames(record)
+	pluginClient := resolveViewerPluginClient(record.Game)
+	if pluginClient == nil {
+		http.Error(w, fmt.Sprintf("plugin viewer is not configured for game %q", record.Game), http.StatusBadRequest)
+		return
+	}
+
+	frames, err := buildReplayRawFrames(record)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	frameCountTotal := len(frames)
+	frames = downsampleReplayRawFrames(frames, maxFrames)
+
 	resp := viewerReplayResponse{
-		MatchID: record.MatchID,
-		Game:    record.Game,
-		Spec:    spec,
-		Frames:  frames,
-		Players: buildReplayParticipants(record),
+		MatchID:         record.MatchID,
+		Game:            record.Game,
+		Frames:          frames,
+		Players:         buildReplayParticipants(record),
+		Plugin:          pluginClient,
+		FrameCountTotal: frameCountTotal,
+		FrameTruncated:  len(frames) < frameCountTotal,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -96,7 +148,7 @@ func handleViewerLiveSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	initial, exists, err := buildLiveViewerEvent(arenaID)
+	initial, exists, err := buildLiveRawViewerEvent(arenaID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -117,6 +169,10 @@ func handleViewerLiveSSE(w http.ResponseWriter, r *http.Request) {
 	lastMoveIndex := initial.Frame.MoveIndex
 	lastRawState := initial.Frame.RawState
 	lastStatus := initial.Status
+	flushTicker := time.NewTicker(resolveStreamFlushInterval(r, 100*time.Millisecond))
+	defer flushTicker.Stop()
+	var pendingEvent viewerLiveEvent
+	pending := false
 
 	sub := stadium.DefaultManager.Subscribe()
 	defer stadium.DefaultManager.Unsubscribe(sub)
@@ -125,12 +181,25 @@ func handleViewerLiveSSE(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-flushTicker.C:
+			if !pending {
+				continue
+			}
+
+			if err := writeViewerSSEJSON(w, "frame", pendingEvent); err != nil {
+				return
+			}
+
+			lastMoveIndex = pendingEvent.Frame.MoveIndex
+			lastRawState = pendingEvent.Frame.RawState
+			lastStatus = pendingEvent.Status
+			pending = false
 		case _, alive := <-sub:
 			if !alive {
 				return
 			}
 
-			event, present, buildErr := buildLiveViewerEvent(arenaID)
+			event, present, buildErr := buildLiveRawViewerEvent(arenaID)
 			if buildErr != nil {
 				_ = writeViewerSSEJSON(w, "error", map[string]string{"error": buildErr.Error()})
 				return
@@ -144,127 +213,162 @@ func handleViewerLiveSSE(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			if err := writeViewerSSEJSON(w, "frame", event); err != nil {
-				return
-			}
-
-			lastMoveIndex = event.Frame.MoveIndex
-			lastRawState = event.Frame.RawState
-			lastStatus = event.Status
+			pendingEvent = event
+			pending = true
 		}
 	}
 }
 
-func buildReplayFrames(record stadium.MatchRecord) (games.ViewerSpec, []games.ViewerFrame, error) {
-	args := append([]string(nil), record.GameArgs...)
-	if len(args) == 0 && strings.EqualFold(record.Game, "connect4") {
-		if inferred, err := games.InferConnect4ArgsFromState(record.FinalGameState); err == nil {
-			args = inferred
-		}
+func handleViewerLiveWS(w http.ResponseWriter, r *http.Request) {
+	arenaID, ok := parsePositiveQueryInt(r, "arena_id")
+	if !ok {
+		http.Error(w, "arena_id must be a positive integer", http.StatusBadRequest)
+		return
 	}
 
+	initial, exists, err := buildLiveRawViewerEvent(arenaID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !exists {
+		http.Error(w, "arena not found", http.StatusNotFound)
+		return
+	}
+
+	conn, err := viewerLiveWSUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	if err := writeViewerWSJSON(conn, "frame", initial); err != nil {
+		return
+	}
+
+	lastMoveIndex := initial.Frame.MoveIndex
+	lastRawState := initial.Frame.RawState
+	lastStatus := initial.Status
+	flushTicker := time.NewTicker(resolveStreamFlushInterval(r, 100*time.Millisecond))
+	defer flushTicker.Stop()
+	var pendingEvent viewerLiveEvent
+	pending := false
+
+	sub := stadium.DefaultManager.Subscribe()
+	defer stadium.DefaultManager.Unsubscribe(sub)
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-flushTicker.C:
+			if !pending {
+				continue
+			}
+
+			if err := writeViewerWSJSON(conn, "frame", pendingEvent); err != nil {
+				return
+			}
+
+			lastMoveIndex = pendingEvent.Frame.MoveIndex
+			lastRawState = pendingEvent.Frame.RawState
+			lastStatus = pendingEvent.Status
+			pending = false
+		case _, alive := <-sub:
+			if !alive {
+				return
+			}
+
+			event, present, buildErr := buildLiveRawViewerEvent(arenaID)
+			if buildErr != nil {
+				_ = writeViewerWSJSON(conn, "error", map[string]string{"error": buildErr.Error()})
+				return
+			}
+			if !present {
+				_ = writeViewerWSJSON(conn, "closed", map[string]string{"message": "arena no longer active"})
+				return
+			}
+
+			if event.Frame.MoveIndex == lastMoveIndex && event.Frame.RawState == lastRawState && event.Status == lastStatus {
+				continue
+			}
+
+			pendingEvent = event
+			pending = true
+		}
+	}
+}
+
+// buildReplayRawFrames reconstructs game frames from moves, collecting raw state only.
+func buildReplayRawFrames(record stadium.MatchRecord) ([]rawViewerFrame, error) {
+	args := append([]string(nil), record.GameArgs...)
 	gameName := strings.ToLower(strings.TrimSpace(record.Game))
 	game, err := games.GetGame(gameName, args)
 	if err != nil {
-		return games.ViewerSpec{}, nil, fmt.Errorf("failed to reconstruct game: %w", err)
+		return nil, fmt.Errorf("failed to reconstruct game: %w", err)
 	}
 
-	if provider, ok := game.(games.LiveViewerProvider); ok {
-		spec, err := provider.ViewerSpec()
-		if err == nil {
-			frames := make([]games.ViewerFrame, 0, len(record.Moves)+1)
-			initialFrame, frameErr := provider.ViewerFrame(0, record.StartedAt)
-			if frameErr == nil {
-				frames = append(frames, initialFrame)
+	frames := make([]rawViewerFrame, 0, len(record.Moves)+1)
 
-				if len(record.Moves) > 0 {
-					for i, move := range record.Moves {
-						if err := game.ApplyMove(move.PlayerID, move.Move); err != nil {
-							return games.ViewerSpec{}, nil, fmt.Errorf("failed to apply move %d (%s): %w", i+1, move.Move, err)
-						}
-						frame, err := provider.ViewerFrame(i+1, move.OccurredAt)
-						if err != nil {
-							return games.ViewerSpec{}, nil, err
-						}
-						frames = append(frames, frame)
-					}
-				} else {
-					currentPlayer := 1
-					for i, move := range record.MoveSequence {
-						if err := game.ApplyMove(currentPlayer, move); err != nil {
-							return games.ViewerSpec{}, nil, fmt.Errorf("failed to apply fallback move %d (%s): %w", i+1, move, err)
-						}
-						frame, err := provider.ViewerFrame(i+1, "")
-						if err != nil {
-							return games.ViewerSpec{}, nil, err
-						}
-						frames = append(frames, frame)
-						if currentPlayer == 1 {
-							currentPlayer = 2
-						} else {
-							currentPlayer = 1
-						}
-					}
-				}
-
-				if len(frames) > 0 {
-					last := &frames[len(frames)-1]
-					if record.TerminalStatus == "completed" || record.TerminalStatus == "aborted" {
-						last.IsTerminal = true
-					}
-					if record.IsDraw {
-						last.Winner = "draw"
-					} else if record.WinnerPlayerID == 1 || record.WinnerPlayerID == 2 {
-						last.Winner = fmt.Sprintf("player_%d", record.WinnerPlayerID)
-					}
-				}
-
-				return spec, frames, nil
-			}
-		}
-	}
-
-	adapter, ok := games.GetViewerAdapter(record.Game)
-	if !ok {
-		return games.ViewerSpec{}, nil, fmt.Errorf("viewer not available for game %q", record.Game)
-	}
-
-	initialState := game.GetState()
-	spec, err := adapter.SpecFromState(initialState)
-	if err != nil {
-		return games.ViewerSpec{}, nil, err
-	}
-
-	frames := make([]games.ViewerFrame, 0, len(record.Moves)+1)
-	initialFrame, err := adapter.FrameFromState(initialState, 0, record.StartedAt)
-	if err != nil {
-		return games.ViewerSpec{}, nil, err
-	}
-	frames = append(frames, initialFrame)
+	// Initial frame
+	frames = append(frames, rawViewerFrame{
+		MoveIndex:  0,
+		Timestamp:  record.StartedAt,
+		RawState:   game.GetState(),
+		IsTerminal: false,
+	})
 
 	if len(record.Moves) > 0 {
 		for i, move := range record.Moves {
 			if err := game.ApplyMove(move.PlayerID, move.Move); err != nil {
-				return games.ViewerSpec{}, nil, fmt.Errorf("failed to apply move %d (%s): %w", i+1, move.Move, err)
+				return nil, fmt.Errorf("failed to apply move %d (%s): %w", i+1, move.Move, err)
 			}
-			frame, err := adapter.FrameFromState(game.GetState(), i+1, move.OccurredAt)
-			if err != nil {
-				return games.ViewerSpec{}, nil, err
+
+			frames = append(frames, rawViewerFrame{
+				MoveIndex:  i + 1,
+				Timestamp:  move.OccurredAt,
+				RawState:   game.GetState(),
+				IsTerminal: false,
+			})
+
+			if over, _ := game.IsGameOver(); over {
+				if episodic, ok := game.(games.EpisodicGame); ok {
+					continued, _, advErr := episodic.AdvanceEpisode()
+					if advErr != nil {
+						return nil, fmt.Errorf("failed to advance episode after move %d: %w", i+1, advErr)
+					}
+					if continued {
+						continue
+					}
+				}
 			}
-			frames = append(frames, frame)
 		}
-	} else {
-		// Backward-compatible fallback for older records lacking per-move player IDs.
+	} else if len(record.MoveSequence) > 0 {
+		// Fallback for older records without per-move metadata.
 		currentPlayer := 1
 		for i, move := range record.MoveSequence {
 			if err := game.ApplyMove(currentPlayer, move); err != nil {
-				return games.ViewerSpec{}, nil, fmt.Errorf("failed to apply fallback move %d (%s): %w", i+1, move, err)
+				return nil, fmt.Errorf("failed to apply fallback move %d (%s): %w", i+1, move, err)
 			}
-			frame, err := adapter.FrameFromState(game.GetState(), i+1, "")
-			if err != nil {
-				return games.ViewerSpec{}, nil, err
+
+			frames = append(frames, rawViewerFrame{
+				MoveIndex:  i + 1,
+				RawState:   game.GetState(),
+				IsTerminal: false,
+			})
+
+			if over, _ := game.IsGameOver(); over {
+				if episodic, ok := game.(games.EpisodicGame); ok {
+					continued, _, advErr := episodic.AdvanceEpisode()
+					if advErr != nil {
+						return nil, fmt.Errorf("failed to advance fallback episode after move %d: %w", i+1, advErr)
+					}
+					if continued {
+						continue
+					}
+				}
 			}
-			frames = append(frames, frame)
+
 			if currentPlayer == 1 {
 				currentPlayer = 2
 			} else {
@@ -285,50 +389,28 @@ func buildReplayFrames(record stadium.MatchRecord) (games.ViewerSpec, []games.Vi
 		}
 	}
 
-	return spec, frames, nil
+	return frames, nil
 }
 
-func buildLiveViewerEvent(arenaID int) (viewerLiveEvent, bool, error) {
+// buildLiveRawViewerEvent builds a live viewer event with raw game state only.
+func buildLiveRawViewerEvent(arenaID int) (viewerLiveEvent, bool, error) {
 	arenaState, exists := stadium.DefaultManager.GetArenaViewerState(arenaID)
 	if !exists {
 		return viewerLiveEvent{}, false, nil
 	}
 
-	if arenaState.ViewerSpec != nil && arenaState.ViewerFrame != nil {
-		spec := *arenaState.ViewerSpec
-		frame := *arenaState.ViewerFrame
-		if arenaState.Status == "completed" || arenaState.Status == "aborted" {
-			frame.IsTerminal = true
-			if arenaState.IsDraw {
-				frame.Winner = "draw"
-			} else if arenaState.WinnerPlayerID == 1 || arenaState.WinnerPlayerID == 2 {
-				frame.Winner = fmt.Sprintf("player_%d", arenaState.WinnerPlayerID)
-			}
-		}
-
-		return viewerLiveEvent{
-			ArenaID: arenaState.ArenaID,
-			Status:  arenaState.Status,
-			Spec:    spec,
-			Frame:   frame,
-			Players: buildLiveParticipants(arenaState, spec),
-		}, true, nil
+	pluginClient := resolveViewerPluginClient(arenaState.Game)
+	if pluginClient == nil {
+		return viewerLiveEvent{}, false, fmt.Errorf("plugin viewer is not configured for game %q", arenaState.Game)
 	}
 
-	adapter, ok := games.GetViewerAdapter(arenaState.Game)
-	if !ok {
-		return viewerLiveEvent{}, false, fmt.Errorf("viewer not available for game %q", arenaState.Game)
+	frame := rawViewerFrame{
+		MoveIndex:  arenaState.MoveCount,
+		Timestamp:  arenaState.LastMoveAt,
+		RawState:   arenaState.GameState,
+		IsTerminal: false,
 	}
 
-	spec, err := adapter.SpecFromState(arenaState.GameState)
-	if err != nil {
-		return viewerLiveEvent{}, false, err
-	}
-
-	frame, err := adapter.FrameFromState(arenaState.GameState, arenaState.MoveCount, arenaState.LastMoveAt)
-	if err != nil {
-		return viewerLiveEvent{}, false, err
-	}
 	if arenaState.Status == "completed" || arenaState.Status == "aborted" {
 		frame.IsTerminal = true
 		if arenaState.IsDraw {
@@ -341,13 +423,13 @@ func buildLiveViewerEvent(arenaID int) (viewerLiveEvent, bool, error) {
 	return viewerLiveEvent{
 		ArenaID: arenaState.ArenaID,
 		Status:  arenaState.Status,
-		Spec:    spec,
 		Frame:   frame,
-		Players: buildLiveParticipants(arenaState, spec),
+		Players: buildLiveParticipants(arenaState),
+		Plugin:  pluginClient,
 	}, true, nil
 }
 
-func buildLiveParticipants(arenaState stadium.ArenaViewerState, spec games.ViewerSpec) []viewerParticipant {
+func buildLiveParticipants(arenaState stadium.ArenaViewerState) []viewerParticipant {
 	players := make([]viewerParticipant, 0, 2)
 	if arenaState.Player1.Name != "" {
 		players = append(players, viewerParticipant{
@@ -417,6 +499,61 @@ func writeViewerSSEJSON(w http.ResponseWriter, eventName string, payload interfa
 	return nil
 }
 
+func writeViewerWSJSON(conn *websocket.Conn, eventName string, payload interface{}) error {
+	return writeStreamWSEvent(conn, "viewer", eventName, payload)
+}
+
+func resolveViewerPluginClient(gameName string) *viewerPluginClient {
+	lookup := strings.ToLower(strings.TrimSpace(gameName))
+	if lookup == "" {
+		return nil
+	}
+
+	catalog := games.AvailableGameCatalog()
+	for _, entry := range catalog {
+		if strings.EqualFold(entry.Name, lookup) {
+			if strings.TrimSpace(entry.ViewerClientEntry) == "" {
+				return nil
+			}
+			return &viewerPluginClient{
+				EntryURL:       viewerPluginEntryRoute + "?game=" + url.QueryEscape(entry.Name),
+				SupportsReplay: entry.SupportsReplay,
+			}
+		}
+	}
+
+	return nil
+}
+
+func handleViewerPluginEntry(w http.ResponseWriter, r *http.Request) {
+	gameName := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("game")))
+	if gameName == "" {
+		http.Error(w, "game is required", http.StatusBadRequest)
+		return
+	}
+
+	filePath, ok := games.PluginViewerClientFile(gameName)
+	if !ok {
+		http.Error(w, "plugin viewer entry not found", http.StatusNotFound)
+		return
+	}
+
+	raw, err := os.ReadFile(filePath)
+	if err != nil {
+		http.Error(w, "failed reading plugin viewer entry", http.StatusInternalServerError)
+		return
+	}
+
+	contentType := mime.TypeByExtension(filepath.Ext(filePath))
+	if contentType == "" {
+		contentType = "application/javascript"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(raw)
+}
+
 func parsePositiveQueryInt(r *http.Request, key string) (int, bool) {
 	raw := strings.TrimSpace(r.URL.Query().Get(key))
 	if raw == "" {
@@ -427,4 +564,25 @@ func parsePositiveQueryInt(r *http.Request, key string) (int, bool) {
 		return 0, false
 	}
 	return parsed, true
+}
+
+func downsampleReplayRawFrames(frames []rawViewerFrame, maxFrames int) []rawViewerFrame {
+	if maxFrames <= 0 || len(frames) <= maxFrames {
+		return frames
+	}
+
+	if maxFrames == 1 {
+		return []rawViewerFrame{frames[len(frames)-1]}
+	}
+
+	out := make([]rawViewerFrame, 0, maxFrames)
+	lastIdx := len(frames) - 1
+
+	for i := 0; i < maxFrames-1; i++ {
+		idx := i * lastIdx / (maxFrames - 1)
+		out = append(out, frames[idx])
+	}
+
+	out = append(out, frames[lastIdx])
+	return out
 }

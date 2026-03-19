@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2024.11.26)  18 MAR 2026 12:21
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2024.11.26)  19 MAR 2026 17:09
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -304,67 +304,74 @@ mplementation-
 [1
 
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texmf/fonts/enc/
-dvips/cm-super/cm-super-ts1.enc}] [2]
-Overfull \hbox (0.90053pt too wide) in paragraph at lines 98--99
-\OT1/cmr/m/n/10.95 sin-gle run-time cat-a-log. Plu-gin games com-mu-ni-cate wit
-h the host over JSONL RPC via stdin/stdout. 
+dvips/cm-super/cm-super-ts1.enc}]
+Overfull \hbox (10.21991pt too wide) in paragraph at lines 79--80
+[]\OT1/cmr/m/n/10.95 Plugin dis-cov-ery di-ag-nos-tics panel show-ing en-abled 
+state, scan di-rec-tory, and per-manifest load/skip
  []
 
-[3]
-Overfull \hbox (21.10909pt too wide) in paragraph at lines 183--184
+[2]
+Overfull \hbox (25.90665pt too wide) in paragraph at lines 112--113
+\OT1/cmr/m/n/10.95 mu-ni-cate with the host over JSONL RPC via stdin/stdout. Ma
+n-i-fests must de-clare \OT1/cmtt/m/n/10.95 viewer[]client[]entry
+ []
+
+[3] [4]
+Overfull \hbox (21.10909pt too wide) in paragraph at lines 197--198
 []\OT1/cmr/m/n/10.95 Manager state syn-chro-niza-tion is in-ten-tion-ally coars
 e-grained (cen-tral mu-tex over key maps/counters). 
  []
 
-[4]
-Overfull \hbox (13.1376pt too wide) in paragraph at lines 199--200
+
+Overfull \hbox (13.1376pt too wide) in paragraph at lines 213--214
 []\OT1/cmr/m/n/10.95 Implication: cur-rent con-fi-dence is build- and smoke-tes
 t-oriented, with lim-ited re-gres-sion guardrails
  []
 
+[5]
 LaTeX Font Info:    External font `cmex10' loaded for size
-(Font)              <10.95> on input line 216.
+(Font)              <10.95> on input line 230.
 
-Underfull \hbox (badness 10000) in paragraph at lines 226--226
+Underfull \hbox (badness 10000) in paragraph at lines 240--240
 []|$\OT1/cmtt/m/n/10.95 DASHBOARD _ REMOTE _
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 230--230
+Underfull \hbox (badness 10000) in paragraph at lines 244--244
 []|$\OT1/cmtt/m/n/10.95 deploy / truenas-[]no-[]docker /
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 232--232
+Underfull \hbox (badness 10000) in paragraph at lines 246--246
 []|$\OT1/cmtt/m/n/10.95 .github / workflows /
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 234--234
+Underfull \hbox (badness 10000) in paragraph at lines 248--248
 []|$\OT1/cmtt/m/n/10.95 .github / workflows /
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 234--234
+Underfull \hbox (badness 10000) in paragraph at lines 248--248
 \OT1/cmtt/m/n/10.95 validate-[]plugin-[]manifests .
  []
 
-[5] [6] (./AS_BUILT_SUMMARY.aux)
+[6] (./AS_BUILT_SUMMARY.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
  ***********
 Package rerunfilecheck Info: File `AS_BUILT_SUMMARY.out' has not changed.
-(rerunfilecheck)             Checksum: 917593DD812B168336ABD39CA79008A2;3970.
+(rerunfilecheck)             Checksum: 534CBC4F5AADD5CA519BAE388AED7384;4136.
  ) 
 Here is how much of TeX's memory you used:
- 8546 strings out of 474222
- 133264 string characters out of 5748732
- 1937975 words of memory out of 5000000
- 30709 multiletter control sequences out of 15000+600000
+ 8548 strings out of 474222
+ 133304 string characters out of 5748732
+ 1938975 words of memory out of 5000000
+ 30710 multiletter control sequences out of 15000+600000
  564095 words of font info for 56 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,7n,79p,360b,560s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,7n,79p,360b,578s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></us
 r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/shar
 e/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texli
@@ -373,10 +380,10 @@ f-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/share/texlive/texmf-dist/
 fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/share/texlive/texmf-dist/fonts/
 type1/public/amsfonts/cm/cmtt10.pfb></usr/share/texmf/fonts/type1/public/cm-sup
 er/sfrm1095.pfb>
-Output written on AS_BUILT_SUMMARY.pdf (6 pages, 125194 bytes).
+Output written on AS_BUILT_SUMMARY.pdf (6 pages, 127877 bytes).
 PDF statistics:
- 168 PDF objects out of 1000 (max. 8388607)
- 142 compressed objects within 2 object streams
- 33 named destinations out of 1000 (max. 500000)
- 161 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 172 PDF objects out of 1000 (max. 8388607)
+ 146 compressed objects within 2 object streams
+ 34 named destinations out of 1000 (max. 500000)
+ 169 words of extra memory for PDF output out of 10000 (max. 10000000)
 

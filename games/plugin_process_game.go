@@ -110,7 +110,6 @@ type processPluginGame struct {
 	requiredPlayers   int
 	supportsMoveClock bool
 	supportsHandicap  bool
-	supportsViewer    bool
 	client            *pluginRPCClient
 	closeOnce         sync.Once
 	closeErr          error
@@ -137,7 +136,6 @@ func launchPluginGame(name, executable string, args []string) (GameInstance, err
 		requiredPlayers:   initResult.RequiredPlayers,
 		supportsMoveClock: initResult.SupportsMoveClock,
 		supportsHandicap:  initResult.SupportsHandicap,
-		supportsViewer:    initResult.SupportsViewer,
 		client:            client,
 	}
 	if base.name == "" {
@@ -196,78 +194,6 @@ func (p *processPluginGame) EnforceMoveClock() bool {
 
 func (p *processPluginGame) SupportsHandicap() bool {
 	return p.supportsHandicap
-}
-
-func (p *processPluginGame) ViewerSpec() (ViewerSpec, error) {
-	if !p.supportsViewer {
-		return ViewerSpec{}, fmt.Errorf("viewer is not supported by game %q", p.name)
-	}
-
-	result := pluginapi.ViewerSpecResult{}
-	if err := p.client.call(pluginapi.MethodGetViewerSpec, pluginapi.Empty{}, &result); err != nil {
-		return ViewerSpec{}, err
-	}
-
-	spec := ViewerSpec{
-		Game:         result.Game,
-		Kind:         result.Kind,
-		Rows:         result.Rows,
-		Cols:         result.Cols,
-		PlayerColors: result.PlayerColors,
-	}
-	if spec.Game == "" {
-		spec.Game = p.name
-	}
-	if spec.Kind == "" {
-		spec.Kind = "raw-state"
-	}
-	if spec.Rows <= 0 {
-		spec.Rows = 1
-	}
-	if spec.Cols <= 0 {
-		spec.Cols = 1
-	}
-
-	return spec, nil
-}
-
-func (p *processPluginGame) ViewerFrame(moveIndex int, timestamp string) (ViewerFrame, error) {
-	if !p.supportsViewer {
-		return ViewerFrame{}, fmt.Errorf("viewer is not supported by game %q", p.name)
-	}
-
-	result := pluginapi.ViewerFrameResult{}
-	params := pluginapi.ViewerFrameParams{MoveIndex: moveIndex, Timestamp: timestamp}
-	if err := p.client.call(pluginapi.MethodGetViewerFrame, params, &result); err != nil {
-		return ViewerFrame{}, err
-	}
-
-	frame := ViewerFrame{
-		MoveIndex:  result.MoveIndex,
-		TurnPlayer: result.TurnPlayer,
-		Timestamp:  result.Timestamp,
-		IsTerminal: result.IsTerminal,
-		Winner:     result.Winner,
-		RawState:   result.RawState,
-	}
-	if frame.MoveIndex == 0 {
-		frame.MoveIndex = moveIndex
-	}
-	if frame.Timestamp == "" {
-		frame.Timestamp = timestamp
-	}
-	if len(result.Tokens) > 0 {
-		frame.Tokens = make([]ViewerToken, 0, len(result.Tokens))
-		for _, token := range result.Tokens {
-			frame.Tokens = append(frame.Tokens, ViewerToken{
-				Player: token.Player,
-				Row:    token.Row,
-				Col:    token.Col,
-			})
-		}
-	}
-
-	return frame, nil
 }
 
 func (p *processPluginGame) Close() error {

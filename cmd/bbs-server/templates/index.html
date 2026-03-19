@@ -7,7 +7,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
     <style>
         :root {
             --bg: #f3efe5;
@@ -643,12 +642,10 @@
             </div>
         </header>
 
-        <main class="live-shell">
-            <div hx-ext="sse" sse-connect="/dashboard-sse{{.SSEQuery}}">
-                <div sse-swap="state">
-                    <div class="topbar">
-                        Connecting to live state stream...
-                    </div>
+        <main class="live-shell" id="dashboard-live-shell" data-stream-query="{{.SSEQuery}}">
+            <div id="dashboard-state-target">
+                <div class="topbar">
+                    Connecting to live state stream...
                 </div>
             </div>
         </main>
@@ -849,6 +846,119 @@
             });
         }
 
+        function renderDashboardStateHTML(html) {
+            const target = document.getElementById("dashboard-state-target");
+            if (!target) {
+                return;
+            }
+
+            target.innerHTML = html;
+
+            if (window.htmx && typeof window.htmx.process === "function") {
+                window.htmx.process(target);
+            }
+
+            initializeArenaCreateForms(target);
+        }
+
+        function streamQuery() {
+            const shell = document.getElementById("dashboard-live-shell");
+            if (!shell || !shell.dataset) {
+                return "";
+            }
+            return shell.dataset.streamQuery || "";
+        }
+
+        function withStreamRateQuery(baseQuery) {
+            const params = new URLSearchParams((baseQuery || "").replace(/^\?/, ""));
+            const pageParams = new URLSearchParams(window.location.search || "");
+
+            ["max_hz", "stream_interval_ms"].forEach(function (key) {
+                const value = (pageParams.get(key) || "").trim();
+                if (value && !params.has(key)) {
+                    params.set(key, value);
+                }
+            });
+
+            const encoded = params.toString();
+            return encoded ? ("?" + encoded) : "";
+        }
+
+        function buildDashboardWSURL(query) {
+            const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+            return proto + "//" + window.location.host + "/dashboard-ws" + query;
+        }
+
+        function startDashboardSSE(query) {
+            const target = document.getElementById("dashboard-state-target");
+            const es = new EventSource("/dashboard-sse" + query);
+
+            es.addEventListener("state", function (evt) {
+                renderDashboardStateHTML(evt.data || "");
+            });
+
+            es.addEventListener("error", function () {
+                if (target) {
+                    target.innerHTML = '<div class="topbar">Dashboard stream disconnected.</div>';
+                }
+                console.warn("Dashboard SSE disconnected or errored");
+            });
+
+            return es;
+        }
+
+        function startDashboardStream() {
+            const query = withStreamRateQuery(streamQuery());
+
+            if (!("WebSocket" in window)) {
+                startDashboardSSE(query);
+                return;
+            }
+
+            const target = document.getElementById("dashboard-state-target");
+            let fallbackStarted = false;
+            let receivedState = false;
+            const ws = new WebSocket(buildDashboardWSURL(query));
+
+            ws.addEventListener("message", function (evt) {
+                let msg;
+                try {
+                    msg = JSON.parse(evt.data || "{}");
+                } catch (_) {
+                    return;
+                }
+
+                if (msg.type !== "state") {
+                    return;
+                }
+
+                receivedState = true;
+                const payload = msg.payload || {};
+                const html = typeof payload.html === "string" ? payload.html : (msg.html || "");
+                renderDashboardStateHTML(html);
+            });
+
+            ws.addEventListener("error", function () {
+                if (fallbackStarted) {
+                    return;
+                }
+                fallbackStarted = true;
+                startDashboardSSE(query);
+            });
+
+            ws.addEventListener("close", function () {
+                if (!receivedState && !fallbackStarted) {
+                    fallbackStarted = true;
+                    startDashboardSSE(query);
+                    return;
+                }
+
+                if (!receivedState && target) {
+                    target.innerHTML = '<div class="topbar">Dashboard stream disconnected.</div>';
+                }
+            });
+        }
+
         document.body.addEventListener("click", function (event) {
             const button = event.target.closest(".copy-button[data-copy-text]");
             if (!button) {
@@ -900,15 +1010,8 @@
             syncGameArgsField(form);
         });
 
-        document.body.addEventListener("htmx:afterSwap", function () {
-            initializeArenaCreateForms(document);
-        });
-
-        document.body.addEventListener("htmx:sseError", function () {
-            console.warn("Dashboard SSE disconnected or errored");
-        });
-
         initializeArenaCreateForms(document);
+        startDashboardStream();
     </script>
  </body>
 </html>

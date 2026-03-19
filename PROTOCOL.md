@@ -2,7 +2,8 @@
 
 This document defines the TCP bot protocol for Build-a-Bot Stadium.
 
-The platform now supports both competitive games and environment-style arenas, including optional process-based plugin games exposed through the same command model.
+The platform supports both competitive games and environment-style arenas through process-based plugins exposed under the same command model.
+The runtime game catalog is plugin-driven and discovered from manifests.
 
 Plugin author note: process plugin RPC is a separate contract from this TCP bot protocol. See `games/pluginapi/protocol.go` and `README.md` Plugin Author Quickstart.
 
@@ -12,7 +13,7 @@ Plugin author note: process plugin RPC is a separate contract from this TCP bot 
 - Default stadium port: `8080` (override with `--stadium`)
 - Framing: newline-delimited commands in, newline-delimited JSON responses out
 
-The dashboard is HTTP/SSE and is not a TCP client.
+The dashboard is HTTP with SSE/WebSocket streams and is not a TCP client.
 
 ## Connection Lifecycle
 
@@ -29,7 +30,7 @@ The dashboard is HTTP/SSE and is not a TCP client.
 | `REGISTER` | `<name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]` | Registers a session. Use `"" ""` to request new identity credentials. |
 | `WHOAMI` | (none) | Returns session identity and arena linkage state. |
 | `UPDATE` | `<field> <value>` | Updates mutable session metadata (for example name/capabilities). |
-| `CREATE` | `<type> [time_ms] [handicap_bool] [args...]` | Creates an arena. `type` must exist in runtime catalog (built-in or plugin). |
+| `CREATE` | `<type> [time_ms] [handicap_bool] [args...]` | Creates an arena. `type` must exist in runtime plugin catalog. |
 | `JOIN` | `<arena_id> <handicap_percent>` | Joins arena as player with handicap adjustment. |
 | `LIST` | (none) | Returns currently open arenas. |
 | `WATCH` | `<arena_id>` | Observes a live arena over TCP updates. |
@@ -50,15 +51,11 @@ CREATE <type> [time_ms] [handicap_bool] [args...]
 Examples:
 
 ```text
-CREATE connect4 1000 false rows=6 cols=7
-CREATE gridworld map=default max_steps=80 episodes=25
+CREATE mygame 1000 false board_size=8
 CREATE counter target=15
 ```
 
-`<type>` is resolved by `games.GetGame` against:
-
-- built-in registry
-- plugin manifests (when `BBS_ENABLE_GAME_PLUGINS=true`)
+`<type>` is resolved by `games.GetGame` against plugin manifests (when `BBS_ENABLE_GAME_PLUGINS=true`).
 
 ## Response Schema
 
@@ -108,10 +105,13 @@ The dashboard is served on default port `3000` (override with `--dash`).
 
 - `GET /` dashboard
 - `GET /dashboard-sse` live state stream
+- `GET /dashboard-ws` live state stream (websocket)
 - `GET /viewer?arena_id=<id>` live viewer shell
 - `GET /viewer/live-sse?arena_id=<id>` live viewer stream
+- `GET /viewer/live-ws?arena_id=<id>` live viewer stream (websocket)
 - `GET /viewer?match_id=<id>` replay shell
 - `GET /viewer/replay-data?match_id=<id>` replay JSON
+- `GET /viewer/plugin-entry?game=<name>` plugin viewer client bundle
 
 Owner actions:
 

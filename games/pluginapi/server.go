@@ -38,12 +38,6 @@ type PlayerCountProvider interface {
 	RequiredPlayers() int
 }
 
-// ViewerProvider is an optional extension for plugin-defined visualization.
-type ViewerProvider interface {
-	GetViewerSpec() (ViewerSpecResult, error)
-	GetViewerFrame(moveIndex int, timestamp string) (ViewerFrameResult, error)
-}
-
 // Factory constructs plugin game instances.
 type Factory func(args []string) (Game, error)
 
@@ -132,7 +126,6 @@ func Serve(factory Factory) error {
 				SupportsMoveClock: enforceMoveClock(game),
 				SupportsHandicap:  supportsHandicap(game),
 				SupportsEpisodic:  supportsEpisodic(game),
-				SupportsViewer:    supportsViewer(game),
 			}
 			if err := respondResult(result); err != nil {
 				return err
@@ -149,54 +142,6 @@ func Serve(factory Factory) error {
 				continue
 			}
 			if err := respondResult(StateResult{State: game.GetState()}); err != nil {
-				return err
-			}
-		case MethodGetViewerSpec:
-			if !requireGame() {
-				continue
-			}
-
-			provider, ok := game.(ViewerProvider)
-			if !ok {
-				_ = respondError("unsupported", "game does not support get_viewer_spec")
-				continue
-			}
-
-			spec, err := provider.GetViewerSpec()
-			if err != nil {
-				_ = respondError("viewer_failed", err.Error())
-				continue
-			}
-
-			if err := respondResult(spec); err != nil {
-				return err
-			}
-		case MethodGetViewerFrame:
-			if !requireGame() {
-				continue
-			}
-
-			provider, ok := game.(ViewerProvider)
-			if !ok {
-				_ = respondError("unsupported", "game does not support get_viewer_frame")
-				continue
-			}
-
-			var params ViewerFrameParams
-			if len(req.Params) > 0 {
-				if err := json.Unmarshal(req.Params, &params); err != nil {
-					_ = respondError("bad_request", "invalid get_viewer_frame params")
-					continue
-				}
-			}
-
-			frame, err := provider.GetViewerFrame(params.MoveIndex, params.Timestamp)
-			if err != nil {
-				_ = respondError("viewer_failed", err.Error())
-				continue
-			}
-
-			if err := respondResult(frame); err != nil {
 				return err
 			}
 		case MethodValidateMove:
@@ -321,13 +266,5 @@ func supportsEpisodic(game Game) bool {
 		return false
 	}
 	_, ok := game.(EpisodicGame)
-	return ok
-}
-
-func supportsViewer(game Game) bool {
-	if game == nil {
-		return false
-	}
-	_, ok := game.(ViewerProvider)
 	return ok
 }

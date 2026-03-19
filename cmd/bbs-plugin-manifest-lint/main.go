@@ -144,6 +144,13 @@ func validateManifestFile(manifestPath string, nameToManifest map[string]string)
 		problems = append(problems, "executable is required")
 	}
 
+	viewerClientEntry := strings.TrimSpace(manifest.ViewerClientEntry)
+	if viewerClientEntry == "" {
+		problems = append(problems, "viewer_client_entry is required")
+	} else if strings.Contains(viewerClientEntry, "..") {
+		problems = append(problems, "viewer_client_entry must not contain '..'")
+	}
+
 	argKeys := make(map[string]struct{})
 	for idx, arg := range manifest.Args {
 		prefix := fmt.Sprintf("args[%d]", idx)

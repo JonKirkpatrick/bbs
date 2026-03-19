@@ -33,9 +33,9 @@
                         <div class="quickstart-step">2</div>
                         <strong>Register with this token</strong>
                         <p>Use a fresh identity or reuse an existing one. Capabilities can still be inserted before the owner token.</p>
-                        <pre class="quickstart-command">REGISTER your_bot "" "" connect4 owner_token={{.OwnerToken}}</pre>
+                        <pre class="quickstart-command">REGISTER your_bot "" "" &lt;game_name&gt; owner_token={{.OwnerToken}}</pre>
                         <div class="copy-row">
-                            <button type="button" class="copy-button" data-copy-text="REGISTER your_bot &quot;&quot; &quot;&quot; connect4 owner_token={{.OwnerToken}}">Copy sample command</button>
+                            <button type="button" class="copy-button" data-copy-text="REGISTER your_bot &quot;&quot; &quot;&quot; &lt;game_name&gt; owner_token={{.OwnerToken}}">Copy sample command</button>
                         </div>
                     </article>
                     <article class="quickstart-card">
@@ -64,7 +64,7 @@ Returning identity:
 REGISTER &lt;name&gt; &lt;bot_id&gt; &lt;bot_secret&gt; owner_token={{.OwnerToken}}
 
 Optional capabilities can still be included before the owner token:
-REGISTER &lt;name&gt; "" "" connect4 owner_token={{.OwnerToken}}</pre>
+REGISTER &lt;name&gt; "" "" &lt;game_name&gt; owner_token={{.OwnerToken}}</pre>
             </details>
 
             {{if .OwnerConnected}}
@@ -424,10 +424,14 @@ REGISTER &lt;name&gt; "" "" connect4 owner_token={{.OwnerToken}}</pre>
                             <dd>{{fmtTime .EndedAt}}</dd>
                         </dl>
                         <details>
-                            <summary>Move Sequence</summary>
-                            {{if .MoveSequence}}
-                                <pre>{{range $i, $m := .MoveSequence}}#{{$i}}: {{$m}}
-{{end}}</pre>
+                            <summary>Move Preview</summary>
+                            {{if .CompactMoves}}
+                                {{if gt (len .CompactMoves) 512}}
+                                    <pre>{{printf "%.512s" .CompactMoves}}...</pre>
+                                    <p class="muted">Preview truncated. Use Watch Replay for the full timeline.</p>
+                                {{else}}
+                                    <pre>{{.CompactMoves}}</pre>
+                                {{end}}
                             {{else}}
                                 <p class="empty">No moves were recorded.</p>
                             {{end}}

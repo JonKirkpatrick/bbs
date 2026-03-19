@@ -74,17 +74,11 @@ python3 examples/python_bot_template.py \
 
 ```text
 LIST
-CREATE connect4 1000 false rows=6 cols=7
+CREATE mygame 1000 false board_size=8
 JOIN 1 0
 MOVE 3
 LEAVE
 QUIT
-```
-
-Gridworld example:
-
-```text
-CREATE gridworld map=default episodes=25
 ```
 
 ## Troubleshooting

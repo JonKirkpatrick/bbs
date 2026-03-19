@@ -54,7 +54,6 @@ class GuessNumberGame:
             "supports_move_clock": False,
             "supports_handicap": False,
             "supports_episodic": False,
-            "supports_viewer": True,
         }
 
     def get_state(self):
@@ -72,21 +71,13 @@ class GuessNumberGame:
                     "done": self.game_over,
                     "outcome": outcome,
                     "viewer": {
-                        "title": "Guess The Number",
-                        "subtitle": "Plugin-owned visual panel",
-                        "status": self.last_feedback,
+                        "mode": "client",
                         "hint": f"Enter an integer move from 1 to {self.max_range}",
                         "progress": {
                             "label": "Attempt pressure",
                             "value": self.attempts,
                             "max": progress_max,
                         },
-                        "stats": [
-                            {"label": "Attempts", "value": self.attempts},
-                            {"label": "Last Guess", "value": "-" if self.last_guess is None else self.last_guess},
-                            {"label": "Range", "value": f"1 - {self.max_range}"},
-                            {"label": "State", "value": "Complete" if self.game_over else "Active"},
-                        ],
                     },
                 }
             )
@@ -122,26 +113,6 @@ class GuessNumberGame:
         return {
             "is_game_over": self.game_over,
             "winner": "player_1" if self.game_over else "",
-        }
-
-    def get_viewer_spec(self):
-        return {
-            "game": "guess_number",
-            "kind": "plugin-panel",
-            "rows": 1,
-            "cols": 1,
-            "player_colors": {"1": "#0b7285"},
-        }
-
-    def get_viewer_frame(self, move_index, timestamp):
-        return {
-            "move_index": move_index,
-            "turn_player": 1,
-            "tokens": [],
-            "timestamp": timestamp,
-            "is_terminal": self.game_over,
-            "winner": "player_1" if self.game_over else "",
-            "raw_state": self.get_state()["state"],
         }
 
 
@@ -210,12 +181,6 @@ def main():
                     resp = encode_response(req_id, result={"name": "guess_number"})
                 elif method == "get_state":
                     resp = encode_response(req_id, result=game.get_state())
-                elif method == "get_viewer_spec":
-                    resp = encode_response(req_id, result=game.get_viewer_spec())
-                elif method == "get_viewer_frame":
-                    move_index = int(params.get("move_index", 0))
-                    timestamp = str(params.get("timestamp", ""))
-                    resp = encode_response(req_id, result=game.get_viewer_frame(move_index, timestamp))
                 elif method == "validate_move":
                     game.validate_move(params.get("player_id", 0), params.get("move", ""))
                     resp = encode_response(req_id, result={})

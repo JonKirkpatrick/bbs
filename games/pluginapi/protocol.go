@@ -10,8 +10,6 @@ const (
 	MethodInit           = "init"
 	MethodGetName        = "get_name"
 	MethodGetState       = "get_state"
-	MethodGetViewerSpec  = "get_viewer_spec"
-	MethodGetViewerFrame = "get_viewer_frame"
 	MethodValidateMove   = "validate_move"
 	MethodApplyMove      = "apply_move"
 	MethodIsGameOver     = "is_game_over"
@@ -51,6 +49,8 @@ type Manifest struct {
 	Name              string    `json:"name"`
 	DisplayName       string    `json:"display_name"`
 	Executable        string    `json:"executable"`
+	ViewerClientEntry string    `json:"viewer_client_entry,omitempty"`
+	SupportsReplay    bool      `json:"supports_replay,omitempty"`
 	SupportsMoveClock bool      `json:"supports_move_clock"`
 	SupportsHandicap  bool      `json:"supports_handicap"`
 	Args              []ArgSpec `json:"args,omitempty"`
@@ -66,17 +66,11 @@ type InitResult struct {
 	SupportsMoveClock bool   `json:"supports_move_clock"`
 	SupportsHandicap  bool   `json:"supports_handicap"`
 	SupportsEpisodic  bool   `json:"supports_episodic"`
-	SupportsViewer    bool   `json:"supports_viewer"`
 }
 
 type MoveParams struct {
 	PlayerID int    `json:"player_id"`
 	Move     string `json:"move"`
-}
-
-type ViewerFrameParams struct {
-	MoveIndex int    `json:"move_index"`
-	Timestamp string `json:"timestamp,omitempty"`
 }
 
 type StateResult struct {
@@ -95,30 +89,6 @@ type IsGameOverResult struct {
 type AdvanceEpisodeResult struct {
 	Continued bool                   `json:"continued"`
 	Payload   map[string]interface{} `json:"payload,omitempty"`
-}
-
-type ViewerSpecResult struct {
-	Game         string            `json:"game"`
-	Kind         string            `json:"kind"`
-	Rows         int               `json:"rows"`
-	Cols         int               `json:"cols"`
-	PlayerColors map[string]string `json:"player_colors,omitempty"`
-}
-
-type ViewerToken struct {
-	Player int `json:"player"`
-	Row    int `json:"row"`
-	Col    int `json:"col"`
-}
-
-type ViewerFrameResult struct {
-	MoveIndex  int           `json:"move_index"`
-	TurnPlayer int           `json:"turn_player"`
-	Tokens     []ViewerToken `json:"tokens,omitempty"`
-	Timestamp  string        `json:"timestamp,omitempty"`
-	IsTerminal bool          `json:"is_terminal"`
-	Winner     string        `json:"winner,omitempty"`
-	RawState   string        `json:"raw_state,omitempty"`
 }
 
 type Empty struct{}

@@ -3,6 +3,8 @@
   "name": "guess_number",
   "display_name": "Guess The Number",
   "executable": "guess_number_plugin.py",
+  "viewer_client_entry": "guess_number_viewer.js",
+  "supports_replay": true,
   "supports_move_clock": false,
   "supports_handicap": false,
   "args": [

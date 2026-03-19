@@ -7,7 +7,7 @@
 
 \title{Build-a-Bot Stadium\\As-Built Summary}
 \author{Project Snapshot}
-\date{18 March 2026}
+\date{19 March 2026}
 
 \begin{document}
 \maketitle
@@ -24,11 +24,11 @@ Build-a-Bot Stadium is currently implemented as a single Go runtime with two pri
   \item An HTTP dashboard and viewer endpoint (default \texttt{:3000})
 \end{itemize}
 
-The platform now supports three workload styles:
+The platform now follows a plugin-only architecture:
 \begin{itemize}[leftmargin=*]
-  \item Built-in competitive games (for example Connect4)
-  \item Built-in single-agent episodic environments (for example Gridworld)
-  \item Optional process-based external game plugins discovered at runtime
+  \item All games are process-based external plugins discovered at runtime
+  \item Supports both competitive games and single-agent episodic environments
+  \item Plugins are optional; minimal deployment requires only the core server
 \end{itemize}
 
 Primary references:
@@ -71,31 +71,45 @@ The dashboard provides operational visibility and control over runtime state, in
 
 Implemented dashboard capabilities include:
 \begin{itemize}[leftmargin=*]
-  \item Live state streaming via SSE
+  \item Live state streaming via SSE and WebSocket
   \item Owner token flow (register bot, create/join/leave/eject)
   \item Admin control flow protected by \texttt{BBS\_DASHBOARD\_ADMIN\_KEY}
   \item Dynamic arena creation forms driven by live game catalog metadata
-  \item Live and replay viewer pages
+  \item Live and replay viewer pages with client-side rendering
+  \item Plugin discovery diagnostics panel showing enabled state, scan directory, and per-manifest load/skip status
 \end{itemize}
 
-Recent plugin-oriented UX additions include a plugin discovery diagnostics panel showing enabled state, scan directory, and per-manifest load/skip status.
+\subsubsection{Viewer Architecture}
+The viewer now uses a client-side rendering model where all game visualization logic runs in the browser:
+\begin{itemize}[leftmargin=*]
+  \item Server emits only raw game state frames (no structured viewer payloads)
+  \item Each plugin declares optional \texttt{viewer\_client\_entry}: path to a JavaScript rendering bundle
+  \item \texttt{/viewer/plugin-entry?game=<name>} serves the plugin's JS bundle to the browser
+  \item Browser runtime loads the JS and calls the plugin's renderer with raw state
+  \item Live and replay viewing use identical state streaming and rendering pipeline
+\end{itemize}
+
+This design ensures zero server-side render coupling, letting game developers own visualization entirely.
 
 Primary references:
 \begin{itemize}[leftmargin=*]
   \item \texttt{cmd/bbs-server/dashboard.go}
+  \item \texttt{cmd/bbs-server/viewer.go}
   \item \texttt{cmd/bbs-server/templates/index.html}
   \item \texttt{cmd/bbs-server/templates/dashboard-state.html}
+  \item \texttt{cmd/bbs-server/templates/viewer.html}
+  \item \texttt{ARCHITECTURE.md} (Viewer Architecture section)
   \item \texttt{DASHBOARD\_REMOTE\_QUICKSTART.md}
 \end{itemize}
 
 \subsection{Process-Based Game Plugin System}
-A process plugin model is now scaffolded and operational behind feature flags:
+A process plugin model is the only active game source:
 \begin{itemize}[leftmargin=*]
-  \item \texttt{BBS\_ENABLE\_GAME\_PLUGINS=true}
-  \item \texttt{BBS\_GAME\_PLUGIN\_DIR=/path/to/plugins}
+  \item \texttt{BBS\_ENABLE\_GAME\_PLUGINS=true} activates plugin discovery
+  \item \texttt{BBS\_GAME\_PLUGIN\_DIR=/path/to/plugins} (default \texttt{plugins/games})
 \end{itemize}
 
-Plugin manifests are discovered from \texttt{*.json} files and merged with built-in registrations into a single runtime catalog. Plugin games communicate with the host over JSONL RPC via stdin/stdout.
+Plugin manifests are discovered from \texttt{*.json} files in the configured directory. Plugin games communicate with the host over JSONL RPC via stdin/stdout. Manifests must declare \texttt{viewer\_client\_entry} to be valid and discoverable.
 
 Implemented plugin author support:
 \begin{itemize}[leftmargin=*]
@@ -160,7 +174,7 @@ The following are the most immediate gaps visible in the current implementation 
   \item Process restart clears active runtime context and history.
 \end{itemize}
 
-Implication: suitable for local/home-lab operation and experimentation, but not yet a durable production service.
+Implication: suitable for local/home-lab operation and experimentation, but not yet a durable production service. Careful plugin selection and manual archival workflows are recommended for important match records.
 
 \subsection{Security and Trust Model}
 \begin{itemize}[leftmargin=*]
@@ -236,14 +250,16 @@ A pragmatic next phase that aligns with the current architecture would be:
 \end{longtable}
 
 \section{As-Built Conclusion}
-Build-a-Bot Stadium has progressed from a narrow game host into a broader, extensible bot-arena platform with:
+Build-a-Bot Stadium has progressed from a narrow game host into a fully plugin-driven, extensible bot-arena platform with:
 \begin{itemize}[leftmargin=*]
-  \item multi-mode arena semantics,
-  \item a functional process-plugin architecture,
-  \item integrated dashboard-driven operations, and
+  \item plugin-only game discovery and runtime,
+  \item client-side rendering model for game visualization,
+  \item multi-mode arena semantics supporting both competitive and environment-style games,
+  \item functional process-plugin architecture with manifest validation,
+  \item integrated dashboard-driven operations with owner and admin workflows, and
   \item practical deployment and release pathways.
 \end{itemize}
 
-The core extension and operator workflows are now demonstrably in place. The most significant remaining work is concentrated in durability, protocol cleanup, security hardening, and automated regression coverage.
+The core extension and operator workflows are now demonstrably in place. The most significant remaining work is concentrated in durability (persistent match archives), protocol cleanup (unified JSON responses), security hardening (transport protection, plugin governance), and automated regression coverage.
 
 \end{document}

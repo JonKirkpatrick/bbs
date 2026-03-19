@@ -13,6 +13,7 @@
             --ink: #14213d;
             --line: #d8d1bf;
             --accent: #0b7285;
+            --danger: #9f1f35;
         }
 
         * { box-sizing: border-box; }
@@ -88,6 +89,7 @@
             display: block;
             margin: 0 auto;
             background: #fdfdfd;
+            border: 1px solid #ece8db;
         }
 
         .controls {
@@ -115,6 +117,11 @@
             cursor: pointer;
         }
 
+        .controls button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
         .meta {
             font-family: "IBM Plex Mono", monospace;
             font-size: 0.82rem;
@@ -122,6 +129,43 @@
             background: white;
             padding: 0.55rem;
             white-space: pre-wrap;
+        }
+
+        .status {
+            margin: 0;
+            font-family: "IBM Plex Mono", monospace;
+            font-size: 0.82rem;
+            color: #334;
+        }
+
+        .status.error {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        .cards {
+            display: grid;
+            gap: 0.45rem;
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            background: white;
+            padding: 0.5rem;
+        }
+
+        .card-title {
+            margin: 0 0 0.25rem;
+            font-size: 0.82rem;
+            color: #334;
+            font-family: "IBM Plex Mono", monospace;
+        }
+
+        .card-value {
+            margin: 0;
+            font-size: 0.95rem;
+            font-weight: 600;
+            overflow-wrap: anywhere;
         }
 
         details {
@@ -139,974 +183,524 @@
             padding: 0.55rem;
         }
 
-        .hint {
-            font-family: "IBM Plex Mono", monospace;
-            font-size: 0.82rem;
-            color: #334;
-            margin: 0;
-        }
-
-        /* ── Participant cards ─────────────────────────────────── */
-        .player-cards {
-            display: flex;
-            flex-direction: column;
-            gap: 0.45rem;
-        }
-
-        .player-card {
-            border: 2px solid var(--ink);
-            background: white;
-            padding: 0.5rem 0.65rem;
-            position: relative;
-            transition: box-shadow 0.25s, border-color 0.25s;
-        }
-
-        .player-card.active-turn {
-            border-color: var(--player-color);
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--player-color) 40%, transparent),
-                        4px 4px 0 rgba(20,33,61,0.18);
-            animation: card-pulse 1.4s ease-in-out infinite alternate;
-        }
-
-        @keyframes card-pulse {
-            from { box-shadow: 0 0 0 2px color-mix(in srgb, var(--player-color) 30%, transparent), 4px 4px 0 rgba(20,33,61,0.18); }
-            to   { box-shadow: 0 0 0 7px color-mix(in srgb, var(--player-color) 55%, transparent), 4px 4px 0 rgba(20,33,61,0.18); }
-        }
-
-        .turn-badge {
-            display: none;
-            position: absolute;
-            top: -1px;
-            right: -1px;
-            font-size: 0.66rem;
-            font-family: "IBM Plex Mono", monospace;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            color: white;
-            background: var(--player-color);
-            padding: 0.12rem 0.38rem;
-        }
-
-        .player-card.active-turn .turn-badge {
-            display: inline-block;
-        }
-
-        .player-card-header {
-            display: flex;
-            align-items: center;
-            gap: 0.42rem;
-            flex-wrap: wrap;
-        }
-
-        .player-color-swatch {
-            display: inline-block;
-            width: 13px;
-            height: 13px;
-            border-radius: 50%;
-            border: 1.5px solid rgba(0,0,0,0.25);
-            flex-shrink: 0;
-        }
-
-        .player-num {
-            font-family: "IBM Plex Mono", monospace;
-            font-size: 0.76rem;
-            color: #555;
-        }
-
-        .player-card-name {
-            font-weight: 700;
-            font-size: 0.92rem;
-        }
-
-        .player-card-meta {
-            font-family: "IBM Plex Mono", monospace;
-            font-size: 0.73rem;
-            color: #445;
-            margin-top: 0.22rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
         @media (max-width: 900px) {
             .viewer-grid {
                 grid-template-columns: 1fr;
             }
         }
-
-        /* ── Gridworld Viewer Styles ────────────────────────── */
-        .gridworld-container {
-            display: grid;
-            gap: 0.5rem;
-        }
-
-        .reward-graph-wrap {
-            border: 1px solid var(--line);
-            background: white;
-            padding: 0.5rem;
-            height: 200px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .reward-graph-title {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #555;
-            margin: 0 0 0.3rem 0;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        #reward-graph {
-            flex: 1;
-            border: 1px solid var(--line);
-            background: #fafafa;
-        }
-
-        .gridworld-stats {
-            font-family: "IBM Plex Mono", monospace;
-            font-size: 0.78rem;
-            border: 1px solid var(--line);
-            background: white;
-            padding: 0.4rem;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.3rem;
-            row-gap: 0.2rem;
-        }
-
-        .gridworld-stat-row {
-            display: contents;
-        }
-
-        .gridworld-stat-label {
-            color: #665;
-            font-weight: 500;
-        }
-
-        .gridworld-stat-value {
-            color: var(--ink);
-            text-align: right;
-        }
     </style>
 </head>
 <body>
     <div class="shell">
-        <section class="panel">
+        <div class="panel">
             <div class="top-row">
                 <div>
-                    <h1>Match Viewer</h1>
-                    <p class="subtitle">Canvas replay/live view powered by game-provided frame data</p>
+                    <h1>Viewer</h1>
+                    <p class="subtitle" id="mode-label">Loading...</p>
                 </div>
-                <a class="back-link" href="/{{if .AdminKey}}?admin_key={{.AdminKey | urlquery}}{{end}}">Back to Dashboard</a>
+                <a class="back-link" href="/">Back</a>
             </div>
-        </section>
+        </div>
 
-        <section class="panel viewer-grid">
-            <div>
-                <div class="canvas-wrap">
-                    <canvas id="viewer-canvas" width="700" height="560"></canvas>
-                </div>
+        <div class="panel viewer-grid">
+            <div class="canvas-wrap">
+                <canvas id="viewer-canvas" width="760" height="300"></canvas>
+                <p id="status" class="status">Waiting for data...</p>
                 <details>
-                    <summary>Raw Frame State</summary>
-                    <pre id="raw-state">(waiting for first frame)</pre>
+                    <summary>Raw Frame JSON</summary>
+                    <pre id="raw-frame">(no frame yet)</pre>
                 </details>
             </div>
 
             <div class="controls">
-                <div id="player-cards" class="player-cards"></div>
-                
-                <!-- Gridworld-specific controls -->
-                <div id="gridworld-section" style="display: none;" class="gridworld-container">
-                    <div class="reward-graph-wrap">
-                        <p class="reward-graph-title">Reward per Episode</p>
-                        <canvas id="reward-graph" width="280" height="160"></canvas>
-                    </div>
-                    <div class="gridworld-stats">
-                        <div class="gridworld-stat-row">
-                            <span class="gridworld-stat-label">Episode:</span>
-                            <span class="gridworld-stat-value" id="gw-episode">-</span>
-                        </div>
-                        <div class="gridworld-stat-row">
-                            <span class="gridworld-stat-label">Steps:</span>
-                            <span class="gridworld-stat-value" id="gw-steps">-</span>
-                        </div>
-                        <div class="gridworld-stat-row">
-                            <span class="gridworld-stat-label">Wins:</span>
-                            <span class="gridworld-stat-value" id="gw-wins">-</span>
-                        </div>
-                        <div class="gridworld-stat-row">
-                            <span class="gridworld-stat-label">Losses:</span>
-                            <span class="gridworld-stat-value" id="gw-losses">-</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <p id="mode-hint" class="hint"></p>
                 <div class="control-row">
-                    <button id="step-back" type="button">Step -</button>
-                    <button id="play-toggle" type="button">Play</button>
-                    <button id="step-forward" type="button">Step +</button>
+                    <button id="prev-btn" type="button">Prev</button>
+                    <button id="play-btn" type="button">Play</button>
+                    <button id="next-btn" type="button">Next</button>
                 </div>
+
                 <div class="control-row">
-                    <label for="speed">Speed:</label>
-                    <select id="speed">
-                        <option value="250">4x</option>
-                        <option value="500">2x</option>
-                        <option value="1000" selected>1x</option>
-                        <option value="1500">0.67x</option>
+                    <label for="frame-slider">Frame</label>
+                    <input id="frame-slider" type="range" min="0" max="0" step="1" value="0" style="width: 170px;">
+                    <span id="frame-label" class="meta">0 / 0</span>
+                </div>
+
+                <div class="control-row">
+                    <label for="speed-select">Speed</label>
+                    <select id="speed-select">
+                        <option value="1200">0.75x</option>
+                        <option value="900" selected>1x</option>
+                        <option value="550">1.5x</option>
+                        <option value="320">2.5x</option>
                     </select>
                 </div>
-                <div class="control-row">
-                    <input id="scrub" type="range" min="0" max="0" value="0" style="width: 100%;" />
-                </div>
-                <div id="meta" class="meta">No frames loaded yet.</div>
+
+                <div id="meta" class="meta">Mode: -\nGame: -\nPlugin entry: -</div>
+
+                <div id="player-cards" class="cards"></div>
             </div>
-        </section>
+        </div>
     </div>
 
-    <div id="page-data" data-arena-id="{{.ArenaID}}" data-match-id="{{.MatchID}}" hidden></div>
-
     <script>
-        const pageData = document.getElementById("page-data").dataset;
-        const arenaId = parseInt(pageData.arenaId, 10);
-        const matchId = parseInt(pageData.matchId, 10);
+    (function () {
+        const arenaId = Number({{.ArenaID}} || 0);
+        const matchId = Number({{.MatchID}} || 0);
+        const adminKey = {{printf "%q" .AdminKey}};
+
         const canvas = document.getElementById("viewer-canvas");
         const ctx = canvas.getContext("2d");
-        const rawState = document.getElementById("raw-state");
-        const meta = document.getElementById("meta");
-        const modeHint = document.getElementById("mode-hint");
-        const scrub = document.getElementById("scrub");
-        const playToggle = document.getElementById("play-toggle");
-        const stepBack = document.getElementById("step-back");
-        const stepForward = document.getElementById("step-forward");
-        const speedSelect = document.getElementById("speed");
+        const statusEl = document.getElementById("status");
+        const modeLabelEl = document.getElementById("mode-label");
+        const metaEl = document.getElementById("meta");
+        const rawFrameEl = document.getElementById("raw-frame");
+        const playerCardsEl = document.getElementById("player-cards");
 
-        let spec = null;
-        let frames = [];
-        let currentIndex = 0;
-        let isPlaying = false;
-        let playTimer = null;
-        let autoFollowLive = true;
-        let knownPlayers = [];
-        let gridworldHeatmap = {}; // tracks visit counts by "row,col"
-        let gridworldRewards = []; // tracks reward per episode [{ episode, reward }]
-        let gridworldMeta = null; // stores latest gridworld metadata
+        const prevBtn = document.getElementById("prev-btn");
+        const playBtn = document.getElementById("play-btn");
+        const nextBtn = document.getElementById("next-btn");
+        const frameSlider = document.getElementById("frame-slider");
+        const frameLabel = document.getElementById("frame-label");
+        const speedSelect = document.getElementById("speed-select");
 
-        // ── Participant card helpers ────────────────────────────
-        function escapeHtml(str) {
-            return String(str)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;");
+        let mode = "idle";
+        let gameName = "";
+        let pluginMeta = null;
+        let replayFrames = [];
+        let replayIndex = 0;
+        let replayTimer = null;
+        let players = [];
+        let lastLiveEvent = null;
+
+        let activePluginRenderer = null;
+        let activePluginGame = "";
+        let activePluginEntryURL = "";
+        const loadedPluginEntries = new Set();
+        const pluginRenderers = new Map();
+
+        function setStatus(message, isError) {
+            statusEl.textContent = message;
+            statusEl.classList.toggle("error", !!isError);
         }
 
-        function buildPlayerCards(players) {
-            if (!players || players.length === 0) return;
-            knownPlayers = players;
-            const container = document.getElementById("player-cards");
-            if (!container) return;
-            container.innerHTML = "";
-            players.forEach(p => {
-                const color = (spec && spec.player_colors && spec.player_colors[String(p.player_id)]) || "#888";
-                const card = document.createElement("div");
-                card.className = "player-card";
-                card.id = "player-card-" + p.player_id;
-                card.style.setProperty("--player-color", color);
-
-                const botIdHtml = p.bot_id
-                    ? `<div class="player-card-meta" title="${escapeHtml(p.bot_id)}">ID: ${escapeHtml(p.bot_id)}</div>`
-                    : "";
-                const statsHtml = (p.wins !== undefined)
-                    ? `<div class="player-card-meta">${p.wins}W &nbsp;${p.losses}L &nbsp;${p.draws}D</div>`
-                    : "";
-
-                card.innerHTML = `
-                    <span class="turn-badge">&#x25B6; Turn</span>
-                    <div class="player-card-header">
-                        <span class="player-color-swatch" style="background:${color}"></span>
-                        <span class="player-num">P${p.player_id}</span>
-                        <span class="player-card-name">${escapeHtml(p.name || "Unknown")}</span>
-                    </div>
-                    ${botIdHtml}
-                    ${statsHtml}`;
-                container.appendChild(card);
-            });
-        }
-
-        function updateActiveTurn(turnPlayer) {
-            document.querySelectorAll(".player-card").forEach(card => {
-                card.classList.remove("active-turn");
-            });
-            if (turnPlayer > 0) {
-                const activeCard = document.getElementById("player-card-" + turnPlayer);
-                if (activeCard) activeCard.classList.add("active-turn");
-            }
-        }
-
-        function setModeHint() {
-            if (arenaId > 0) {
-                modeHint.textContent = "Live mode: Arena #" + arenaId;
-            } else if (matchId > 0) {
-                modeHint.textContent = "Replay mode: Match #" + matchId;
-            } else {
-                modeHint.textContent = "No arena_id or match_id supplied. Open this page from the dashboard links.";
-            }
-        }
-
-        function setFrames(nextFrames) {
-            frames = nextFrames || [];
-            if (currentIndex >= frames.length) {
-                currentIndex = Math.max(0, frames.length - 1);
-            }
-            updateControls();
-            renderCurrentFrame();
-        }
-
-        function upsertLiveFrame(frame) {
-            if (!frame) {
-                return;
-            }
-            const idx = frames.findIndex(f => f.move_index === frame.move_index);
-            if (idx >= 0) {
-                frames[idx] = frame;
-            } else {
-                frames.push(frame);
-                frames.sort((a, b) => a.move_index - b.move_index);
-            }
-
-            if (autoFollowLive || currentIndex >= Math.max(0, frames.length - 2)) {
-                currentIndex = Math.max(0, frames.length - 1);
-            }
-
-            updateControls();
-            renderCurrentFrame();
-        }
-
-        function updateControls() {
-            scrub.max = Math.max(0, frames.length - 1);
-            scrub.value = Math.min(currentIndex, frames.length - 1);
-            stepBack.disabled = frames.length === 0 || currentIndex <= 0;
-            stepForward.disabled = frames.length === 0 || currentIndex >= frames.length - 1;
-            playToggle.disabled = frames.length === 0;
-            playToggle.textContent = isPlaying ? "Pause" : "Play";
-        }
-
-        function renderCurrentFrame() {
-            if (!spec || frames.length === 0) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "#1f2937";
-                ctx.font = "16px IBM Plex Mono";
-                ctx.fillText("Waiting for frame data...", 20, 40);
-                rawState.textContent = "(waiting for first frame)";
-                meta.textContent = "No frames loaded yet.";
-                return;
-            }
-
-            const frame = frames[currentIndex];
-            const gwSection = document.getElementById("gridworld-section");
-            
-            if (spec.kind === "connect4-grid") {
-                if (gwSection) gwSection.style.display = "none";
-                renderConnect4(spec, frame);
-            } else if (spec.kind === "gridworld-heatmap") {
-                if (gwSection) gwSection.style.display = "grid";
-                renderGridworld(spec, frame);
-            } else if (spec.kind === "plugin-panel") {
-                if (gwSection) gwSection.style.display = "none";
-                renderPluginPanel(spec, frame);
-            } else if (spec.kind === "raw-state") {
-                if (gwSection) gwSection.style.display = "none";
-                renderRawState(spec, frame);
-            } else {
-                if (gwSection) gwSection.style.display = "none";
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "#1f2937";
-                ctx.font = "16px IBM Plex Mono";
-                ctx.fillText("Renderer for kind '" + spec.kind + "' is not implemented yet.", 20, 40);
-            }
-
-            const lines = [];
-            lines.push("game=" + spec.game + " kind=" + spec.kind);
-            lines.push("frame=" + frame.move_index + " of " + Math.max(0, frames.length - 1));
-            lines.push("turn_player=" + frame.turn_player);
-            if (frame.timestamp) {
-                lines.push("timestamp=" + frame.timestamp);
-            }
-            if (frame.is_terminal) {
-                lines.push("terminal=true winner=" + (frame.winner || "unknown"));
-            }
-            meta.textContent = lines.join("\n");
-            rawState.textContent = frame.raw_state || "(raw state omitted)";
-
-            updateActiveTurn(frame.is_terminal ? 0 : frame.turn_player);
-        }
-
-        function renderRawState(spec, frame) {
-            canvas.width = 760;
-            canvas.height = 180;
+        function clearCanvasNotice(message) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "#1f2937";
-            ctx.font = "15px IBM Plex Mono";
-            ctx.fillText("No custom renderer registered for game '" + spec.game + "'.", 20, 44);
-            ctx.fillText("Displaying raw state below.", 20, 72);
-            if (frame && typeof frame.move_index === "number") {
-                ctx.fillText("Frame: " + frame.move_index, 20, 110);
-            }
-        }
-
-        function parseRawStateObject(rawState) {
-            try {
-                const parsed = JSON.parse(rawState);
-                if (parsed && typeof parsed === "object") {
-                    return parsed;
-                }
-                return null;
-            } catch (_) {
-                return null;
-            }
-        }
-
-        function asNumber(value, fallback) {
-            const num = Number(value);
-            return Number.isFinite(num) ? num : fallback;
-        }
-
-        function drawPanelStatCard(x, y, width, height, label, value) {
-            ctx.fillStyle = "#ffffff";
-            ctx.strokeStyle = "#d8d1bf";
-            ctx.lineWidth = 1;
-            ctx.fillRect(x, y, width, height);
-            ctx.strokeRect(x, y, width, height);
-
-            ctx.fillStyle = "#556";
-            ctx.font = "12px IBM Plex Mono";
-            ctx.fillText(String(label), x + 10, y + 18);
-
-            ctx.fillStyle = "#14213d";
-            ctx.font = "700 26px Space Grotesk";
-            ctx.fillText(String(value), x + 10, y + 52);
-        }
-
-        function renderPluginPanel(spec, frame) {
-            canvas.width = 760;
-            canvas.height = 300;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const stateObj = parseRawStateObject(frame.raw_state) || {};
-            const view = (stateObj.viewer && typeof stateObj.viewer === "object") ? stateObj.viewer : {};
-
-            const title = String(view.title || (spec.game + " Viewer"));
-            const subtitle = String(view.subtitle || "Plugin-driven panel");
-            const statusText = String(view.status || stateObj.feedback || "Waiting for update...");
-            const hintText = String(view.hint || "");
-            const isDone = !!(stateObj.done || frame.is_terminal);
-
-            let stats = [];
-            if (Array.isArray(view.stats)) {
-                stats = view.stats
-                    .filter(item => item && typeof item === "object")
-                    .map(item => ({
-                        label: String(item.label || "value"),
-                        value: String(item.value ?? "-")
-                    }));
-            }
-            if (stats.length === 0) {
-                stats = [
-                    { label: "Attempts", value: String(stateObj.attempts ?? "-") },
-                    { label: "Range", value: "1 - " + String(stateObj.max_range ?? "?") },
-                    { label: "Finished", value: isDone ? "Yes" : "No" },
-                ];
-            }
-
-            const progress = (view.progress && typeof view.progress === "object") ? view.progress : {};
-            const progressValue = asNumber(progress.value, asNumber(stateObj.attempts, 0));
-            const progressMax = Math.max(1, asNumber(progress.max, Math.max(progressValue, 1)));
-            const progressRatio = Math.max(0, Math.min(1, progressValue / progressMax));
-            const progressLabel = String(progress.label || "Attempts");
-
-            // Background and header band.
             ctx.fillStyle = "#f7f3e8";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "#0b7285";
-            ctx.fillRect(0, 0, canvas.width, 62);
-
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "700 28px Space Grotesk";
-            ctx.fillText(title, 20, 40);
-            ctx.font = "13px IBM Plex Mono";
-            ctx.fillText(subtitle, 22, 56);
-
-            // Status callout.
-            ctx.fillStyle = "#fffaf0";
-            ctx.strokeStyle = isDone ? "#1f7a1f" : "#d8d1bf";
-            ctx.lineWidth = isDone ? 2 : 1;
-            ctx.fillRect(20, 82, 720, 58);
-            ctx.strokeRect(20, 82, 720, 58);
-
-            ctx.fillStyle = "#334";
-            ctx.font = "12px IBM Plex Mono";
-            ctx.fillText("Status", 32, 100);
             ctx.fillStyle = "#14213d";
-            ctx.font = "700 24px Space Grotesk";
-            ctx.fillText(statusText, 32, 128);
-
-            // Progress bar.
-            const barX = 20;
-            const barY = 158;
-            const barW = 720;
-            const barH = 22;
-
-            ctx.fillStyle = "#e9e5d9";
-            ctx.fillRect(barX, barY, barW, barH);
-            ctx.fillStyle = "#1f8ea3";
-            ctx.fillRect(barX, barY, Math.round(barW * progressRatio), barH);
-            ctx.strokeStyle = "#c8c2b0";
-            ctx.lineWidth = 1;
-            ctx.strokeRect(barX, barY, barW, barH);
-
-            ctx.fillStyle = "#314";
-            ctx.font = "12px IBM Plex Mono";
-            ctx.fillText(progressLabel + ": " + progressValue + " / " + progressMax, barX, barY + 38);
-
-            if (hintText) {
-                ctx.fillStyle = "#445";
-                ctx.font = "12px IBM Plex Mono";
-                ctx.fillText(hintText, 420, barY + 38);
-            }
-
-            // Stats row.
-            const cardY = 206;
-            const gap = 10;
-            const cardCount = Math.min(4, Math.max(1, stats.length));
-            const cardW = Math.floor((720 - gap * (cardCount - 1)) / cardCount);
-            for (let i = 0; i < cardCount; i++) {
-                const stat = stats[i];
-                const x = 20 + i * (cardW + gap);
-                drawPanelStatCard(x, cardY, cardW, 78, stat.label, stat.value);
-            }
+            ctx.font = "700 22px Space Grotesk";
+            ctx.fillText("Viewer Plugin", 24, 42);
+            ctx.font = "13px IBM Plex Mono";
+            ctx.fillStyle = "#425";
+            ctx.fillText(message, 24, 72);
         }
 
-        function renderConnect4(spec, frame) {
-            const rows = Math.max(1, spec.rows || 6);
-            const cols = Math.max(1, spec.cols || 7);
-            const cell = Math.max(36, Math.floor(700 / Math.max(rows, cols + 1)));
-            const pad = 18;
-            const boardW = cols * cell;
-            const boardH = rows * cell;
-            canvas.width = boardW + pad * 2;
-            canvas.height = boardH + pad * 2 + 4;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            ctx.fillStyle = "#1d4ed8";
-            ctx.fillRect(pad, pad, boardW, boardH);
-
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    const x = pad + c * cell + cell / 2;
-                    const y = pad + r * cell + cell / 2;
-                    ctx.beginPath();
-                    ctx.arc(x, y, cell * 0.35, 0, Math.PI * 2);
-                    ctx.fillStyle = "#f8fafc";
-                    ctx.fill();
-                }
-            }
-
-            const color1 = (spec.player_colors && spec.player_colors["1"]) || "#ef476f";
-            const color2 = (spec.player_colors && spec.player_colors["2"]) || "#ffd166";
-
-            (frame.tokens || []).forEach(token => {
-                const x = pad + token.col * cell + cell / 2;
-                const y = pad + token.row * cell + cell / 2;
-                ctx.beginPath();
-                ctx.arc(x, y, cell * 0.35, 0, Math.PI * 2);
-                ctx.fillStyle = token.player === 1 ? color1 : color2;
-                ctx.fill();
-                ctx.strokeStyle = "#1f2937";
-                ctx.stroke();
-            });
+        function updateFrameLabel() {
+            const total = replayFrames.length;
+            frameLabel.textContent = total === 0 ? "0 / 0" : String(replayIndex + 1) + " / " + String(total);
         }
 
-        /**
-         * Parse gridworld metadata from frame.raw_state (which contains JSON metadata).
-         */
-        function parseGridworldMeta(rawState) {
-            try {
-                return JSON.parse(rawState);
-            } catch (_) {
-                return null;
-            }
-        }
-
-        /**
-         * Interpolate color between white, yellow, orange, red based on value [0, 1].
-         */
-        function heatmapColor(value) {
-            // value: 0 = white, 0.33 = yellow, 0.66 = orange, 1 = red
-            if (value <= 0) {
-                return "#ffffff";
-            }
-            if (value < 0.33) {
-                // white to yellow
-                const t = value / 0.33;
-                const r = 255;
-                const g = 255;
-                const b = Math.round(255 * (1 - t));
-                return `rgb(${r},${g},${b})`;
-            } else if (value < 0.66) {
-                // yellow to orange
-                const t = (value - 0.33) / 0.33;
-                const r = 255;
-                const g = Math.round(255 * (1 - t * 0.5));
-                const b = 0;
-                return `rgb(${r},${g},${b})`;
+        function updateControlState() {
+            const replayMode = mode === "replay";
+            const hasFrames = replayFrames.length > 0;
+            prevBtn.disabled = !replayMode || !hasFrames;
+            nextBtn.disabled = !replayMode || !hasFrames;
+            frameSlider.disabled = !replayMode || !hasFrames;
+            speedSelect.disabled = !replayMode;
+            if (mode === "live") {
+                playBtn.disabled = true;
+                playBtn.textContent = "Live";
             } else {
-                // orange to red
-                const t = (value - 0.66) / 0.34;
-                const r = 255;
-                const g = Math.round(255 * (0.5 - t * 0.5));
-                const b = 0;
-                return `rgb(${r},${g},${b})`;
+                playBtn.disabled = !replayMode || !hasFrames;
+                playBtn.textContent = replayTimer ? "Pause" : "Play";
             }
         }
 
-        /**
-         * Render gridworld heatmap with visit counts and special cells.
-         */
-        function renderGridworld(spec, frame) {
-            const meta = parseGridworldMeta(frame.raw_state);
-            if (!meta || !meta.grid) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "#1f2937";
-                ctx.font = "16px IBM Plex Mono";
-                ctx.fillText("Error: Invalid gridworld frame data", 20, 40);
+        function updateMeta(frame) {
+            const lines = [];
+            lines.push("Mode: " + mode);
+            lines.push("Game: " + (gameName || "-"));
+            lines.push("Plugin entry: " + ((pluginMeta && pluginMeta.entry_url) || "-"));
+            if (frame) {
+                lines.push("Move index: " + String(frame.move_index || 0));
+                lines.push("Timestamp: " + String(frame.timestamp || "-"));
+                lines.push("Terminal: " + String(!!frame.is_terminal));
+                if (frame.winner) {
+                    lines.push("Winner: " + String(frame.winner));
+                }
+            }
+            metaEl.textContent = lines.join("\n");
+        }
+
+        function renderPlayers() {
+            playerCardsEl.innerHTML = "";
+            if (!Array.isArray(players) || players.length === 0) {
+                const card = document.createElement("div");
+                card.className = "card";
+                card.innerHTML = '<p class="card-title">Players</p><p class="card-value">No players reported.</p>';
+                playerCardsEl.appendChild(card);
                 return;
             }
 
-            gridworldMeta = meta;
+            for (const player of players) {
+                const card = document.createElement("div");
+                card.className = "card";
+                const name = player && player.name ? player.name : "Unknown";
+                const pid = player && Number.isFinite(player.player_id) ? player.player_id : "?";
+                const bot = player && player.bot_id ? player.bot_id : "-";
+                const wins = player && Number.isFinite(player.wins) ? player.wins : 0;
+                const losses = player && Number.isFinite(player.losses) ? player.losses : 0;
+                const draws = player && Number.isFinite(player.draws) ? player.draws : 0;
+                card.innerHTML =
+                    '<p class="card-title">P' + pid + '</p>' +
+                    '<p class="card-value">' + name + '</p>' +
+                    '<p class="card-title">Bot: ' + bot + '</p>' +
+                    '<p class="card-title">W/L/D: ' + wins + '/' + losses + '/' + draws + '</p>';
+                playerCardsEl.appendChild(card);
+            }
+        }
 
-            const rows = meta.grid.length || 1;
-            const cols = (meta.grid[0] && meta.grid[0].length) || 1;
-            const cell = Math.max(20, Math.floor(700 / Math.max(cols, 8)));
-            const pad = 18;
-            const boardW = cols * cell;
-            const boardH = rows * cell;
-            canvas.width = boardW + pad * 2 + 4;
-            canvas.height = boardH + pad * 2 + 4;
+        function activatePluginRenderer(game) {
+            const key = String(game || "").trim().toLowerCase();
+            activePluginGame = key;
+            activePluginRenderer = pluginRenderers.get(key) || null;
+            return activePluginRenderer;
+        }
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        function maybeLoadPluginRenderer(meta, game) {
+            const key = String(game || "").trim().toLowerCase();
+            if (!meta || !meta.entry_url) {
+                activePluginRenderer = null;
+                activePluginGame = key;
+                activePluginEntryURL = "";
+                return Promise.resolve(false);
+            }
 
-            // Find max visit count for normalization
-            let maxVisits = 1;
-            Object.values(gridworldHeatmap).forEach(count => {
-                if (count > maxVisits) maxVisits = count;
+            const entryURL = meta.entry_url;
+            activePluginEntryURL = entryURL;
+            activatePluginRenderer(key);
+            if (activePluginRenderer) {
+                return Promise.resolve(true);
+            }
+
+            if (loadedPluginEntries.has(entryURL)) {
+                return Promise.resolve(!!activatePluginRenderer(key));
+            }
+
+            return new Promise(function (resolve) {
+                const script = document.createElement("script");
+                script.src = entryURL;
+                script.async = true;
+
+                script.addEventListener("load", function () {
+                    loadedPluginEntries.add(entryURL);
+                    resolve(!!activatePluginRenderer(key));
+                });
+
+                script.addEventListener("error", function () {
+                    setStatus("Failed to load viewer plugin script.", true);
+                    resolve(false);
+                });
+
+                document.head.appendChild(script);
             });
-
-            // Render cells with heatmap
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    const x = pad + c * cell;
-                    const y = pad + r * cell;
-                    const cellType = meta.grid[r][c];
-                    const visitKey = `${r},${c}`;
-                    const visitCount = gridworldHeatmap[visitKey] || 0;
-                    const visitNorm = Math.min(1, visitCount / maxVisits);
-
-                    // Draw heatmap background
-                    ctx.fillStyle = heatmapColor(visitNorm);
-                    ctx.fillRect(x, y, cell, cell);
-
-                    // Draw cell borders
-                    ctx.strokeStyle = "#ddd";
-                    ctx.lineWidth = 0.5;
-                    ctx.strokeRect(x, y, cell, cell);
-
-                    // Draw special cell indicators
-                    if (cellType === 1) { // Wall
-                        ctx.fillStyle = "#333";
-                        ctx.fillRect(x + 2, y + 2, cell - 4, cell - 4);
-                    } else if (cellType === 2) { // Start
-                        ctx.fillStyle = "#4ade80";
-                        ctx.beginPath();
-                        ctx.arc(x + cell / 2, y + cell / 2, cell * 0.3, 0, Math.PI * 2);
-                        ctx.fill();
-                    } else if (cellType === 3) { // Goal
-                        ctx.fillStyle = "#f59e0b";
-                        ctx.beginPath();
-                        ctx.moveTo(x + cell / 2, y + cell * 0.2);
-                        ctx.lineTo(x + cell * 0.8, y + cell * 0.8);
-                        ctx.lineTo(x + cell * 0.2, y + cell * 0.8);
-                        ctx.closePath();
-                        ctx.fill();
-                    } else if (cellType === 4) { // Pit
-                        ctx.fillStyle = "#ef4444";
-                        const r = cell * 0.35;
-                        ctx.beginPath();
-                        ctx.arc(x + cell / 2, y + cell / 2, r, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.strokeStyle = "#991b1b";
-                        ctx.lineWidth = 1.5;
-                        ctx.stroke();
-                    }
-                }
-            }
-
-            // Draw agent position
-            if (meta.agent_pos) {
-                const ax = pad + meta.agent_pos.col * cell + cell / 2;
-                const ay = pad + meta.agent_pos.row * cell + cell / 2;
-                ctx.fillStyle = "#0b7285";
-                ctx.beginPath();
-                ctx.arc(ax, ay, cell * 0.25, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = "#fff";
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-            }
-
-            // Update gridworld stats
-            updateGridworldStats(meta);
-
-            // Update visit count for current agent position
-            if (meta.agent_pos) {
-                const visitKey = `${meta.agent_pos.row},${meta.agent_pos.col}`;
-                gridworldHeatmap[visitKey] = (gridworldHeatmap[visitKey] || 0) + 1;
-            }
-
-            // Track rewards on terminal state
-            if (meta.terminal && frame.is_terminal) {
-                const lastRewardEntry = gridworldRewards.find(r => r.episode === meta.episode);
-                if (!lastRewardEntry) {
-                    gridworldRewards.push({
-                        episode: meta.episode,
-                        reward: meta.reward
-                    });
-                    renderRewardGraph();
-                }
-            }
         }
 
-        /**
-         * Update gridworld statistics display.
-         */
-        function updateGridworldStats(meta) {
-            if (!meta) return;
-            const gwSection = document.getElementById("gridworld-section");
-            if (!gwSection || gwSection.style.display === "none") return;
-
-            document.getElementById("gw-episode").textContent = meta.episode + " / " + meta.episode_total;
-            document.getElementById("gw-steps").textContent = meta.step + " / " + meta.max_steps;
-            document.getElementById("gw-wins").textContent = meta.episode_wins || "0";
-            document.getElementById("gw-losses").textContent = meta.episode_losses || "0";
-        }
-
-        /**
-         * Render reward graph using canvas.
-         */
-        function renderRewardGraph() {
-            const canvas = document.getElementById("reward-graph");
-            if (!canvas) return;
-            const ctx = canvas.getContext("2d");
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            if (gridworldRewards.length === 0) {
-                ctx.fillStyle = "#999";
-                ctx.font = "12px IBM Plex Mono";
-                ctx.fillText("No episode data yet", 10, canvas.height / 2);
+        function renderCurrentFrame(frame, frameIndex, frameTotal) {
+            rawFrameEl.textContent = frame ? JSON.stringify(frame, null, 2) : "(no frame yet)";
+            updateMeta(frame || null);
+            if (!frame) {
+                clearCanvasNotice("No frame available.");
                 return;
             }
 
-            const padding = 25;
-            const graphWidth = canvas.width - padding * 2;
-            const graphHeight = canvas.height - padding * 2;
-
-            // Draw axes
-            ctx.strokeStyle = "#999";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(padding, canvas.height - padding);
-            ctx.lineTo(canvas.width - padding, canvas.height - padding);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(padding, padding);
-            ctx.lineTo(padding, canvas.height - padding);
-            ctx.stroke();
-
-            // Plot rewards
-            if (gridworldRewards.length > 1) {
-                ctx.strokeStyle = "#3b82f6";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                gridworldRewards.forEach((entry, idx) => {
-                    const x = padding + (idx / (gridworldRewards.length - 1)) * graphWidth;
-                    const y = canvas.height - padding - ((entry.reward + 1) / 2) * graphHeight; // normalize -1 to 1 to 0 to 1
-                    if (idx === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
-                });
-                ctx.stroke();
-
-                // Plot points
-                ctx.fillStyle = "#ef4444";
-                gridworldRewards.forEach((entry, idx) => {
-                    const x = padding + (idx / (gridworldRewards.length - 1)) * graphWidth;
-                    const y = canvas.height - padding - ((entry.reward + 1) / 2) * graphHeight;
-                    ctx.beginPath();
-                    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-            } else if (gridworldRewards.length === 1) {
-                const entry = gridworldRewards[0];
-                const x = padding + graphWidth / 2;
-                const y = canvas.height - padding - ((entry.reward + 1) / 2) * graphHeight;
-                ctx.fillStyle = "#ef4444";
-                ctx.beginPath();
-                ctx.arc(x, y, 3, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            // Draw axis labels
-            ctx.fillStyle = "#666";
-            ctx.font = "10px IBM Plex Mono";
-            ctx.textAlign = "center";
-            ctx.fillText("Episodes", canvas.width / 2, canvas.height - 5);
-            ctx.save();
-            ctx.translate(8, canvas.height / 2);
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText("Reward", 0, 0);
-            ctx.restore();
-        }
-
-        function step(delta) {
-            if (frames.length === 0) {
-                return;
-            }
-            currentIndex = Math.min(Math.max(currentIndex + delta, 0), frames.length - 1);
-            autoFollowLive = currentIndex >= frames.length - 1;
-            updateControls();
-            renderCurrentFrame();
-        }
-
-        function stopPlayback() {
-            isPlaying = false;
-            if (playTimer) {
-                clearInterval(playTimer);
-                playTimer = null;
-            }
-            updateControls();
-        }
-
-        function startPlayback() {
-            stopPlayback();
-            isPlaying = true;
-            const intervalMs = Number(speedSelect.value) || 1000;
-            playTimer = setInterval(() => {
-                if (frames.length === 0) {
-                    return;
-                }
-                if (currentIndex < frames.length - 1) {
-                    currentIndex += 1;
-                    updateControls();
-                    renderCurrentFrame();
-                    return;
-                }
-                if (arenaId > 0) {
-                    autoFollowLive = true;
-                    return;
-                }
-                stopPlayback();
-            }, intervalMs);
-            updateControls();
-        }
-
-        function loadReplay() {
-            fetch("/viewer/replay-data?match_id=" + encodeURIComponent(matchId))
-                .then(resp => {
-                    if (!resp.ok) {
-                        throw new Error("Replay request failed: " + resp.status);
-                    }
-                    return resp.json();
-                })
-                .then(data => {
-                    spec = data.spec;
-                    buildPlayerCards(data.players);
-                    currentIndex = 0;
-                    setFrames(data.frames || []);
-                })
-                .catch(err => {
-                    meta.textContent = "Failed to load replay: " + err.message;
-                });
-        }
-
-        function startLive() {
-            const es = new EventSource("/viewer/live-sse?arena_id=" + encodeURIComponent(arenaId));
-
-            es.addEventListener("frame", (evt) => {
-                const payload = JSON.parse(evt.data);
-                spec = payload.spec;
-                if (payload.players && payload.players.length > 0) {
-                    buildPlayerCards(payload.players);
-                }
-                upsertLiveFrame(payload.frame);
-            });
-
-            es.addEventListener("closed", (evt) => {
-                const payload = JSON.parse(evt.data || "{}");
-                stopPlayback();
-                updateActiveTurn(0);
-                meta.textContent = "Live stream ended: " + (payload.message || "arena closed");
-                es.close();
-            });
-
-            es.addEventListener("error", (evt) => {
+            let rendered = false;
+            if (activePluginRenderer && typeof activePluginRenderer.render === "function") {
                 try {
-                    const payload = JSON.parse(evt.data || "{}");
-                    meta.textContent = "Live stream error: " + (payload.error || "unknown error");
-                } catch (_) {
-                    meta.textContent = "Live stream disconnected.";
+                    rendered = activePluginRenderer.render({
+                        canvas: canvas,
+                        ctx: ctx,
+                        spec: null,
+                        frame: frame,
+                        frames: replayFrames,
+                        frameIndex: frameIndex,
+                        frameTotal: frameTotal,
+                        players: players,
+                        mode: mode,
+                        pluginEntryURL: activePluginEntryURL,
+                    }) === true;
+                } catch (err) {
+                    rendered = false;
+                    setStatus("Plugin renderer error: " + (err && err.message ? err.message : String(err)), true);
                 }
+            }
+
+            if (!rendered) {
+                clearCanvasNotice("No plugin renderer registered for game '" + (gameName || "unknown") + "'.");
+            }
+        }
+
+        function stopReplayTimer() {
+            if (replayTimer) {
+                clearInterval(replayTimer);
+                replayTimer = null;
+            }
+            updateControlState();
+        }
+
+        function startReplayTimer() {
+            stopReplayTimer();
+            const interval = Number(speedSelect.value) || 900;
+            replayTimer = setInterval(function () {
+                if (replayFrames.length === 0) {
+                    stopReplayTimer();
+                    return;
+                }
+                replayIndex = (replayIndex + 1) % replayFrames.length;
+                frameSlider.value = String(replayIndex);
+                updateFrameLabel();
+                renderCurrentFrame(replayFrames[replayIndex], replayIndex, replayFrames.length);
+            }, interval);
+            updateControlState();
+        }
+
+        function buildViewerURL(path, params) {
+            const url = new URL(path, window.location.origin);
+            if (params && typeof params === "object") {
+                for (const key of Object.keys(params)) {
+                    const value = params[key];
+                    if (value === undefined || value === null || value === "") {
+                        continue;
+                    }
+                    url.searchParams.set(key, String(value));
+                }
+            }
+
+            const current = new URL(window.location.href);
+            const streamInterval = current.searchParams.get("stream_interval_ms");
+            const maxHz = current.searchParams.get("max_hz");
+            if (streamInterval) {
+                url.searchParams.set("stream_interval_ms", streamInterval);
+            }
+            if (maxHz) {
+                url.searchParams.set("max_hz", maxHz);
+            }
+            if (adminKey) {
+                url.searchParams.set("admin_key", adminKey);
+            }
+            return url.toString();
+        }
+
+        async function loadReplay() {
+            mode = "replay";
+            modeLabelEl.textContent = "Replay mode";
+            updateControlState();
+            setStatus("Loading replay frames...", false);
+
+            const response = await fetch(buildViewerURL("/viewer/replay-data", {
+                match_id: matchId,
+                max_frames: 5000,
+            }));
+            if (!response.ok) {
+                throw new Error("Replay request failed with status " + response.status);
+            }
+
+            const payload = await response.json();
+            replayFrames = Array.isArray(payload.frames) ? payload.frames : [];
+            replayIndex = 0;
+            gameName = String(payload.game || "").trim().toLowerCase();
+            pluginMeta = payload.plugin || null;
+            players = Array.isArray(payload.players) ? payload.players : [];
+
+            renderPlayers();
+
+            const loaded = await maybeLoadPluginRenderer(pluginMeta, gameName);
+            if (!loaded) {
+                setStatus("Plugin renderer is unavailable. Check plugin manifest and bundle loading.", true);
+            } else {
+                setStatus("Replay loaded.", false);
+            }
+
+            frameSlider.min = "0";
+            frameSlider.max = String(Math.max(0, replayFrames.length - 1));
+            frameSlider.value = "0";
+            updateFrameLabel();
+            updateControlState();
+            renderCurrentFrame(replayFrames[0] || null, replayIndex, replayFrames.length);
+        }
+
+        function applyLiveEvent(payload) {
+            if (!payload || !payload.frame) {
+                return;
+            }
+            mode = "live";
+            modeLabelEl.textContent = "Live mode";
+            stopReplayTimer();
+
+            lastLiveEvent = payload;
+            gameName = gameName || "";
+            players = Array.isArray(payload.players) ? payload.players : players;
+            pluginMeta = payload.plugin || pluginMeta;
+
+            renderPlayers();
+            maybeLoadPluginRenderer(pluginMeta, gameName).then(function () {
+                renderCurrentFrame(payload.frame, payload.frame.move_index || 0, 0);
+                setStatus("Live updates connected.", false);
+            });
+            updateControlState();
+        }
+
+        function connectLiveViaSSE() {
+            const source = new EventSource(buildViewerURL("/viewer/live", { arena_id: arenaId }));
+            source.addEventListener("frame", function (event) {
+                try {
+                    const payload = JSON.parse(event.data);
+                    if (payload && !gameName && payload.plugin && payload.plugin.entry_url) {
+                        const parsed = new URL(payload.plugin.entry_url, window.location.origin);
+                        const g = parsed.searchParams.get("game");
+                        if (g) {
+                            gameName = g.toLowerCase();
+                        }
+                    }
+                    applyLiveEvent(payload);
+                } catch (err) {
+                    setStatus("Failed to parse live frame: " + err, true);
+                }
+            });
+            source.addEventListener("error", function (event) {
+                if (event && event.data) {
+                    setStatus(String(event.data), true);
+                }
+            });
+            source.addEventListener("closed", function () {
+                setStatus("Arena is no longer active.", true);
+                source.close();
             });
         }
 
-        playToggle.addEventListener("click", () => {
-            if (isPlaying) {
-                stopPlayback();
-            } else {
-                startPlayback();
-            }
-        });
+        function connectLive() {
+            mode = "live";
+            modeLabelEl.textContent = "Live mode";
+            updateControlState();
 
-        stepBack.addEventListener("click", () => step(-1));
-        stepForward.addEventListener("click", () => step(1));
+            const wsURL = new URL(buildViewerURL("/viewer/live-ws", { arena_id: arenaId }));
+            wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
+            const ws = new WebSocket(wsURL.toString());
 
-        scrub.addEventListener("input", () => {
-            currentIndex = Number(scrub.value) || 0;
-            autoFollowLive = currentIndex >= Math.max(0, frames.length - 1);
-            updateControls();
-            renderCurrentFrame();
-        });
+            ws.onmessage = function (event) {
+                try {
+                    const envelope = JSON.parse(event.data);
+                    const type = envelope && envelope.type;
+                    const payload = envelope && envelope.payload;
 
-        speedSelect.addEventListener("change", () => {
-            if (isPlaying) {
-                startPlayback();
-            }
-        });
+                    if (type === "frame") {
+                        if (payload && !gameName && payload.plugin && payload.plugin.entry_url) {
+                            const parsed = new URL(payload.plugin.entry_url, window.location.origin);
+                            const g = parsed.searchParams.get("game");
+                            if (g) {
+                                gameName = g.toLowerCase();
+                            }
+                        }
+                        applyLiveEvent(payload);
+                    } else if (type === "error") {
+                        const msg = payload && payload.error ? payload.error : "Live stream error.";
+                        setStatus(msg, true);
+                    } else if (type === "closed") {
+                        setStatus("Arena is no longer active.", true);
+                        ws.close();
+                    }
+                } catch (err) {
+                    setStatus("Failed to parse websocket message: " + err, true);
+                }
+            };
 
-        setModeHint();
-        updateControls();
-        renderCurrentFrame();
-
-        if (arenaId > 0) {
-            startLive();
-        } else if (matchId > 0) {
-            loadReplay();
+            ws.onerror = function () {
+                setStatus("WebSocket unavailable, falling back to SSE...", false);
+                connectLiveViaSSE();
+            };
         }
+
+        prevBtn.addEventListener("click", function () {
+            if (replayFrames.length === 0) {
+                return;
+            }
+            replayIndex = Math.max(0, replayIndex - 1);
+            frameSlider.value = String(replayIndex);
+            updateFrameLabel();
+            renderCurrentFrame(replayFrames[replayIndex], replayIndex, replayFrames.length);
+        });
+
+        nextBtn.addEventListener("click", function () {
+            if (replayFrames.length === 0) {
+                return;
+            }
+            replayIndex = Math.min(replayFrames.length - 1, replayIndex + 1);
+            frameSlider.value = String(replayIndex);
+            updateFrameLabel();
+            renderCurrentFrame(replayFrames[replayIndex], replayIndex, replayFrames.length);
+        });
+
+        playBtn.addEventListener("click", function () {
+            if (mode !== "replay") {
+                return;
+            }
+            if (replayTimer) {
+                stopReplayTimer();
+            } else {
+                startReplayTimer();
+            }
+        });
+
+        frameSlider.addEventListener("input", function () {
+            if (replayFrames.length === 0) {
+                return;
+            }
+            replayIndex = Number(frameSlider.value) || 0;
+            updateFrameLabel();
+            renderCurrentFrame(replayFrames[replayIndex], replayIndex, replayFrames.length);
+        });
+
+        speedSelect.addEventListener("change", function () {
+            if (replayTimer) {
+                startReplayTimer();
+            }
+        });
+
+        window.BBSViewerPluginRuntime = {
+            register: function (game, renderer) {
+                const key = String(game || "").trim().toLowerCase();
+                if (!key || !renderer || typeof renderer.render !== "function") {
+                    return;
+                }
+                pluginRenderers.set(key, renderer);
+                if (key === activePluginGame) {
+                    activePluginRenderer = renderer;
+                }
+                if (mode === "replay" && replayFrames.length > 0) {
+                    renderCurrentFrame(replayFrames[replayIndex], replayIndex, replayFrames.length);
+                } else if (mode === "live" && lastLiveEvent && lastLiveEvent.frame) {
+                    renderCurrentFrame(lastLiveEvent.frame, lastLiveEvent.frame.move_index || 0, 0);
+                }
+            },
+        };
+
+        updateControlState();
+
+        if (matchId > 0) {
+            loadReplay().catch(function (err) {
+                setStatus(err && err.message ? err.message : String(err), true);
+                clearCanvasNotice("Replay failed to load.");
+            });
+        } else if (arenaId > 0) {
+            setStatus("Connecting to live stream...", false);
+            connectLive();
+        } else {
+            mode = "idle";
+            modeLabelEl.textContent = "No arena_id or match_id provided";
+            clearCanvasNotice("No viewer source selected.");
+            updateControlState();
+        }
+    })();
     </script>
 </body>
 </html>

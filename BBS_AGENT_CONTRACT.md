@@ -50,7 +50,7 @@ Envelope:
   "payload": {
     "name": "my_bot",
     "owner_token": "owner_abc123",
-    "capabilities": ["connect4"],
+    "capabilities": ["any"],
     "credentials_file": "my_bot_credentials.txt",
     "bot_id": "",
     "bot_secret": ""
@@ -107,10 +107,10 @@ Sent once after successful registration and first arena attach.
     "session_id": 12,
     "arena_id": 3,
     "player_id": 1,
-    "env": "connect4",
+    "env": "mygame",
     "time_limit_ms": 1000,
     "effective_time_limit_ms": 1200,
-    "capabilities": ["connect4"]
+    "capabilities": ["any"]
   }
 }
 ```

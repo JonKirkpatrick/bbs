@@ -17,9 +17,16 @@ import (
 
 	"github.com/JonKirkpatrick/bbs/games"
 	"github.com/JonKirkpatrick/bbs/stadium"
+	"github.com/gorilla/websocket"
 )
 
 var dashTemplates *template.Template
+
+var dashboardWSUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 8192,
+	CheckOrigin:     wsCheckOriginSameHost,
+}
 
 const dashboardAdminKeyEnv = "BBS_DASHBOARD_ADMIN_KEY"
 
@@ -213,16 +220,16 @@ func buildDashboardStateView(r *http.Request, snapshot stadium.ManagerSnapshot, 
 }
 
 func writeDashboardSSE(w http.ResponseWriter, view dashboardStateView) error {
-	var buf bytes.Buffer
-	if err := dashTemplates.ExecuteTemplate(&buf, "dashboard-state.html", view); err != nil {
+	html, err := renderDashboardStateHTML(view)
+	if err != nil {
 		return err
 	}
 
 	fmt.Fprintf(w, "event: state\n")
-	for _, line := range strings.Split(buf.String(), "\n") {
+	for _, line := range strings.Split(html, "\n") {
 		fmt.Fprintf(w, "data: %s\n", line)
 	}
-	_, err := fmt.Fprintf(w, "\n")
+	_, err = fmt.Fprintf(w, "\n")
 	if err != nil {
 		return err
 	}
@@ -232,6 +239,23 @@ func writeDashboardSSE(w http.ResponseWriter, view dashboardStateView) error {
 	}
 
 	return nil
+}
+
+func renderDashboardStateHTML(view dashboardStateView) (string, error) {
+	var buf bytes.Buffer
+	if err := dashTemplates.ExecuteTemplate(&buf, "dashboard-state.html", view); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func writeDashboardWS(conn *websocket.Conn, view dashboardStateView) error {
+	html, err := renderDashboardStateHTML(view)
+	if err != nil {
+		return err
+	}
+
+	return writeStreamWSEvent(conn, "dashboard", "state", map[string]interface{}{"html": html})
 }
 
 func handleDashboardSSE(w http.ResponseWriter, r *http.Request) {
@@ -251,6 +275,10 @@ func handleDashboardSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	flushTicker := time.NewTicker(resolveStreamFlushInterval(r, 200*time.Millisecond))
+	defer flushTicker.Stop()
+	pending := false
+
 	for {
 		select {
 		case <-r.Context().Done():
@@ -259,12 +287,63 @@ func handleDashboardSSE(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
+			pending = true
+		case <-flushTicker.C:
+			if !pending {
+				continue
+			}
 
 			view = buildDashboardStateView(r, stadium.DefaultManager.Snapshot(), adminKey, ownerToken)
 
 			if err := writeDashboardSSE(w, view); err != nil {
 				return
 			}
+			pending = false
+		}
+	}
+}
+
+func handleDashboardWS(w http.ResponseWriter, r *http.Request) {
+	adminKey := r.URL.Query().Get("admin_key")
+	ownerToken := ownerTokenFromRequest(r)
+
+	conn, err := dashboardWSUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	sub := stadium.DefaultManager.Subscribe()
+	defer stadium.DefaultManager.Unsubscribe(sub)
+
+	view := buildDashboardStateView(r, stadium.DefaultManager.Snapshot(), adminKey, ownerToken)
+	if err := writeDashboardWS(conn, view); err != nil {
+		return
+	}
+
+	flushTicker := time.NewTicker(resolveStreamFlushInterval(r, 200*time.Millisecond))
+	defer flushTicker.Stop()
+	pending := false
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case _, ok := <-sub:
+			if !ok {
+				return
+			}
+			pending = true
+		case <-flushTicker.C:
+			if !pending {
+				continue
+			}
+
+			view = buildDashboardStateView(r, stadium.DefaultManager.Snapshot(), adminKey, ownerToken)
+			if err := writeDashboardWS(conn, view); err != nil {
+				return
+			}
+			pending = false
 		}
 	}
 }
@@ -601,8 +680,11 @@ func startDashboard() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/dashboard-sse", handleDashboardSSE)
+	mux.HandleFunc("/dashboard-ws", handleDashboardWS)
 	mux.HandleFunc("/viewer", handleViewerPage)
 	mux.HandleFunc("/viewer/live-sse", handleViewerLiveSSE)
+	mux.HandleFunc("/viewer/live-ws", handleViewerLiveWS)
+	mux.HandleFunc("/viewer/plugin-entry", handleViewerPluginEntry)
 	mux.HandleFunc("/viewer/replay-data", handleViewerReplayData)
 	mux.HandleFunc("/owner/register-bot", handleOwnerRegisterBot)
 	mux.HandleFunc("/owner/create-arena", handleOwnerCreateArena)

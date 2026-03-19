@@ -2,8 +2,6 @@ package stadium
 
 import (
 	"time"
-
-	"github.com/JonKirkpatrick/bbs/games"
 )
 
 // ArenaViewerPlayer holds the viewer-relevant details for one arena participant.
@@ -27,8 +25,6 @@ type ArenaViewerState struct {
 	IsDraw         bool
 	Player1        ArenaViewerPlayer
 	Player2        ArenaViewerPlayer
-	ViewerSpec     *games.ViewerSpec
-	ViewerFrame    *games.ViewerFrame
 }
 
 // GetArenaViewerState returns the current renderable state for one arena.
@@ -68,15 +64,6 @@ func (m *Manager) GetArenaViewerState(arenaID int) (ArenaViewerState, bool) {
 			Wins:   arena.Player2.Wins,
 			Losses: arena.Player2.Losses,
 			Draws:  arena.Player2.Draws,
-		}
-	}
-
-	if provider, ok := arena.Game.(games.LiveViewerProvider); ok {
-		if spec, err := provider.ViewerSpec(); err == nil {
-			state.ViewerSpec = &spec
-			if frame, err := provider.ViewerFrame(state.MoveCount, state.LastMoveAt); err == nil {
-				state.ViewerFrame = &frame
-			}
 		}
 	}
 

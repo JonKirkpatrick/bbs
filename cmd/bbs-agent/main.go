@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -21,6 +22,7 @@ import (
 const (
 	contractVersion = "0.2"
 	agentVersion    = "0.2.0"
+	maxScannerToken = 16 * 1024 * 1024
 )
 
 type credentials struct {
@@ -90,6 +92,7 @@ type agent struct {
 
 	lastStatePayload map[string]interface{}
 	pendingResponse  map[string]interface{}
+	awaitingAction   atomic.Bool
 }
 
 func main() {
@@ -221,7 +224,7 @@ func parseFlags() (runtimeConfig, error) {
 	flag.StringVar(&cfg.listen, "listen", "", "local endpoint for bot bridge (linux/mac: unix:///tmp/bbs-agent.sock or /tmp/bbs-agent.sock)")
 	flag.StringVar(&cfg.name, "name", "agent_bot", "bot display name used during REGISTER")
 	flag.StringVar(&cfg.ownerToken, "owner-token", "", "optional owner token from dashboard")
-	flag.StringVar(&cfg.capabilities, "capabilities", "connect4", "comma-separated capability list")
+	flag.StringVar(&cfg.capabilities, "capabilities", "any", "comma-separated capability list")
 	flag.StringVar(&cfg.credentialsFile, "credentials-file", "", "path to bot credentials file (key=value format)")
 	flag.DurationVar(&cfg.registerTimeout, "register-timeout", 12*time.Second, "server register response timeout")
 
@@ -282,7 +285,7 @@ func (a *agent) acceptLocalConnection(rawEndpoint string) (localHello, *bufio.Sc
 
 	scanner := bufio.NewScanner(conn)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, maxScannerToken)
 	if !scanner.Scan() {
 		if scanErr := scanner.Err(); scanErr != nil {
 			return localHello{}, nil, nil, scanErr
@@ -352,7 +355,7 @@ func parseLocalHello(line string) (localHello, error) {
 		out.Name = "agent_bot"
 	}
 	if out.CapabilitiesCSV == "" {
-		out.CapabilitiesCSV = "connect4"
+		out.CapabilitiesCSV = "any"
 	}
 
 	return out, nil
@@ -460,9 +463,16 @@ func (a *agent) handleBotLine(line string) {
 		if action == "" {
 			return
 		}
+		if !a.awaitingAction.CompareAndSwap(true, false) {
+			fmt.Fprintln(os.Stderr, "[agent] ignoring action: no turn is currently pending")
+			return
+		}
 		action = strings.ReplaceAll(action, "\n", "")
 		action = strings.ReplaceAll(action, "\r", "")
-		_ = a.sendServerCommand("MOVE " + action)
+		if err := a.sendServerCommand("MOVE " + action); err != nil {
+			a.awaitingAction.Store(true)
+			fmt.Fprintf(os.Stderr, "[agent] failed to forward action: %v\n", err)
+		}
 	case "log":
 		var payload struct {
 			Level   string `json:"level"`
@@ -481,7 +491,7 @@ func (a *agent) handleBotLine(line string) {
 func (a *agent) readServer() {
 	scanner := bufio.NewScanner(a.conn)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, maxScannerToken)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -530,6 +540,7 @@ func (a *agent) handleServerLine(line string) {
 			a.turnStep = 0
 			a.pendingResponse = nil
 			a.lastStatePayload = nil
+			a.awaitingAction.Store(false)
 
 			welcome := map[string]interface{}{
 				"agent_name":              "bbs-agent",
@@ -549,22 +560,27 @@ func (a *agent) handleServerLine(line string) {
 		statePayload := buildStatePayload(msg.Payload, a.joinedPlayerID)
 		a.lastStatePayload = statePayload
 		if !shouldForwardTurn(statePayload, a.joinedPlayerID) {
+			a.awaitingAction.Store(false)
 			return
 		}
+
+		isDone := statePayloadDone(statePayload)
+		reward := statePayloadReward(statePayload)
 
 		a.turnStep++
 		turnPayload := map[string]interface{}{
 			"step":        a.turnStep,
 			"deadline_ms": a.joinedMoveMS,
 			"obs":         statePayload,
-			"reward":      0.0,
-			"done":        false,
+			"reward":      reward,
+			"done":        isDone,
 			"truncated":   false,
 		}
 		if a.pendingResponse != nil {
 			turnPayload["response"] = a.pendingResponse
 		}
 		a.pendingResponse = nil
+		a.awaitingAction.Store(!isDone)
 		_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: turnPayload})
 	case "move", "error", "timeout", "ejected":
 		a.pendingResponse = map[string]interface{}{
@@ -585,6 +601,7 @@ func (a *agent) handleServerLine(line string) {
 				"response":    a.pendingResponse,
 			}
 			a.pendingResponse = nil
+			a.awaitingAction.Store(true)
 			_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: turnPayload})
 		}
 
@@ -601,43 +618,64 @@ func (a *agent) handleServerLine(line string) {
 				terminalPayload["obs"] = a.lastStatePayload
 			}
 			a.pendingResponse = nil
+			a.awaitingAction.Store(false)
 			_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
 		}
 	case "gameover":
+		responsePayload := map[string]interface{}{
+			"type":    msgType,
+			"status":  status,
+			"payload": msg.Payload,
+		}
+		if statePayloadDone(a.lastStatePayload) {
+			// A terminal data frame was already forwarded for this turn.
+			// Keep gameover metadata for the next forwarded turn (if any) and avoid double terminal events.
+			a.pendingResponse = responsePayload
+			a.awaitingAction.Store(false)
+			return
+		}
+
 		a.turnStep++
 		terminalPayload := map[string]interface{}{
 			"step":      a.turnStep,
 			"reward":    terminalReward(msgType, msg.Payload, a.joinedPlayerID, status),
 			"done":      true,
 			"truncated": false,
-			"response": map[string]interface{}{
-				"type":    msgType,
-				"status":  status,
-				"payload": msg.Payload,
-			},
+			"response":  responsePayload,
 		}
 		if a.lastStatePayload != nil {
 			terminalPayload["obs"] = a.lastStatePayload
 		}
 		a.pendingResponse = nil
+		a.awaitingAction.Store(false)
 		_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
 	case "episode_end":
+		responsePayload := map[string]interface{}{
+			"type":    msgType,
+			"status":  status,
+			"payload": msg.Payload,
+		}
+		if statePayloadDone(a.lastStatePayload) {
+			// For episodic environments the terminal step already arrived via "data".
+			// Preserve episode_end metadata but do not emit a duplicate done=true turn.
+			a.pendingResponse = responsePayload
+			a.awaitingAction.Store(false)
+			return
+		}
+
 		a.turnStep++
 		terminalPayload := map[string]interface{}{
 			"step":      a.turnStep,
 			"reward":    terminalReward(msgType, msg.Payload, a.joinedPlayerID, status),
 			"done":      true,
 			"truncated": false,
-			"response": map[string]interface{}{
-				"type":    msgType,
-				"status":  status,
-				"payload": msg.Payload,
-			},
+			"response":  responsePayload,
 		}
 		if a.lastStatePayload != nil {
 			terminalPayload["obs"] = a.lastStatePayload
 		}
 		a.pendingResponse = nil
+		a.awaitingAction.Store(false)
 		_ = a.sendBot(contractMessage{V: contractVersion, Type: "turn", Payload: terminalPayload})
 	default:
 		if status == "err" {
@@ -930,6 +968,11 @@ func terminalReward(msgType string, payload interface{}, joinedPlayerID int, sta
 		return 0.0
 	}
 
+	// Episodic environments can provide explicit shaped rewards at episode_end.
+	if rawReward, ok := payloadMap["reward"]; ok {
+		return asFloat64(rawReward)
+	}
+
 	if asBool(payloadMap["is_draw"]) {
 		return 0.0
 	}
@@ -998,4 +1041,71 @@ func buildStatePayload(raw interface{}, joinedPlayerID int) map[string]interface
 	}
 
 	return payload
+}
+
+func statePayloadDone(statePayload map[string]interface{}) bool {
+	if statePayload == nil {
+		return false
+	}
+
+	if raw, ok := statePayload["done"]; ok {
+		return asBool(raw)
+	}
+
+	stateObj, ok := statePayload["state_obj"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	return asBool(stateObj["done"])
+}
+
+func statePayloadReward(statePayload map[string]interface{}) float64 {
+	if statePayload == nil {
+		return 0
+	}
+
+	if raw, ok := statePayload["reward"]; ok {
+		return asFloat64(raw)
+	}
+
+	stateObj, ok := statePayload["state_obj"].(map[string]interface{})
+	if !ok {
+		return 0
+	}
+
+	return asFloat64(stateObj["reward"])
+}
+
+func asFloat64(v interface{}) float64 {
+	switch val := v.(type) {
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	case int:
+		return float64(val)
+	case int32:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case json.Number:
+		f, err := val.Float64()
+		if err == nil {
+			return f
+		}
+		return 0
+	case string:
+		trimmed := strings.TrimSpace(val)
+		if trimmed == "" {
+			return 0
+		}
+		var parsed float64
+		if _, err := fmt.Sscanf(trimmed, "%f", &parsed); err == nil {
+			return parsed
+		}
+		return 0
+	default:
+		return 0
+	}
 }

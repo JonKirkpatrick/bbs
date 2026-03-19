@@ -52,25 +52,14 @@ type pluginRegistryCacheState struct {
 	refreshedAt time.Time
 	directory   string
 	entries     map[string]gameRegistration
+	viewerFiles map[string]string
 	diagnostics PluginDiagnostics
 }
 
 var pluginRegistryCache pluginRegistryCacheState
 
 func allRegistrations() map[string]gameRegistration {
-	registrations := make(map[string]gameRegistration, len(builtinRegistry))
-	for name, registration := range builtinRegistry {
-		registrations[name] = registration
-	}
-
-	for name, registration := range dynamicPluginRegistrations() {
-		if _, exists := registrations[name]; exists {
-			continue
-		}
-		registrations[name] = registration
-	}
-
-	return registrations
+	return dynamicPluginRegistrations()
 }
 
 func pluginsEnabled() bool {
@@ -98,6 +87,7 @@ func dynamicPluginRegistrations() map[string]gameRegistration {
 		pluginRegistryCache.mu.Lock()
 		pluginRegistryCache.directory = pluginsDirectory()
 		pluginRegistryCache.entries = nil
+		pluginRegistryCache.viewerFiles = nil
 		pluginRegistryCache.refreshedAt = time.Time{}
 		pluginRegistryCache.diagnostics = PluginDiagnostics{
 			Enabled:   false,
@@ -121,6 +111,7 @@ func dynamicPluginRegistrations() map[string]gameRegistration {
 
 	scanResult := scanPluginDirectory(directory)
 	pluginRegistryCache.entries = scanResult.entries
+	pluginRegistryCache.viewerFiles = scanResult.viewerFiles
 	pluginRegistryCache.directory = directory
 	pluginRegistryCache.refreshedAt = now
 	pluginRegistryCache.diagnostics = PluginDiagnostics{
@@ -186,6 +177,7 @@ func CurrentPluginDiagnostics() PluginDiagnostics {
 
 type pluginDirectoryScan struct {
 	entries      map[string]gameRegistration
+	viewerFiles  map[string]string
 	manifests    []PluginManifestStatus
 	loadedCount  int
 	skippedCount int
@@ -212,12 +204,13 @@ func scanPluginDirectory(directory string) pluginDirectoryScan {
 
 	sort.Strings(files)
 	entries := make(map[string]gameRegistration)
+	viewerFiles := make(map[string]string)
 	statuses := make([]PluginManifestStatus, 0, len(files))
 	loadedCount := 0
 	skippedCount := 0
 
 	for _, manifestPath := range files {
-		registration, name, status := registrationFromManifest(directory, manifestPath)
+		registration, name, viewerFile, status := registrationFromManifest(directory, manifestPath)
 
 		if status.Status == pluginManifestStatusLoaded {
 			if _, exists := entries[name]; exists {
@@ -228,6 +221,9 @@ func scanPluginDirectory(directory string) pluginDirectoryScan {
 
 		if status.Status == pluginManifestStatusLoaded {
 			entries[name] = registration
+			if strings.TrimSpace(viewerFile) != "" {
+				viewerFiles[name] = viewerFile
+			}
 			loadedCount++
 		} else {
 			skippedCount++
@@ -239,16 +235,20 @@ func scanPluginDirectory(directory string) pluginDirectoryScan {
 	if len(entries) == 0 {
 		entries = nil
 	}
+	if len(viewerFiles) == 0 {
+		viewerFiles = nil
+	}
 
 	return pluginDirectoryScan{
 		entries:      entries,
+		viewerFiles:  viewerFiles,
 		manifests:    statuses,
 		loadedCount:  loadedCount,
 		skippedCount: skippedCount,
 	}
 }
 
-func registrationFromManifest(directory, manifestPath string) (gameRegistration, string, PluginManifestStatus) {
+func registrationFromManifest(directory, manifestPath string) (gameRegistration, string, string, PluginManifestStatus) {
 	status := PluginManifestStatus{
 		ManifestPath: manifestPath,
 		Status:       pluginManifestStatusSkipped,
@@ -258,14 +258,14 @@ func registrationFromManifest(directory, manifestPath string) (gameRegistration,
 	if err != nil {
 		status.Reason = fmt.Sprintf("failed reading manifest: %v", err)
 		fmt.Printf("[game-plugin] %s: %s\n", manifestPath, status.Reason)
-		return gameRegistration{}, "", status
+		return gameRegistration{}, "", "", status
 	}
 
 	var manifest pluginapi.Manifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		status.Reason = fmt.Sprintf("failed decoding manifest: %v", err)
 		fmt.Printf("[game-plugin] %s: %s\n", manifestPath, status.Reason)
-		return gameRegistration{}, "", status
+		return gameRegistration{}, "", "", status
 	}
 
 	status.Name = strings.ToLower(strings.TrimSpace(manifest.Name))
@@ -280,23 +280,42 @@ func registrationFromManifest(directory, manifestPath string) (gameRegistration,
 	if manifest.ProtocolVersion != pluginapi.ProtocolVersion {
 		status.Reason = fmt.Sprintf("protocol_version=%d (expected %d)", manifest.ProtocolVersion, pluginapi.ProtocolVersion)
 		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
-		return gameRegistration{}, "", status
+		return gameRegistration{}, "", "", status
 	}
 
 	name := strings.ToLower(strings.TrimSpace(manifest.Name))
 	if name == "" {
 		status.Reason = "missing name"
 		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
-		return gameRegistration{}, "", status
+		return gameRegistration{}, "", "", status
 	}
 
 	execPath, err := resolvePluginExecutable(directory, manifestPath, manifest.Executable)
 	if err != nil {
 		status.Reason = err.Error()
 		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
-		return gameRegistration{}, "", status
+		return gameRegistration{}, "", "", status
 	}
 	status.Executable = execPath
+
+	viewerClientEntry := strings.TrimSpace(manifest.ViewerClientEntry)
+	if viewerClientEntry == "" {
+		status.Reason = "missing viewer_client_entry"
+		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", "", status
+	}
+	if strings.Contains(viewerClientEntry, "..") {
+		status.Reason = "viewer_client_entry must not contain '..'"
+		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", "", status
+	}
+
+	viewerClientFile, err := resolvePluginViewerClientEntry(directory, manifestPath, viewerClientEntry)
+	if err != nil {
+		status.Reason = err.Error()
+		fmt.Printf("[game-plugin] skipping %s: %s\n", manifestPath, status.Reason)
+		return gameRegistration{}, "", "", status
+	}
 
 	args := make([]GameArgSpec, 0, len(manifest.Args))
 	for _, arg := range manifest.Args {
@@ -326,6 +345,8 @@ func registrationFromManifest(directory, manifestPath string) (gameRegistration,
 			Name:              name,
 			DisplayName:       displayName,
 			Args:              args,
+			ViewerClientEntry: viewerClientEntry,
+			SupportsReplay:    manifest.SupportsReplay,
 			SupportsMoveClock: manifest.SupportsMoveClock,
 			SupportsHandicap:  manifest.SupportsHandicap,
 		},
@@ -338,7 +359,7 @@ func registrationFromManifest(directory, manifestPath string) (gameRegistration,
 		status.DisplayName = displayName
 	}
 
-	return registration, capturedName, status
+	return registration, capturedName, viewerClientFile, status
 }
 
 func resolvePluginExecutable(directory, manifestPath, executable string) (string, error) {
@@ -365,4 +386,53 @@ func resolvePluginExecutable(directory, manifestPath, executable string) (string
 	}
 
 	return "", fmt.Errorf("executable %q was not found", executable)
+}
+
+func resolvePluginViewerClientEntry(directory, manifestPath, entry string) (string, error) {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return "", nil
+	}
+
+	tryPaths := make([]string, 0, 2)
+	if filepath.IsAbs(entry) {
+		tryPaths = append(tryPaths, entry)
+	} else {
+		tryPaths = append(tryPaths,
+			filepath.Join(filepath.Dir(manifestPath), entry),
+			filepath.Join(directory, entry),
+		)
+	}
+
+	for _, candidate := range tryPaths {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return filepath.Clean(candidate), nil
+		}
+	}
+
+	return "", fmt.Errorf("viewer_client_entry %q was not found", entry)
+}
+
+// PluginViewerClientFile returns the absolute viewer client entry file for a game plugin.
+func PluginViewerClientFile(gameName string) (string, bool) {
+	lookup := strings.ToLower(strings.TrimSpace(gameName))
+	if lookup == "" {
+		return "", false
+	}
+
+	_ = dynamicPluginRegistrations()
+
+	pluginRegistryCache.mu.Lock()
+	defer pluginRegistryCache.mu.Unlock()
+
+	if len(pluginRegistryCache.viewerFiles) == 0 {
+		return "", false
+	}
+
+	path, ok := pluginRegistryCache.viewerFiles[lookup]
+	if !ok || strings.TrimSpace(path) == "" {
+		return "", false
+	}
+
+	return path, true
 }
