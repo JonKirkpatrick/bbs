@@ -1,0 +1,70 @@
+# Binaries
+bbs-agent
+bbs-server
+bbs-game-counter-plugin
+bbs-plugin-manifest-lint
+/cmd/bbs-agent/bbs-agent
+/cmd/bbs-server/bbs-server
+/cmd/bbs-game-counter-plugin/bbs-game-counter-plugin
+/cmd/bbs-plugin-manifest-lint/bbs-plugin-manifest-lint
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go build artifacts
+dist/
+/tmp/
+
+# LaTeX artifacts
+*.aux
+*.log
+*.out
+*.pdf
+*.synctex.gz
+*.synctex
+*.fdb_latexmk
+*.fls
+*.bbl
+*.blg
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Credentials and secrets
+*credentials*.txt
+*credential*.txt
+*.secret
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+.directory
+
+# Test and coverage artifacts
+*.out
+*.cover
+.coverage
+htmlcov/
