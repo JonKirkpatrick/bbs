@@ -67,3 +67,6 @@ Thumbs.db
 *.cover
 .coverage
 htmlcov/
+
+# Local personal notes
+*.local.md

@@ -7,6 +7,7 @@ This guide is for external developers building process-based game plugins for Bu
 - Plugin transport is JSONL over `stdin/stdout`.
 - Plugin protocol version must match `games/pluginapi.ProtocolVersion` (currently `1`).
 - Use `stderr` for logs. Keep `stdout` protocol-only.
+- Plugins may be implemented in any language as long as the executable process speaks the JSONL RPC protocol.
 
 ## Plugin Runtime Model
 

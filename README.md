@@ -98,6 +98,8 @@ Process plugins are available behind feature flags.
 
 When enabled, the server scans `*.json` manifests in the plugin directory and merges valid plugins into the runtime catalog.
 
+Plugins can be written in any language, provided they run as an executable process and implement the JSONL plugin RPC contract.
+
 ### Minimal Manifest
 
 ```json
@@ -143,7 +145,7 @@ BBS_GAME_PLUGIN_DIR=/tmp/bbs-plugin-smoke \
 go run .
 ```
 
-For a more advanced example (Python + episodic), see the gridworld RL plugin in `cmd/bbs-server/plugins/games/gridworld_rl_plugin.py`.
+For a more advanced episodic example, see the gridworld RL plugin in `cmd/bbs-server/plugins/games/gridworld_rl_plugin.py`.
 
 ## Plugin Author Quickstart
 
@@ -151,9 +153,10 @@ This section is for developers building new game plugins for BBS.
 
 For a complete field-by-field reference and release checklist, see `PLUGIN_AUTHORING.md`.
 
-### 1. Implement a Plugin Command
+### 1. Implement a Plugin Executable
 
-Create a Go command similar to `cmd/bbs-game-counter-plugin/main.go` and use `pluginapi.Serve(...)`.
+Implement an executable process that serves the plugin RPC contract.
+If you are using Go, you can create a command similar to `cmd/bbs-game-counter-plugin/main.go` and use `pluginapi.Serve(...)`.
 
 Required gameplay interface (`games/pluginapi.Game`):
 
@@ -181,7 +184,7 @@ func main() {
 }
 ```
 
-### 2. Build the Plugin Binary
+### 2. Build Or Prepare The Plugin Executable
 
 ```bash
 go build -o /tmp/bbs-plugin-smoke/my-game-plugin ./cmd/bbs-game-my-plugin

@@ -62,7 +62,7 @@ Plugin authors should:
 1. Reference the plugin authoring guide: [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md)
 2. Place plugins in `cmd/bbs-server/plugins/games/` for inclusion
 3. Include both:
-   - Plugin executable (Go binary or Python script)
+   - Plugin executable (compiled binary or executable script in any language)
    - JSON manifest with metadata and args schema
    - JavaScript viewer bundle (for rendering)
 4. Test locally: `BBS_ENABLE_GAME_PLUGINS=true go run ./cmd/bbs-server`
