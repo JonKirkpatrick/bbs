@@ -7,17 +7,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## Unreleased
 
 ### Added
-- Enhanced error handling for template rendering failures
-- Improved dashboard state update reliability
-- Better handling of concurrent arena state changes
+(new changes will be captured here)
 
 ### Changed
-- Dashboard state synchronization improvements
-- More robust player registration locking
+(changes will be captured here)
+
+### Fixed
+(fixes will be captured here)
+
+## [v0.2.0] - 2026-03-20
+
+### Added
+- **Release Management Infrastructure**: Formalized versioning, Makefile build targets, and release workflow
+- **Repository Hygiene**: Comprehensive `.gitignore` excluding binaries, build artifacts, LaTeX files, and credentials
+- **Contributor Guide**: `CONTRIBUTING.md` with development setup, testing, and plugin authoring workflows
+- **Installation Options**: Multiple installation paths documented (from source, pre-built, direct run)
+- **Language-Agnostic Documentation**: Clarified that plugins can be written in any language (Go, Python, Rust, etc.)
+
+### Changed
+- **Breaking**: Plugin documentation now emphasizes language-neutral RPC contract over Go-specific patterns
+- Improved wording in plugin authoring guide to clearly state language flexibility
+- Updated README installation section with three options and release references
 
 ### Fixed
 - Deadlock conditions during concurrent bot registration
 - Stale state display issues in dashboard views
+- Dashboard state synchronization improvements
+
+### Infrastructure
+- Added `Makefile` with convenient build, test, lint, and release targets
+- Added `VERSIONING.md` with semantic versioning strategy and release process
+- Added `CHANGELOG.md` changelog file
+- Established `.gitignore` to exclude binaries, transient files, and credentials
+- GitHub Actions CI automation for building and publishing releases
+- Command cheat sheet support (`.local.md` files for personal notes)
 
 ## [v0.1.0] - 2026-03-19
 
