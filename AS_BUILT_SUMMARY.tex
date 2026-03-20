@@ -1,0 +1,259 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+
+\title{Build-a-Bot Stadium\\As-Built Summary}
+\author{Project Snapshot}
+\date{19 March 2026}
+
+\begin{document}
+\maketitle
+
+\section{Purpose and Scope}
+This document summarizes the current \emph{as-built} state of Build-a-Bot Stadium at a practical, implementation-aligned level. It is intended as a concise technical orientation for contributors and reviewers who need to understand what the platform currently does, how it is organized, and where the main gaps remain.
+
+The summary focuses on implemented capabilities and operational characteristics rather than design aspirations.
+
+\section{System Overview}
+Build-a-Bot Stadium is currently implemented as a single Go runtime with two primary external surfaces:
+\begin{itemize}[leftmargin=*]
+  \item A TCP bot protocol endpoint (default \texttt{:8080})
+  \item An HTTP dashboard and viewer endpoint (default \texttt{:3000})
+\end{itemize}
+
+The platform now follows a plugin-only architecture:
+\begin{itemize}[leftmargin=*]
+  \item All games are process-based external plugins discovered at runtime
+  \item Supports both competitive games and single-agent episodic environments
+  \item Plugins are optional; minimal deployment requires only the core server
+\end{itemize}
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{README.md}
+  \item \texttt{ARCHITECTURE.md}
+\end{itemize}
+
+\section{Implemented Feature Set}
+\subsection{Arena Runtime and State Management}
+The in-memory manager in \texttt{stadium/} acts as the source of truth for sessions, arenas, bot profiles, and archived match records. Arena lifecycle, participant attachment, outcomes, and dashboard snapshot broadcasting are handled centrally.
+
+Notable implemented behavior:
+\begin{itemize}[leftmargin=*]
+  \item One-player and two-player arena activation support via game policy interfaces
+  \item Move clock and handicap policy handling based on game capabilities
+  \item Match archival with replay-oriented metadata
+  \item Watchdog-based arena cleanup
+\end{itemize}
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{ARCHITECTURE.md}
+  \item \texttt{stadium/manager.go} and related files in \texttt{stadium/}
+\end{itemize}
+
+\subsection{Bot Command Protocol (TCP)}
+A newline-delimited command protocol is exposed for bot clients. Core commands include registration, arena creation/joining, move submission, observation, and disconnect.
+
+All command responses use a single JSON envelope shape (\texttt{status}, \texttt{type}, \texttt{payload}) over JSONL, including greeting and lifecycle responses.
+
+Current protocol supports dynamic game arguments in \texttt{CREATE}, enabling consistent invocation across plugin games.
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{PROTOCOL.md}
+  \item \texttt{cmd/bbs-server/main.go}
+\end{itemize}
+
+\subsection{Dashboard and Viewer Surfaces}
+The dashboard provides operational visibility and control over runtime state, including owner-scoped and admin-scoped control paths.
+
+Implemented dashboard capabilities include:
+\begin{itemize}[leftmargin=*]
+  \item Live state streaming via SSE and WebSocket
+  \item Owner token flow (register bot, create/join/leave/eject)
+  \item Admin control flow protected by \texttt{BBS\_DASHBOARD\_ADMIN\_KEY}
+  \item Dynamic arena creation forms driven by live game catalog metadata
+  \item Live and replay viewer pages with client-side rendering
+  \item Plugin discovery diagnostics panel showing enabled state, scan directory, and per-manifest load/skip status
+\end{itemize}
+
+\subsubsection{Viewer Architecture}
+The viewer now uses a client-side rendering model where all game visualization logic runs in the browser:
+\begin{itemize}[leftmargin=*]
+  \item Server emits only raw game state frames (no structured viewer payloads)
+  \item Each plugin declares optional \texttt{viewer\_client\_entry}: path to a JavaScript rendering bundle
+  \item \texttt{/viewer/plugin-entry?game=<name>} serves the plugin's JS bundle to the browser
+  \item Browser runtime loads the JS and calls the plugin's renderer with raw state
+  \item Live and replay viewing use identical state streaming and rendering pipeline
+\end{itemize}
+
+This design ensures zero server-side render coupling, letting game developers own visualization entirely.
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{cmd/bbs-server/dashboard.go}
+  \item \texttt{cmd/bbs-server/viewer.go}
+  \item \texttt{cmd/bbs-server/templates/index.html}
+  \item \texttt{cmd/bbs-server/templates/dashboard-state.html}
+  \item \texttt{cmd/bbs-server/templates/viewer.html}
+  \item \texttt{ARCHITECTURE.md} (Viewer Architecture section)
+  \item \texttt{DASHBOARD\_REMOTE\_QUICKSTART.md}
+\end{itemize}
+
+\subsection{Process-Based Game Plugin System}
+A process plugin model is the only active game source:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{BBS\_ENABLE\_GAME\_PLUGINS=true} activates plugin discovery
+  \item \texttt{BBS\_GAME\_PLUGIN\_DIR=/path/to/plugins} (default \texttt{plugins/games})
+\end{itemize}
+
+Plugin manifests are discovered from \texttt{*.json} files in the configured directory. Plugin games communicate with the host over JSONL RPC via stdin/stdout. Manifests must declare \texttt{viewer\_client\_entry} to be valid and discoverable.
+
+Implemented plugin author support:
+\begin{itemize}[leftmargin=*]
+  \item Shared protocol and helper runtime (\texttt{games/pluginapi})
+  \item Reference plugin command (\texttt{cmd/bbs-game-counter-plugin})
+  \item Dashboard-integrated arg schema rendering
+  \item Discovery diagnostics in the dashboard
+\end{itemize}
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{ARCHITECTURE.md}
+  \item \texttt{PLUGIN\_AUTHORING.md}
+  \item \texttt{games/pluginapi/protocol.go}
+  \item \texttt{games/pluginapi/server.go}
+  \item \texttt{games/plugin\_host.go}
+  \item \texttt{games/plugin\_process\_game.go}
+\end{itemize}
+
+\subsection{Local Bridge Agent for Bot Authors}
+\texttt{bbs-agent} provides a local JSONL bridge abstraction for bot logic, separating local policy code from direct BBS TCP protocol handling.
+
+Implemented bridge model:
+\begin{itemize}[leftmargin=*]
+  \item Local socket endpoint and message contract v0.2
+  \item \texttt{hello} / \texttt{welcome} / \texttt{turn} / \texttt{action} message loop
+  \item Support for both competitive and environment-style usage patterns
+\end{itemize}
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{BBS\_AGENT\_CONTRACT.md}
+  \item \texttt{cmd/bbs-agent/README.md}
+  \item \texttt{cmd/bbs-agent/main.go}
+\end{itemize}
+
+\subsection{Packaging, Deployment, and Release Automation}
+Deployment guidance exists for both Docker and non-Docker TrueNAS workflows, and release automation publishes Linux binaries for amd64 and arm64.
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{deploy/truenas/README.md}
+  \item \texttt{deploy/truenas-no-docker/README.md}
+  \item \texttt{.github/workflows/release-bbs-server.yml}
+\end{itemize}
+
+\subsection{Validation and CI Status}
+A dedicated manifest-validation command and workflow are present:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{cmd/bbs-plugin-manifest-lint/main.go}
+  \item \texttt{.github/workflows/validate-plugin-manifests.yml}
+\end{itemize}
+
+This improves plugin packaging hygiene by validating schema shape, field constraints, duplicates, and protocol compatibility.
+
+\section{Current Gaps and Shortcomings}
+The following are the most immediate gaps visible in the current implementation snapshot.
+
+\subsection{Durability and Data Lifecycle}
+\begin{itemize}[leftmargin=*]
+  \item Runtime state is in-memory only (sessions, arenas, profiles, and match history).
+  \item Process restart clears active runtime context and history.
+\end{itemize}
+
+Implication: suitable for local/home-lab operation and experimentation, but not yet a durable production service. Careful plugin selection and manual archival workflows are recommended for important match records.
+
+\subsection{Security and Trust Model}
+\begin{itemize}[leftmargin=*]
+  \item Bot channel remains plain TCP without built-in transport security.
+  \item Identity and owner-token controls are bearer-style.
+  \item Plugin trust assumes local trusted filesystem and trusted binaries.
+\end{itemize}
+
+Implication: deployment in untrusted networks requires external controls (for example TLS termination, network segmentation, host hardening).
+
+\subsection{Scalability and Concurrency Model}
+\begin{itemize}[leftmargin=*]
+  \item Manager state synchronization is intentionally coarse-grained (central mutex over key maps/counters).
+\end{itemize}
+
+Implication: simple and robust at current scale, but likely to become a throughput bottleneck under heavier concurrent load.
+
+\subsection{Plugin Governance and Isolation}
+\begin{itemize}[leftmargin=*]
+  \item Plugin discovery and shape validation exist, but stronger controls are not yet present (for example plugin signing, attestation, quotas, sandbox policies).
+  \item Health enforcement and richer lifecycle supervision are limited.
+\end{itemize}
+
+Implication: plugin extensibility is practical now, but governance and safety controls are early-stage.
+
+\subsection{Automated Test Coverage}
+Repository snapshot indicates no \texttt{*\_test.go} unit/integration test files currently present.
+
+Implication: current confidence is build- and smoke-test-oriented, with limited regression guardrails from automated test suites.
+
+\section{Suggested Near-Term Focus}
+A pragmatic next phase that aligns with the current architecture would be:
+\begin{enumerate}[leftmargin=*]
+  \item Persist core runtime records (profiles, matches, key arena events) to durable storage.
+  \item Introduce baseline automated tests for manager lifecycle, protocol handlers, and plugin host behavior.
+  \item Add security hardening layers for production-like deployments (transport protection, token handling improvements, plugin controls).
+  \item Expand plugin operational controls (health checks, richer diagnostics, controlled resource limits).
+\end{enumerate}
+
+\section{Document Map (Primary Reading Order)}
+\begin{longtable}{|p{0.34\textwidth}|p{0.60\textwidth}|}
+\hline
+\textbf{Document} & \textbf{Primary Use} \\
+\hline
+\path{README.md} & High-level platform orientation, run instructions, plugin quickstart, and usage examples. \\
+\hline
+\path{ARCHITECTURE.md} & Runtime decomposition, component responsibilities, plugin model, and known boundaries. \\
+\hline
+\path{PROTOCOL.md} & TCP command protocol and response conventions for bot clients. \\
+\hline
+\path{BBS_AGENT_CONTRACT.md} & Local bridge JSONL contract for \texttt{bbs-agent} integrations. \\
+\hline
+\path{PLUGIN_AUTHORING.md} & Plugin manifest schema, local workflow, CI checks, and release checklist. \\
+\hline
+\path{DASHBOARD_REMOTE_QUICKSTART.md} & Remote operator workflow for connecting bots through dashboard-issued owner tokens. \\
+\hline
+\path{deploy/truenas/README.md} & Docker-based TrueNAS deployment and update operations. \\
+\hline
+\path{deploy/truenas-no-docker/README.md} & Non-Docker TrueNAS deployment and update operations. \\
+\hline
+\path{.github/workflows/release-bbs-server.yml} & Binary release automation (linux amd64 and arm64 artifacts). \\
+\hline
+\path{.github/workflows/validate-plugin-manifests.yml} & CI manifest validation workflow for plugin packaging quality. \\
+\hline
+\end{longtable}
+
+\section{As-Built Conclusion}
+Build-a-Bot Stadium has progressed from a narrow game host into a fully plugin-driven, extensible bot-arena platform with:
+\begin{itemize}[leftmargin=*]
+  \item plugin-only game discovery and runtime,
+  \item client-side rendering model for game visualization,
+  \item multi-mode arena semantics supporting both competitive and environment-style games,
+  \item functional process-plugin architecture with manifest validation,
+  \item integrated dashboard-driven operations with owner and admin workflows, and
+  \item practical deployment and release pathways.
+\end{itemize}
+
+The core extension and operator workflows are now demonstrably in place. The most significant remaining work is concentrated in durability (persistent match archives), security hardening (transport protection, plugin governance), and automated regression coverage.
+
+\end{document}
