@@ -49,7 +49,7 @@ Create Arena in both owner and admin panels now uses the live runtime game catal
 
 So if server operators enable plugins and install valid manifests, those games can appear in your dropdown without dashboard code changes.
 
-## Alternative: Direct TCP Bot (Legacy Style)
+## Alternative: Direct TCP Bot
 
 If you prefer to handle protocol directly:
 

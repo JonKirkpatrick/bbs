@@ -13,6 +13,8 @@ Plugin author note: process plugin RPC is a separate contract from this TCP bot 
 - Default stadium port: `8080` (override with `--stadium`)
 - Framing: newline-delimited commands in, newline-delimited JSON responses out
 
+Server greeting is also JSONL: on connect, the server emits a `welcome` envelope.
+
 The dashboard is HTTP with SSE/WebSocket streams and is not a TCP client.
 
 ## Connection Lifecycle
@@ -59,19 +61,17 @@ CREATE counter target=15
 
 ## Response Schema
 
-Most responses use:
+All server responses (including command replies and connection greeting) use one envelope:
 
 ```json
 {
   "status": "ok | err",
-  "type": "register | auth | create | join | move | info | update | error | timeout | data | list | leave | gameover | ejected",
+  "type": "welcome | help | register | auth | create | join | watch | move | info | update | error | timeout | data | list | leave | quit | gameover | episode_end | ejected",
   "payload": "string_or_structured_data"
 }
 ```
 
 `payload` may be string, object, or array.
-
-Note: a few legacy command paths still emit plain text (for example parts of `HELP`/`WATCH`/unknown command handling).
 
 ## Identity And Ownership
 

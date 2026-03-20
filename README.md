@@ -85,25 +85,28 @@ When enabled, the server scans `*.json` manifests in the plugin directory and me
 }
 ```
 
-### Sample Plugin Command Included
+### Sample Plugin Commands Included
 
-A reference plugin command is included at `cmd/bbs-game-counter-plugin`.
+Reference implementations are provided in `cmd/bbs-server/plugins/games/`:
 
-```bash
-go build -o /tmp/bbs-plugin-smoke/counter-plugin ./cmd/bbs-game-counter-plugin
-```
+- **Counter Plugin** (`cmd/bbs-game-counter-plugin`, Go): Simple two-player game with basic args schema.
+- **Gridworld RL** (`gridworld_rl_plugin.py`, Python): Advanced single-player environment with episodic support, replay, and reward configuration.
+- **Guess Number** (`guess_number_plugin.py`, Python): Two-player game with state serialization and viewer integration.
 
-Example local plugin run:
+Example local plugin run (counter):
 
 ```bash
 mkdir -p /tmp/bbs-plugin-smoke
-# add manifest /tmp/bbs-plugin-smoke/counter.json
+cp cmd/bbs-server/plugins/games/counter.json /tmp/bbs-plugin-smoke/
+go build -o /tmp/bbs-plugin-smoke/counter-plugin ./cmd/bbs-game-counter-plugin
 
 cd cmd/bbs-server
 BBS_ENABLE_GAME_PLUGINS=true \
 BBS_GAME_PLUGIN_DIR=/tmp/bbs-plugin-smoke \
 go run .
 ```
+
+For a more advanced example (Python + episodic), see the gridworld RL plugin in `cmd/bbs-server/plugins/games/gridworld_rl_plugin.py`.
 
 ## Plugin Author Quickstart
 
@@ -238,6 +241,8 @@ go build ./...
 
 Bots connect over raw TCP and exchange newline-delimited commands and JSON responses.
 
+All bot response lines use one JSON envelope shape: `{"status": ..., "type": ..., "payload": ...}`.
+
 Typical flow:
 
 1. Connect to `localhost:<stadium_port>`
@@ -295,7 +300,8 @@ Docs and templates:
 
 - `BBS_AGENT_CONTRACT.md`
 - `cmd/bbs-agent/README.md`
-- `examples/python_socket_bot_template.py`
+- `examples/python_socket_bot_template.py` - basic bot template
+- `examples/python_gridworld_q_bot.py` - Q-learning agent for gridworld_rl plugin
 
 ## Quick Manual Test
 
@@ -322,12 +328,16 @@ LIST
 
 ## Project Layout
 
-- `cmd/bbs-server/`: TCP server + embedded dashboard/viewers
+- `cmd/bbs-server/`: TCP server + embedded dashboard/viewers + plugin host
+- `cmd/bbs-server/plugins/games/`: built-in reference plugin implementations
 - `cmd/bbs-agent/`: local bridge for bot authors
-- `cmd/bbs-game-counter-plugin/`: reference process plugin command
+- `cmd/bbs-game-counter-plugin/`: reference Go process plugin
 - `stadium/`: session, arena, manager, snapshots, match history
-- `games/`: game interfaces and plugin host/registry
+- `games/`: game interfaces, plugin host, and registry
 - `games/pluginapi/`: shared process-plugin RPC contract and server helper
+- `examples/`: bot templates and test agents
+
+Plugin discovery scans `cmd/bbs-server/plugins/games/*.json` by default (configurable via `BBS_GAME_PLUGIN_DIR`).
 
 All runtime state is currently in memory. Process restart clears sessions, arenas, bot profiles, and match history.
 

@@ -47,7 +47,7 @@ Responsibilities:
 - per-connection session lifecycle
 - command parsing and authorization
 - registration, create/join/watch/move flows
-- JSON response emission
+- uniform JSON envelope emission for all command responses
 - disconnect cleanup
 
 ### Stadium Manager (`stadium/`)

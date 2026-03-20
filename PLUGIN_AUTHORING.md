@@ -14,11 +14,12 @@ This guide is for external developers building process-based game plugins for Bu
 - Server sends RPC requests such as `init`, `get_state`, and `apply_move`.
 - Your plugin responds with JSON objects matching `games/pluginapi` request/response types.
 
-Reference implementation:
+Reference implementations:
 
-- `cmd/bbs-game-counter-plugin/main.go`
-- `games/pluginapi/server.go`
-- `games/pluginapi/protocol.go`
+- `cmd/bbs-game-counter-plugin/main.go` (Go, simple two-player game)
+- `cmd/bbs-server/plugins/games/gridworld_rl_plugin.py` (Python, episodic environment with replay support)
+- `games/pluginapi/server.go` (RPC server wrapper)
+- `games/pluginapi/protocol.go` (protocol constants)
 
 ## Manifest Schema
 
