@@ -1,8 +1,8 @@
 # Binaries
-bbs-agent
-bbs-server
-bbs-game-counter-plugin
-bbs-plugin-manifest-lint
+/bbs-agent
+/bbs-server
+/bbs-game-counter-plugin
+/bbs-plugin-manifest-lint
 /cmd/bbs-agent/bbs-agent
 /cmd/bbs-server/bbs-server
 /cmd/bbs-game-counter-plugin/bbs-game-counter-plugin

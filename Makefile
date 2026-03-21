@@ -1,4 +1,4 @@
-.PHONY: help build build-server build-agent build-plugins lint test clean release-tag help
+.PHONY: help build build-server build-agent build-plugins lint test test-race test-cover clean release-tag help
 
 # Default target
 help:
@@ -11,6 +11,8 @@ help:
 	@echo "  make build-plugins      Build plugin binaries"
 	@echo "  make lint               Run linter and validation checks"
 	@echo "  make test               Run all tests"
+	@echo "  make test-race          Run tests with race detector"
+	@echo "  make test-cover         Run tests with coverage report"
 	@echo "  make clean              Remove build artifacts"
 	@echo ""
 	@echo "Development:"
@@ -65,6 +67,22 @@ test:
 	@echo "Running tests..."
 	@go test -v ./...
 	@echo "✓ Tests passed"
+
+test-race:
+	@echo "Running tests with race detector..."
+	@go test -race ./...
+	@echo "✓ Race tests passed"
+
+test-cover:
+	@echo "Running tests with coverage..."
+	@PKGS=$$(find . -name "*_test.go" -type f -print | xargs -r -n1 dirname | sort -u | sed 's#^\./#./#'); \
+	if [ -z "$$PKGS" ]; then \
+		echo "No test packages found"; \
+		exit 0; \
+	fi; \
+	go test -coverprofile=coverage.out $$PKGS
+	@go tool cover -func=coverage.out
+	@echo "✓ Coverage report generated (coverage.out)"
 
 clean:
 	@echo "Cleaning build artifacts..."

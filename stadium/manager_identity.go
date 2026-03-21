@@ -12,6 +12,7 @@ import (
 // RegisterSession now captures the full profile of the bot upon entry.
 func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecret string, caps []string, ownerToken string) (RegistrationResult, error) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	var result RegistrationResult
 
 	now := time.Now()
@@ -125,8 +126,6 @@ func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecr
 	if newIdentity {
 		result.BotSecret = profile.BotSecret
 	}
-
-	m.mu.Unlock()
 
 	return result, nil
 }
