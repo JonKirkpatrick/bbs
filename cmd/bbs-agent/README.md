@@ -8,12 +8,12 @@ Primary mode on linux/mac:
 - local bot connects and sends `hello`
 - bot receives `welcome`/`turn` and returns `action`
 
-Protocol reference: `BBS_AGENT_CONTRACT.md`
+Protocol reference: `../../docs/reference/BBS_AGENT_CONTRACT.md`
 
 ## Why Use It
 
 - isolates bot code from raw BBS TCP protocol details
-- supports both competitive games and environment-style arenas
+- supports any contract-compliant arena interaction pattern
 - central place for credentials/session handling
 
 ## Quick Run

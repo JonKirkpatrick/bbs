@@ -73,7 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 - Environment variable export: `BBS_ENABLE_GAME_PLUGINS` now propagates to bot processes
-- Support for zero-player games (autonomous environments)
+- Support for autonomous-mode games (`RequiredPlayers() == 0`)
 
 ### Changed
 - Plugin manifest discovery now handles version field correctly
@@ -141,4 +141,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## Release Strategy
 
-See [VERSIONING.md](VERSIONING.md) for detailed versioning and release process documentation.
+See [docs/releases/VERSIONING.md](docs/releases/VERSIONING.md) for detailed versioning and release process documentation.

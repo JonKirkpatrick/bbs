@@ -27,14 +27,14 @@ Build-a-Bot Stadium is currently implemented as a single Go runtime with two pri
 The platform now follows a plugin-only architecture:
 \begin{itemize}[leftmargin=*]
   \item All games are process-based external plugins discovered at runtime
-  \item Supports both competitive games and single-agent episodic environments
+  \item Supports contract-compliant interaction patterns (multi-session, autonomous, or single-session)
   \item Plugins are optional; minimal deployment requires only the core server
 \end{itemize}
 
 Primary references:
 \begin{itemize}[leftmargin=*]
   \item \texttt{README.md}
-  \item \texttt{ARCHITECTURE.md}
+  \item \texttt{docs/architecture/ARCHITECTURE.md}
 \end{itemize}
 
 \section{Implemented Feature Set}
@@ -51,7 +51,7 @@ Notable implemented behavior:
 
 Primary references:
 \begin{itemize}[leftmargin=*]
-  \item \texttt{ARCHITECTURE.md}
+  \item \texttt{docs/architecture/ARCHITECTURE.md}
   \item \texttt{stadium/manager.go} and related files in \texttt{stadium/}
 \end{itemize}
 
@@ -64,7 +64,7 @@ Current protocol supports dynamic game arguments in \texttt{CREATE}, enabling co
 
 Primary references:
 \begin{itemize}[leftmargin=*]
-  \item \texttt{PROTOCOL.md}
+  \item \texttt{docs/reference/PROTOCOL.md}
   \item \texttt{cmd/bbs-server/main.go}
 \end{itemize}
 
@@ -100,8 +100,8 @@ Primary references:
   \item \texttt{cmd/bbs-server/templates/index.html}
   \item \texttt{cmd/bbs-server/templates/dashboard-state.html}
   \item \texttt{cmd/bbs-server/templates/viewer.html}
-  \item \texttt{ARCHITECTURE.md} (Viewer Architecture section)
-  \item \texttt{DASHBOARD\_REMOTE\_QUICKSTART.md}
+  \item \texttt{docs/architecture/ARCHITECTURE.md} (Viewer Architecture section)
+  \item \texttt{docs/guides/DASHBOARD\_REMOTE\_QUICKSTART.md}
 \end{itemize}
 
 \subsection{Process-Based Game Plugin System}
@@ -123,8 +123,8 @@ Implemented plugin author support:
 
 Primary references:
 \begin{itemize}[leftmargin=*]
-  \item \texttt{ARCHITECTURE.md}
-  \item \texttt{PLUGIN\_AUTHORING.md}
+  \item \texttt{docs/architecture/ARCHITECTURE.md}
+  \item \texttt{docs/guides/PLUGIN\_AUTHORING.md}
   \item \texttt{games/pluginapi/protocol.go}
   \item \texttt{games/pluginapi/server.go}
   \item \texttt{games/plugin\_host.go}
@@ -138,7 +138,7 @@ Implemented bridge model:
 \begin{itemize}[leftmargin=*]
   \item Local socket endpoint and message contract v0.2
   \item \texttt{hello} / \texttt{welcome} / \texttt{turn} / \texttt{action} message loop
-  \item Support for both competitive and environment-style usage patterns
+  \item Support for domain-agnostic contract-compliant usage patterns
 \end{itemize}
 
 Primary references:
@@ -223,15 +223,15 @@ A pragmatic next phase that aligns with the current architecture would be:
 \hline
 \path{README.md} & High-level platform orientation, run instructions, plugin quickstart, and usage examples. \\
 \hline
-\path{ARCHITECTURE.md} & Runtime decomposition, component responsibilities, plugin model, and known boundaries. \\
+\path{docs/architecture/ARCHITECTURE.md} & Runtime decomposition, component responsibilities, plugin model, and known boundaries. \\
 \hline
-\path{PROTOCOL.md} & TCP command protocol and response conventions for bot clients. \\
+\path{docs/reference/PROTOCOL.md} & TCP command protocol and response conventions for bot clients. \\
 \hline
-\path{BBS_AGENT_CONTRACT.md} & Local bridge JSONL contract for \texttt{bbs-agent} integrations. \\
+\path{docs/reference/BBS_AGENT_CONTRACT.md} & Local bridge JSONL contract for \texttt{bbs-agent} integrations. \\
 \hline
-\path{PLUGIN_AUTHORING.md} & Plugin manifest schema, local workflow, CI checks, and release checklist. \\
+\path{docs/guides/PLUGIN_AUTHORING.md} & Plugin manifest schema, local workflow, CI checks, and release checklist. \\
 \hline
-\path{DASHBOARD_REMOTE_QUICKSTART.md} & Remote operator workflow for connecting bots through dashboard-issued owner tokens. \\
+\path{docs/guides/DASHBOARD_REMOTE_QUICKSTART.md} & Remote operator workflow for connecting bots through dashboard-issued owner tokens. \\
 \hline
 \path{deploy/truenas/README.md} & Docker-based TrueNAS deployment and update operations. \\
 \hline
@@ -248,7 +248,7 @@ Build-a-Bot Stadium has progressed from a narrow game host into a fully plugin-d
 \begin{itemize}[leftmargin=*]
   \item plugin-only game discovery and runtime,
   \item client-side rendering model for game visualization,
-  \item multi-mode arena semantics supporting both competitive and environment-style games,
+  \item multi-mode arena semantics supporting domain-agnostic interaction patterns,
   \item functional process-plugin architecture with manifest validation,
   \item integrated dashboard-driven operations with owner and admin workflows, and
   \item practical deployment and release pathways.

@@ -2,11 +2,12 @@
 
 Build-a-Bot Stadium is an extensible bot-arena platform.
 
-It supports a wide game model through dynamically discoverable process-based plugins:
+It is intentionally contract-first and domain-agnostic:
 
-- competitive games
-- single-agent environments
-- episodic environments
+- A `bot` is any session-attached actor that can consume the JSON protocol output.
+- An `arena` is a container for one `Game` instance and zero or more sessions.
+- A `Game` is any contract-compliant plugin implementation, regardless of domain semantics.
+- The stadium core is a platform for session/arena interaction orchestration.
 
 The server runs as one Go process with two surfaces:
 
@@ -58,7 +59,7 @@ cd cmd/bbs-server
 go run . --help
 ```
 
-For details on versioning and release management, see [VERSIONING.md](VERSIONING.md), [CHANGELOG.md](CHANGELOG.md), and [ROADMAP.md](ROADMAP.md).
+For details on versioning and release management, see [docs/releases/VERSIONING.md](docs/releases/VERSIONING.md), [CHANGELOG.md](CHANGELOG.md), and [docs/releases/ROADMAP.md](docs/releases/ROADMAP.md).
 
 ## Run The Server
 
@@ -151,7 +152,7 @@ For a more advanced episodic example, see the gridworld RL plugin in `cmd/bbs-se
 
 This section is for developers building new game plugins for BBS.
 
-For a complete field-by-field reference and release checklist, see `PLUGIN_AUTHORING.md`.
+For a complete field-by-field reference and release checklist, see `docs/guides/PLUGIN_AUTHORING.md`.
 
 ### 1. Implement a Plugin Executable
 
@@ -303,7 +304,7 @@ Common commands:
 - `LEAVE`
 - `QUIT`
 
-See `PROTOCOL.md` for full details.
+See `docs/reference/PROTOCOL.md` for full details.
 
 ## Dashboard
 
@@ -338,7 +339,7 @@ For bot authors who do not want raw TCP protocol handling:
 
 Docs and templates:
 
-- `BBS_AGENT_CONTRACT.md`
+- `docs/reference/BBS_AGENT_CONTRACT.md`
 - `cmd/bbs-agent/README.md`
 - `examples/python_socket_bot_template.py` - basic bot template
 - `examples/python_gridworld_q_bot.py` - Q-learning agent for gridworld_rl plugin
@@ -403,6 +404,16 @@ make lint            # Validate plugins and run go vet
 make test            # Run tests
 make run-server      # Start with plugins enabled
 ```
+
+## Documentation Index
+
+- Overview index: `docs/README.md`
+- Architecture: `docs/architecture/ARCHITECTURE.md`
+- Protocol reference: `docs/reference/PROTOCOL.md`
+- Agent bridge contract: `docs/reference/BBS_AGENT_CONTRACT.md`
+- Plugin authoring guide: `docs/guides/PLUGIN_AUTHORING.md`
+- Dashboard remote quickstart: `docs/guides/DASHBOARD_REMOTE_QUICKSTART.md`
+- Versioning and releases: `docs/releases/VERSIONING.md`, `docs/releases/ROADMAP.md`, `CHANGELOG.md`
 
 ## Deployment Guides
 

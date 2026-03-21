@@ -102,7 +102,7 @@ When determining runtime version, the system checks:
 
 ## Backward Compatibility
 
-**TCP Protocol (`PROTOCOL.md`)**:
+**TCP Protocol (`../reference/PROTOCOL.md`)**:
 - Envelope format is stable
 - New command types are additive (non-breaking)
 - Response envelope always includes `status`, `type`, `payload`
@@ -112,7 +112,7 @@ When determining runtime version, the system checks:
 - Plugin protocol is versioned separately
 - Backward-compatible additions only (new optional RPC methods)
 
-**Agent Contract (`BBS_AGENT_CONTRACT.md`)**:
+**Agent Contract (`../reference/BBS_AGENT_CONTRACT.md`)**:
 - Current version: `0.2`
 - Pre-v1.0 changes may be breaking
 - Clearly mark breaking changes in release notes
@@ -133,6 +133,6 @@ When determining runtime version, the system checks:
 
 Refer to:
 - `CHANGELOG.md` - What changed in each version
-- `PROTOCOL.md` - TCP bot protocol stability guarantees
-- `BBS_AGENT_CONTRACT.md` - Local bridge contract version
-- `PLUGIN_AUTHORING.md` - Plugin protocol compatibility
+- `../reference/PROTOCOL.md` - TCP bot protocol stability guarantees
+- `../reference/BBS_AGENT_CONTRACT.md` - Local bridge contract version
+- `../guides/PLUGIN_AUTHORING.md` - Plugin protocol compatibility

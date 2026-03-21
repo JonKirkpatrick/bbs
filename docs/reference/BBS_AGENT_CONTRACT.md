@@ -11,10 +11,7 @@ This contract defines the local JSONL protocol between:
 
 The bridge keeps server/network details inside `bbs-agent` so bot code can focus on decisions.
 
-This applies to both:
-
-- competitive games
-- single-agent environment-style arenas
+This applies to any contract-compliant arena interaction pattern.
 
 ## Design
 
@@ -151,7 +148,7 @@ Sent when actionable state is available.
 Interpretation notes:
 
 - In two-player games, `your_turn` indicates when to act.
-- In single-agent environments, each actionable step is still sent through `turn`.
+- In autonomous or solo-player modes, each actionable step is still sent through `turn`.
 - `done`/`truncated` indicate terminal/truncated rollout conditions.
 - Rewards are normalized by current bridge logic (`1.0` win, `-1.0` loss, `0.0` draw/default).
 

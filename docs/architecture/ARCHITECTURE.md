@@ -4,6 +4,13 @@ This document describes the current architecture of Build-a-Bot Stadium as an ex
 
 The runtime now uses process-based game plugins as the only game source.
 
+## Core Semantics
+
+- `Bot`: any actor attached to a session that can consume stadium JSON protocol output.
+- `Arena`: a container that binds one `Game` instance with zero or more sessions.
+- `Game`: any plugin that satisfies the contract surface (`games.GameInstance` and related optional interfaces).
+- Stadium core: orchestration of sessions, arenas, and contract-compliant plugin instances.
+
 ## Runtime Surfaces
 
 A single `cmd/bbs-server` process exposes:
@@ -73,7 +80,7 @@ Concurrency model:
 
 Server logic depends on `games.GameInstance` plus optional policy interfaces:
 
-- `RequiredPlayers()` for zero-player, one-player, or two-player activation
+- `RequiredPlayers()` for activation gating on session count
 - `EnforceMoveClock()`
 - `SupportsHandicap()`
 - `AdvanceEpisode()` for episodic environments

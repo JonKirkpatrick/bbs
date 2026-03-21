@@ -7,7 +7,7 @@ No move validation — whatever column you click is sent directly to the agent.
 Note:
     This script targets the legacy stdin/stdout worker runtime.
     For new integrations, use the local socket bridge model described in
-    `BBS_AGENT_CONTRACT.md`.
+    `docs/reference/BBS_AGENT_CONTRACT.md`.
 """
 
 from __future__ import annotations

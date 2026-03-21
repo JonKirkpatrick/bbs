@@ -2,8 +2,8 @@
 
 This document defines the TCP bot protocol for Build-a-Bot Stadium.
 
-The platform supports both competitive games and environment-style arenas through process-based plugins exposed under the same command model.
-The runtime game catalog is plugin-driven and discovered from manifests.
+The protocol is domain-agnostic and models session/arena interactions over a contract-compliant plugin instance.
+The runtime catalog is plugin-driven and discovered from manifests.
 
 Plugin author note: process plugin RPC is a separate contract from this TCP bot protocol. See `games/pluginapi/protocol.go` and `README.md` Plugin Author Quickstart.
 
@@ -91,11 +91,13 @@ For games/environments that disable move clocks, time and handicap inputs are ig
 
 ## Arena Types
 
-The platform supports both:
+Arena interaction patterns are defined by plugin policy and required session count.
 
-- two-player arenas
-- zero-player arenas/environments (`RequiredPlayers() == 0`)
-- one-player arenas/environments (`RequiredPlayers() == 1`)
+Common patterns:
+
+- multi-session arenas
+- autonomous arenas (`RequiredPlayers() == 0`)
+- single-session arenas (`RequiredPlayers() == 1`)
 
 Episodic environments can continue across terminal episodes when supported by game implementation.
 

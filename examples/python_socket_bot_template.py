@@ -2,7 +2,7 @@
 """Python socket bot template for bbs-agent local bridge mode.
 
 This template connects to a Unix socket exposed by `bbs-agent --listen` and
-speaks the local JSONL protocol documented in BBS_AGENT_CONTRACT.md.
+speaks the local JSONL protocol documented in docs/reference/BBS_AGENT_CONTRACT.md.
 """
 
 from __future__ import annotations

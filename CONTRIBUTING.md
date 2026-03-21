@@ -59,7 +59,7 @@ make version
 
 Plugin authors should:
 
-1. Reference the plugin authoring guide: [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md)
+1. Reference the plugin authoring guide: [docs/guides/PLUGIN_AUTHORING.md](docs/guides/PLUGIN_AUTHORING.md)
 2. Place plugins in `cmd/bbs-server/plugins/games/` for inclusion
 3. Include both:
    - Plugin executable (compiled binary or executable script in any language)
@@ -115,14 +115,14 @@ BBS_ENABLE_GAME_PLUGINS=true BBS_GAME_PLUGIN_DIR=/path/to/plugins go run ./cmd/b
 ## Documentation
 
 - Main docs: [README.md](README.md)
-- Protocol: [PROTOCOL.md](PROTOCOL.md)
-- Plugin authoring: [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md)
-- Agent bridge: [BBS_AGENT_CONTRACT.md](BBS_AGENT_CONTRACT.md)
-- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Protocol: [docs/reference/PROTOCOL.md](docs/reference/PROTOCOL.md)
+- Plugin authoring: [docs/guides/PLUGIN_AUTHORING.md](docs/guides/PLUGIN_AUTHORING.md)
+- Agent bridge: [docs/reference/BBS_AGENT_CONTRACT.md](docs/reference/BBS_AGENT_CONTRACT.md)
+- Architecture: [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)
 
 ## Releases and Versions
 
-This project uses semantic versioning. See [VERSIONING.md](VERSIONING.md) for:
+This project uses semantic versioning. See [docs/releases/VERSIONING.md](docs/releases/VERSIONING.md) for:
 
 - How versions are assigned
 - Release process for maintainers
@@ -148,4 +148,4 @@ Contributors are expected to:
 
 **Happy coding!** 🎮
 
-For more information, see [VERSIONING.md](VERSIONING.md) and [CHANGELOG.md](CHANGELOG.md).
+For more information, see [docs/releases/VERSIONING.md](docs/releases/VERSIONING.md) and [CHANGELOG.md](CHANGELOG.md).
