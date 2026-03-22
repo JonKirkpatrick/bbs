@@ -76,6 +76,7 @@ func newTestManager() *Manager {
 		ActiveSessions: make(map[int]*Session),
 		BotProfiles:    make(map[string]*BotProfile),
 		MatchHistory:   make([]MatchRecord, 0),
+		persistence:    NewInMemoryPersistenceStore(),
 		subscribers:    make(map[chan StadiumEvent]struct{}),
 		nextArenaID:    1,
 		nextSessionID:  1,

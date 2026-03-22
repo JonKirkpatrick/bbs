@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/JonKirkpatrick/bbs/stadium"
 )
 
 func TestParseGameArgs(t *testing.T) {
@@ -104,4 +109,140 @@ func TestRequireAdmin(t *testing.T) {
 			t.Fatalf("requireAdmin should pass, got ok=%v key=%q", ok, key)
 		}
 	})
+}
+
+func TestAdminDebugServerIdentity(t *testing.T) {
+	t.Setenv(dashboardAdminKeyEnv, "secret")
+
+	store := stadium.NewInMemoryPersistenceStore()
+	stadium.DefaultManager.SetPersistenceStore(store)
+	_, err := stadium.DefaultManager.BootstrapServerIdentity(context.Background(), "debug-node", "v0.0.0")
+	if err != nil {
+		t.Fatalf("BootstrapServerIdentity returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/debug/server-identity?admin_key=secret", nil)
+	rr := httptest.NewRecorder()
+	handleAdminDebugServerIdentity(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+	if payload["status"] != "ok" {
+		t.Fatalf("expected status ok, got %v", payload["status"])
+	}
+}
+
+func TestAdminDebugOutboxAndRecentMatches(t *testing.T) {
+	t.Setenv(dashboardAdminKeyEnv, "secret")
+
+	store := stadium.NewInMemoryPersistenceStore()
+	stadium.DefaultManager.SetPersistenceStore(store)
+
+	err := store.AppendOutboxEvent(context.Background(), stadium.DurableOutboxEvent{
+		EventID:       "evt_99",
+		EventType:     "match_finalized",
+		PayloadJSON:   `{"match_id":99}`,
+		CreatedAt:     time.Now().UTC(),
+		NextAttemptAt: time.Now().UTC().Add(-time.Second),
+		PublishStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("AppendOutboxEvent returned error: %v", err)
+	}
+
+	err = store.AppendMatch(context.Background(), stadium.DurableMatch{
+		MatchID:        99,
+		ArenaID:        99,
+		Game:           "counter",
+		TerminalStatus: "completed",
+		EndReason:      "done",
+		StartedAt:      time.Now().UTC().Add(-time.Minute),
+		EndedAt:        time.Now().UTC(),
+	}, []stadium.DurableMatchMove{{
+		MatchID:    99,
+		Sequence:   1,
+		BotID:      "bot_demo",
+		Move:       "x",
+		OccurredAt: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("AppendMatch returned error: %v", err)
+	}
+
+	outboxReq := httptest.NewRequest(http.MethodGet, "/admin/debug/outbox?admin_key=secret&limit=5", nil)
+	outboxRR := httptest.NewRecorder()
+	handleAdminDebugOutbox(outboxRR, outboxReq)
+	if outboxRR.Code != http.StatusOK {
+		t.Fatalf("outbox endpoint expected 200, got %d", outboxRR.Code)
+	}
+
+	recentReq := httptest.NewRequest(http.MethodGet, "/admin/debug/recent-matches?admin_key=secret&bot_id=bot_demo&limit=5", nil)
+	recentRR := httptest.NewRecorder()
+	handleAdminDebugRecentMatches(recentRR, recentReq)
+	if recentRR.Code != http.StatusOK {
+		t.Fatalf("recent matches endpoint expected 200, got %d", recentRR.Code)
+	}
+}
+
+func TestMockFederationIngest_DisabledByDefault(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/federation/mock/ingest", strings.NewReader(`{"event_id":"evt_1","origin_server_id":"srv_1"}`))
+	rr := httptest.NewRecorder()
+	handleMockFederationIngest(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when disabled, got %d", rr.Code)
+	}
+}
+
+func TestMockFederationIngest_AcceptsAndDedupes(t *testing.T) {
+	t.Setenv(mockFederationReceiverEnabledEnv, "true")
+	store := stadium.NewInMemoryPersistenceStore()
+	stadium.DefaultManager.SetPersistenceStore(store)
+
+	body := `{"event_id":"evt_10","origin_server_id":"srv_remote","event_type":"match_finalized"}`
+	req := httptest.NewRequest(http.MethodPost, "/federation/mock/ingest", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	handleMockFederationIngest(rr, req)
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+
+	dupReq := httptest.NewRequest(http.MethodPost, "/federation/mock/ingest", strings.NewReader(body))
+	dupRR := httptest.NewRecorder()
+	handleMockFederationIngest(dupRR, dupReq)
+	if dupRR.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 duplicate ack, got %d", dupRR.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(dupRR.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid duplicate ack json: %v", err)
+	}
+	if payload["duplicate"] != true {
+		t.Fatalf("expected duplicate=true, got %v", payload["duplicate"])
+	}
+}
+
+func TestMockFederationIngest_TokenRequired(t *testing.T) {
+	t.Setenv(mockFederationReceiverEnabledEnv, "true")
+	t.Setenv(mockFederationReceiverTokenEnv, "secret-token")
+
+	unauthReq := httptest.NewRequest(http.MethodPost, "/federation/mock/ingest", strings.NewReader(`{"event_id":"evt_20","origin_server_id":"srv_remote"}`))
+	unauthRR := httptest.NewRecorder()
+	handleMockFederationIngest(unauthRR, unauthReq)
+	if unauthRR.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without token, got %d", unauthRR.Code)
+	}
+
+	authReq := httptest.NewRequest(http.MethodPost, "/federation/mock/ingest", strings.NewReader(`{"event_id":"evt_20","origin_server_id":"srv_remote"}`))
+	authReq.Header.Set("Authorization", "Bearer secret-token")
+	authRR := httptest.NewRecorder()
+	handleMockFederationIngest(authRR, authReq)
+	if authRR.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 with valid token, got %d", authRR.Code)
+	}
 }

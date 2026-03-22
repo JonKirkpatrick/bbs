@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -29,6 +30,8 @@ var dashboardWSUpgrader = websocket.Upgrader{
 }
 
 const dashboardAdminKeyEnv = "BBS_DASHBOARD_ADMIN_KEY"
+const mockFederationReceiverEnabledEnv = "BBS_ENABLE_MOCK_FEDERATION_RECEIVER"
+const mockFederationReceiverTokenEnv = "BBS_MOCK_FEDERATION_RECEIVER_TOKEN"
 
 type dashboardIndexData struct {
 	AdminConfigured  bool
@@ -56,13 +59,18 @@ type dashboardStateView struct {
 }
 
 func initDashboard() {
-	files, _ := filepath.Glob("templates/*.html")
-	fmt.Printf("Found %d dashboard templates: %v\n", len(files), files)
+	paths, err := getRuntimePaths()
+	if err != nil {
+		panic(fmt.Sprintf("resolve runtime paths: %v", err))
+	}
+	pattern := filepath.Join(paths.TemplatesDir, "*.html")
+	files, _ := filepath.Glob(pattern)
+	fmt.Printf("Found %d dashboard templates in %s: %v\n", len(files), paths.TemplatesDir, files)
 	funcMap := template.FuncMap{
 		"fmtTime":    formatDashboardTime,
 		"fmtSeconds": formatMillisecondsAsSeconds,
 	}
-	dashTemplates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
+	dashTemplates = template.Must(template.New("").Funcs(funcMap).ParseGlob(pattern))
 }
 
 func formatDashboardTime(raw string) string {
@@ -368,10 +376,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	adminKey := strings.TrimSpace(r.FormValue("admin_key"))
-	if adminKey == "" {
-		adminKey = strings.TrimSpace(r.URL.Query().Get("admin_key"))
-	}
+	adminKey := adminKeyFromRequest(r)
 
 	if !isAdminAuthorized(adminKey) {
 		renderActionResult(w, false, "Admin authorization failed. Set BBS_DASHBOARD_ADMIN_KEY and provide a valid key.")
@@ -379,6 +384,240 @@ func requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	}
 
 	return adminKey, true
+}
+
+func adminKeyFromRequest(r *http.Request) string {
+	adminKey := strings.TrimSpace(r.FormValue("admin_key"))
+	if adminKey == "" {
+		adminKey = strings.TrimSpace(r.URL.Query().Get("admin_key"))
+	}
+	return adminKey
+}
+
+func requireAdminAPI(w http.ResponseWriter, r *http.Request) bool {
+	if !isAdminAuthorized(adminKeyFromRequest(r)) {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"status":  "err",
+			"message": "admin authorization failed",
+		})
+		return false
+	}
+	return true
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func boolEnv(name string) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func mockFederationReceiverEnabled() bool {
+	return boolEnv(mockFederationReceiverEnabledEnv)
+}
+
+func mockFederationReceiverToken() string {
+	return strings.TrimSpace(os.Getenv(mockFederationReceiverTokenEnv))
+}
+
+func tokenFromBearerHeader(r *http.Request) string {
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if auth == "" {
+		return ""
+	}
+	parts := strings.SplitN(auth, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
+}
+
+type mockFederationIngestRequest struct {
+	EventID        string          `json:"event_id"`
+	OriginServerID string          `json:"origin_server_id"`
+	EventType      string          `json:"event_type"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
+	PayloadJSON    string          `json:"payload_json,omitempty"`
+	CreatedAt      string          `json:"created_at,omitempty"`
+}
+
+func handleMockFederationIngest(w http.ResponseWriter, r *http.Request) {
+	if !mockFederationReceiverEnabled() {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if expected := mockFederationReceiverToken(); expected != "" {
+		provided := tokenFromBearerHeader(r)
+		if provided == "" {
+			provided = strings.TrimSpace(r.URL.Query().Get("token"))
+		}
+		if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+				"status":  "err",
+				"message": "mock federation receiver token is invalid",
+			})
+			return
+		}
+	}
+
+	var req mockFederationIngestRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"status":  "err",
+			"message": "invalid federation payload",
+		})
+		return
+	}
+
+	req.EventID = strings.TrimSpace(req.EventID)
+	req.OriginServerID = strings.TrimSpace(req.OriginServerID)
+	if req.EventID == "" || req.OriginServerID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"status":  "err",
+			"message": "event_id and origin_server_id are required",
+		})
+		return
+	}
+
+	duplicate, err := stadium.DefaultManager.RecordInboundFederationEvent(context.Background(), req.OriginServerID, req.EventID, time.Now().UTC())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"status":  "err",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]interface{}{
+		"status":    "accepted",
+		"ack_id":    req.EventID,
+		"event_id":  req.EventID,
+		"duplicate": duplicate,
+	})
+}
+
+func parseLimit(raw string, fallback int) int {
+	if fallback <= 0 {
+		fallback = 25
+	}
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	if parsed > 250 {
+		return 250
+	}
+	return parsed
+}
+
+func handleAdminDebugServerIdentity(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireAdminAPI(w, r) {
+		return
+	}
+
+	identity, found, err := stadium.DefaultManager.DurableServerIdentity(context.Background())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"status":  "err",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+		"found":  found,
+		"identity": map[string]interface{}{
+			"local_server_id":        identity.LocalServerID,
+			"global_server_id":       identity.GlobalServerID,
+			"preferred_display_name": identity.PreferredDisplayName,
+			"accepted_display_name":  identity.AcceptedDisplayName,
+			"registry_status":        identity.RegistryStatus,
+			"created_at":             identity.CreatedAt.UTC().Format(time.RFC3339Nano),
+			"last_registration_at":   identity.LastRegistrationAt.UTC().Format(time.RFC3339Nano),
+		},
+	})
+}
+
+func handleAdminDebugOutbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireAdminAPI(w, r) {
+		return
+	}
+
+	limit := parseLimit(r.URL.Query().Get("limit"), 50)
+	events, err := stadium.DefaultManager.PendingOutboxEvents(context.Background(), limit, time.Now().UTC())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"status":  "err",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+		"count":  len(events),
+		"events": events,
+	})
+}
+
+func handleAdminDebugRecentMatches(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireAdminAPI(w, r) {
+		return
+	}
+
+	botID := strings.TrimSpace(r.URL.Query().Get("bot_id"))
+	if botID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"status":  "err",
+			"message": "bot_id is required",
+		})
+		return
+	}
+
+	limit := parseLimit(r.URL.Query().Get("limit"), 25)
+	matches, err := stadium.DefaultManager.RecentDurableMatchesForBot(context.Background(), botID, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"status":  "err",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"bot_id":  botID,
+		"count":   len(matches),
+		"matches": matches,
+	})
 }
 
 func requireOwnerToken(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -695,6 +934,10 @@ func startDashboard() {
 	mux.HandleFunc("/admin/join-arena", handleAdminJoinArena)
 	mux.HandleFunc("/admin/eject-bot", handleAdminEjectBot)
 	mux.HandleFunc("/admin/create-arena", handleAdminCreateArena)
+	mux.HandleFunc("/admin/debug/server-identity", handleAdminDebugServerIdentity)
+	mux.HandleFunc("/admin/debug/outbox", handleAdminDebugOutbox)
+	mux.HandleFunc("/admin/debug/recent-matches", handleAdminDebugRecentMatches)
+	mux.HandleFunc("/federation/mock/ingest", handleMockFederationIngest)
 	mux.HandleFunc("/", handleIndex)
 
 	fmt.Printf("Dashboard running at http://localhost:%s\n", dashboardServerPort)

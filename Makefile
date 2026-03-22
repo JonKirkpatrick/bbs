@@ -1,4 +1,4 @@
-.PHONY: help build build-server build-agent build-plugins lint test test-race test-cover clean release-tag help
+.PHONY: help build build-server build-agent build-plugins lint test test-race test-cover clean release-tag help deb dev
 
 # Default target
 help:
@@ -18,6 +18,11 @@ help:
 	@echo "Development:"
 	@echo "  make run-server         Run server with plugins enabled"
 	@echo "  make run-server-admin   Run server in admin mode (dashboard_admin_key=password)"
+	@echo "  make dev                Run lint, test, and build"
+	@echo ""
+	@echo "Packaging:"
+	@echo "  make deb                Build .deb package (usage: make deb [VERSION=0.3.0])"
+	@echo "  make deb VERSION=v0.3.0 Build .deb package with specific version"
 	@echo ""
 	@echo "Release Management:"
 	@echo "  make version            Show current version info"
@@ -132,6 +137,12 @@ release-tag:
 	@echo "  3. Create annotated tag: git tag -a $(TAG) -m 'Release $(TAG): <description>'"
 	@echo "  4. Push tag: git push origin $(TAG)"
 	@echo "  5. GitHub Actions will build and publish automatically"
+
+# Packaging
+deb:
+	@echo "Building Debian package..."
+	@scripts/build-deb.sh $(VERSION_CLEAN)
+	@echo "✓ Debian package complete"
 
 # Development build (for local testing)
 .PHONY: dev

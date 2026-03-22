@@ -15,6 +15,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 (fixes will be captured here)
 
+## [v0.3.0] - 2026-03-22
+
+### Added
+- **SQLite Persistence (Stage 0)**: Durable storage for server identity, match history, bot profiles, and federation outbox
+- **Runtime Path Contract**: Configurable paths for templates, plugins, config, and data with environment overrides
+- **Linux FHS Packaging Profile**: Native `.deb` package support with systemd integration (via `BBS_PACKAGING_MODE=linux-fhs`)
+- **Federation Infrastructure**: Outbox worker with retry/backoff, HTTP publisher, mock global registrar, and dedupe receipts
+- **Admin Debug Endpoints**: `/admin/debug/server-identity`, `/admin/debug/outbox`, `/admin/debug/recent-matches` for operational visibility
+- **Mock Federation Receiver**: Optional token-gated `/federation/mock/ingest` endpoint for loopback testing
+
+### Changed
+- **Persistence Integration**: Manager now persists bot profiles and matches to SQLite on lifecycle events
+- **Bootstrap Flow**: Server identity and global registration now happen at startup with durable state
+- **Template Loading**: Dashboard templates resolved from configurable path instead of hardcoded relative path
+- **Plugin Discovery**: Plugin directory resolved from `BBS_GAME_PLUGIN_DIR` or runtime defaults (dev-friendly fallbacks)
+
+### Infrastructure
+- Added `.deb` package structure with systemd service, user setup, and post-install scripts
+- Added `docs/deployment/LINUX_PACKAGING_PROFILE.md` with `.deb` build and deployment examples
+- Added `docs/architecture/ADR_RUNTIME_PATHS_STAGE0.md` documenting path contract decisions
+- Makefile `deb` target for building `.deb` packages on Linux
+
+### Fixed
+- Template loading no longer depends on working directory
+- Plugin discovery is consistent across development and packaged installations
+
 ## [v0.2.0] - 2026-03-20
 
 ### Added

@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+# Post-removal script for bbs-server
+
+case "$1" in
+    remove|abort-install)
+        echo "Removing bbs-server..."
+        ;;
+    purge)
+        echo "Purging bbs-server (including configuration)..."
+        
+        # Remove user and home directory
+        if id -u bbs >/dev/null 2>&1; then
+            echo "Removing bbs system user..."
+            userdel -r -f bbs 2>/dev/null || true
+        fi
+        
+        # Remove application directories (keep data for safety unless purge)
+        # Data in /var/lib/bbs is preserved for recovery purposes
+        echo "Note: Data in /var/lib/bbs has been preserved for recovery"
+        ;;
+esac
+
+exit 0

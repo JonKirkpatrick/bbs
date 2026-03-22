@@ -103,6 +103,7 @@ func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecr
 	s.Draws = profile.Draws
 
 	profile.RegistrationCount++
+	m.persistBotProfileLocked(profile)
 
 	m.ActiveSessions[s.SessionID] = s
 
@@ -212,6 +213,7 @@ func (m *Manager) UpdateSessionProfile(sess *Session, key, val string) error {
 	if profile, ok := m.BotProfiles[sess.BotID]; ok {
 		profile.DisplayName = sess.BotName
 		profile.LastSeenAt = time.Now()
+		m.persistBotProfileLocked(profile)
 	}
 
 	m.mu.Unlock()

@@ -63,7 +63,15 @@ For details on versioning and release management, see [docs/releases/VERSIONING.
 
 ## Run The Server
 
-The dashboard templates are loaded from a relative `templates/` directory, so start from `cmd/bbs-server`:
+The server now resolves runtime paths at startup (templates, plugin directory, SQLite path), so you can run from either repo root or `cmd/bbs-server`.
+
+From repo root:
+
+```bash
+go run ./cmd/bbs-server
+```
+
+From `cmd/bbs-server`:
 
 ```bash
 cd cmd/bbs-server
@@ -83,6 +91,23 @@ Optional dashboard admin mode:
 cd cmd/bbs-server
 BBS_DASHBOARD_ADMIN_KEY='mysecretkey' go run .
 ```
+
+Optional runtime path overrides:
+
+- `BBS_SERVER_HOME`
+- `BBS_CONFIG_DIR`
+- `BBS_DATA_DIR`
+- `BBS_TEMPLATE_DIR`
+- `BBS_GAME_PLUGIN_DIR`
+- `BBS_SQLITE_PATH`
+
+For production Linux deployments (`.deb`, systemd), use the FHS-compliant packaging profile:
+
+```bash
+BBS_PACKAGING_MODE=linux-fhs /opt/bbs/bin/bbs-server
+```
+
+See [docs/deployment/LINUX_PACKAGING_PROFILE.md](docs/deployment/LINUX_PACKAGING_PROFILE.md) for `.deb` packaging and systemd service examples.
 
 Then open:
 

@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +26,9 @@ var (
 	dashboardServerPort = defaultDashboardServerPort
 )
 
-// WelcomeBanner is the ASCII art displayed to bots upon connection, along with a brief introduction to the Build-a-Bot Stadium.
+// WelcomeBanner is not presently being used, but I intend to find some use for it in the future.
+// Originally it was being printed to the console on server and agent startup, but we have moved
+// to a pure JSON protocol and this banner was no longer a good fit.
 const WelcomeBanner = `
 ######################################################################
 #__/\\\\\\\\\\\\\____/\\\\\\\\\\\\\_______/\\\\\\\\\\\_______________#
@@ -51,6 +56,11 @@ func main() {
 		return
 	}
 
+	if err := bootstrapPersistenceAndIdentity(); err != nil {
+		fmt.Printf("Failed to bootstrap persistence/identity: %v\n", err)
+		return
+	}
+
 	listener, err := net.Listen("tcp", ":"+botServerPort)
 	if err != nil {
 		fmt.Println("Error starting stadium:", err)
@@ -68,6 +78,79 @@ func main() {
 		}
 		go handleBot(conn)
 	}
+}
+
+func bootstrapPersistenceAndIdentity() error {
+	paths, err := resolveRuntimePaths()
+	if err != nil {
+		return err
+	}
+	setRuntimePaths(paths)
+
+	if strings.TrimSpace(os.Getenv(pluginDirEnv)) == "" {
+		_ = os.Setenv(pluginDirEnv, paths.PluginsDir)
+	}
+
+	databasePath := paths.SQLitePath
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
+		return fmt.Errorf("create sqlite parent directory: %w", err)
+	}
+
+	store, err := stadium.NewSQLitePersistenceStore(databasePath)
+	if err != nil {
+		return err
+	}
+	stadium.DefaultManager.SetPersistenceStore(store)
+
+	fmt.Printf("Runtime paths: home=%s data=%s sqlite=%s templates=%s plugins=%s\n",
+		paths.ServerHome,
+		paths.DataDir,
+		paths.SQLitePath,
+		paths.TemplatesDir,
+		paths.PluginsDir,
+	)
+
+	useMockRegistry := true
+	if raw := strings.TrimSpace(strings.ToLower(os.Getenv("BBS_ENABLE_MOCK_GLOBAL_REGISTRY"))); raw != "" {
+		useMockRegistry = raw == "1" || raw == "true" || raw == "yes"
+	}
+	if useMockRegistry {
+		stadium.DefaultManager.SetGlobalServerRegistrar(stadium.NewMockGlobalServerRegistrar())
+	}
+	outboxPublisher := stadium.OutboxPublisher(stadium.NoopOutboxPublisher{})
+	outboxEndpoint := strings.TrimSpace(os.Getenv("BBS_FEDERATION_OUTBOX_URL"))
+	if outboxEndpoint != "" {
+		authToken := strings.TrimSpace(os.Getenv("BBS_FEDERATION_OUTBOX_TOKEN"))
+		httpPublisher, err := stadium.NewHTTPOutboxPublisher(outboxEndpoint, authToken, 5*time.Second)
+		if err != nil {
+			return err
+		}
+		outboxPublisher = httpPublisher
+		fmt.Printf("Outbox publisher: HTTP endpoint %s\n", outboxEndpoint)
+	} else {
+		fmt.Printf("Outbox publisher: no endpoint configured; using local no-op publisher\n")
+	}
+	stadium.DefaultManager.SetOutboxPublisher(outboxPublisher)
+	stadium.DefaultManager.StartOutboxWorker(5*time.Second, 50)
+
+	preferredName := strings.TrimSpace(os.Getenv("BBS_SERVER_DISPLAY_NAME"))
+	if preferredName == "" {
+		preferredName = "local-bbs"
+	}
+
+	identity, err := stadium.DefaultManager.BootstrapServerIdentity(context.Background(), preferredName, currentDashboardVersion())
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Server identity ready: local=%s global=%s name=%s status=%s\n",
+		identity.LocalServerID,
+		identity.GlobalServerID,
+		identity.AcceptedDisplayName,
+		identity.RegistryStatus,
+	)
+
+	return nil
 }
 
 func parseLaunchFlags() error {

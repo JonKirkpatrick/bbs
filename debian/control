@@ -1,0 +1,19 @@
+Package: bbs-server
+Version: 0.3.0
+Architecture: amd64
+Maintainer: Jon Kirkpatrick <jon@example.com>
+Homepage: https://github.com/JonKirkpatrick/bbs
+Description: Build-a-Bot Stadium Server - Extensible bot arena platform
+ Build-a-Bot Stadium is a contract-first, extensible bot-arena platform that
+ orchestrates game execution and manages bot sessions via a JSON protocol.
+ .
+ Features:
+  - Extensible plugin-based game system (Go, Python, Rust, etc.)
+  - SQLite persistence for matches, profiles, and federation state
+  - Web dashboard for arena management and live viewing
+  - Process-based plugin architecture with RPC contract
+  - Federation-ready with outbox/inbox patterns
+Depends: libc6 (>= 2.31)
+Standards-Version: 4.6.1
+Section: misc
+Priority: optional

@@ -1,0 +1,19 @@
+bbs-server (0.3.0) unstable; urgency=low
+
+  * Add SQLite persistence layer with federation-ready schema
+  * Add runtime path contract (BBS_PACKAGING_MODE=linux-fhs for FHS paths)
+  * Add admin debug endpoints for operational visibility
+  * Add Linux FHS packaging profile with systemd support
+  * Add federation infrastructure (outbox worker, mock registrar, dedupe)
+  * Improve template and plugin discovery via resolved paths
+
+ -- Jon Kirkpatrick <jon@example.com>  Sat, 22 Mar 2026 00:00:00 +0000
+
+bbs-server (0.2.0) unstable; urgency=low
+
+  * Initial release with plugin-only architecture
+  * Add process plugin RPC contract
+  * Add web dashboard and live viewer
+  * Add release management infrastructure
+
+ -- Jon Kirkpatrick <jon@example.com>  Wed, 20 Mar 2026 00:00:00 +0000

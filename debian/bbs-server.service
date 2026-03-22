@@ -1,0 +1,29 @@
+[Unit]
+Description=Build-a-Bot Stadium Server
+Documentation=https://github.com/JonKirkpatrick/bbs
+After=network.target
+
+[Service]
+Type=simple
+User=bbs
+Group=bbs
+WorkingDirectory=/var/lib/bbs
+EnvironmentFile=/etc/bbs/bbs.env
+ExecStart=/opt/bbs/bin/bbs-server --stadium 8080 --dash 3000
+Restart=always
+RestartSec=10s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/bbs /var/log/bbs
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bbs-server
+
+[Install]
+WantedBy=multi-user.target

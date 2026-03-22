@@ -160,6 +160,7 @@ func (m *Manager) finalizeArenaLocked(arena *Arena, endReason, terminalStatus st
 	m.applyOutcomeToProfilesByBotIDsLocked(player1BotID, player2BotID, winnerPlayerID, isDraw)
 	m.MatchHistory = append(m.MatchHistory, record)
 	m.mu.Unlock()
+	m.persistMatchRecord(record)
 
 	return record, nil
 }
@@ -220,6 +221,10 @@ func (m *Manager) applyOutcomeToProfilesByBotIDsLocked(player1BotID, player2BotI
 			sess.Losses = profile.Losses
 			sess.Draws = profile.Draws
 		}
+	}
+
+	for _, profile := range profiles {
+		m.persistBotProfileLocked(profile)
 	}
 }
 
