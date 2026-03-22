@@ -68,5 +68,9 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Runtime SQLite artifacts
+/bbs.sqlite3*
+/cmd/bbs-server/bbs.sqlite3*
+
 # Local personal notes
 *.local.md
