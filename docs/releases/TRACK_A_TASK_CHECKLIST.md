@@ -30,7 +30,7 @@ Estimate scale:
 | --- | --- | --- | --- | --- | --- | --- |
 | A0-01 | A0 | Create Avalonia solution + project structure (`App`, `Core`, `Infrastructure`) | M | - | in-progress | Solution builds and launches app shell on Linux |
 | A0-02 | A0 | Establish MVVM conventions and base view model infrastructure | S | A0-01 | in-progress | Base view model + command patterns used by at least one screen |
-| A0-03 | A0 | Define client domain models (`ClientIdentity`, `BotProfile`, `KnownServer`, `ServerPluginCache`, `AgentRuntimeState`) | S | A0-01 | todo | Models compile, are serializable/mappable, and have basic validation |
+| A0-03 | A0 | Define client domain models (`ClientIdentity`, `BotProfile`, `KnownServer`, `ServerPluginCache`, `AgentRuntimeState`) | S | A0-01 | done | Models compile, are serializable/mappable, and have basic validation |
 | A0-04 | A0 | Add local logging/telemetry abstraction for app runtime diagnostics | S | A0-01 | in-progress | App writes structured local logs with levels and timestamps |
 | A1-01 | A1 | Implement storage abstraction interfaces for client persistence | S | A0-03 | todo | Storage contracts support identity, bots, servers, plugin cache, runtime state |
 | A1-02 | A1 | Implement SQLite-backed storage provider and startup initialization | M | A1-01 | todo | DB file is created automatically and startup does not require manual steps |
