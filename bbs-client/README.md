@@ -34,3 +34,11 @@ SQLite storage is initialized automatically on startup at:
 
 - `$XDG_STATE_HOME/bbs-client/data/client.db` when `XDG_STATE_HOME` is set
 - `~/.local/state/bbs-client/data/client.db` otherwise
+
+## Current UI Shell
+
+The app currently launches into a unified workspace shell with:
+
+- Left panel: bot cards
+- Center panel: activity workspace host
+- Right panel: server cards
