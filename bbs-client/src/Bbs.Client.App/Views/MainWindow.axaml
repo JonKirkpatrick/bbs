@@ -10,14 +10,16 @@
         Height="720"
                         MinWidth="980"
         MinHeight="600"
+        Background="{DynamicResource Palette.WindowBackgroundBrush}"
+        Foreground="{DynamicResource Palette.WindowForegroundBrush}"
         Title="{Binding WindowTitle}"
         mc:Ignorable="d">
       <Grid RowDefinitions="Auto,*" Margin="16">
-            <Border CornerRadius="10" Padding="14" Background="#173142" BorderBrush="#2D5A74" BorderThickness="1">
+            <Border CornerRadius="10" Padding="14" Background="{DynamicResource Palette.HeaderBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1">
                   <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                         <StackPanel Spacing="2">
                               <TextBlock FontSize="22" FontWeight="Bold" Text="Build-a-Bot Stadium" />
-                              <TextBlock FontSize="12" Opacity="0.85" Text="Unified workspace shell" />
+                              <TextBlock FontSize="12" Opacity="1" Text="Unified workspace shell" />
                         </StackPanel>
                         <Button Grid.Column="1"
                                                 HorizontalAlignment="Right"
@@ -34,72 +36,75 @@
                         <ColumnDefinition Width="{Binding RightPanelWidth}" />
                   </Grid.ColumnDefinitions>
 
-                  <Border Grid.Column="0" Margin="0,0,6,0" Background="#101E2A" BorderBrush="#2A4358" BorderThickness="1" CornerRadius="10" Padding="12">
-                        <Grid RowDefinitions="Auto,Auto,*">
+                  <Grid Grid.Column="0" Margin="0,0,6,0" ZIndex="0">
+                        <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
+                        <Grid Margin="12" RowDefinitions="Auto,Auto,*" ClipToBounds="True" ZIndex="1">
                               <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock FontSize="18" FontWeight="SemiBold" Text="Bots" />
                                     <Button Grid.Column="1" FontSize="11" Command="{Binding ToggleLeftPanelCommand}" Content="{Binding LeftPanelToggleText}" />
                               </Grid>
-                              <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="0.78" Text="Registered and local to this client" />
+                              <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="1" Text="Registered and local to this client" />
 
                               <ListBox Grid.Row="2"
                                                        IsVisible="{Binding IsLeftPanelExpanded}"
                                                        Background="Transparent"
                                                        BorderThickness="0"
                                                        ItemsSource="{Binding Bots}"
+                                                       ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedBot}">
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:BotSummaryItem">
                                                 <controls:SummaryCard Title="{Binding Name}"
                                                                                                                   Subtitle="{Binding Summary}"
                                                                                                                   StatusText="{Binding Status}"
-                                                                                                                  AccentBrush="#365875"
-                                                                                                                  BackgroundBrush="#152A3A" />
+                                                                                                                  AccentBrush="{DynamicResource Palette.AccentBrush}"
+                                                                                                                  BackgroundBrush="{DynamicResource Palette.SummaryCardBackgroundBrush}" />
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
 
                         </Grid>
-                  </Border>
+                  </Grid>
 
-                  <Border Grid.Column="1" Margin="6,0" Background="#102B2B" BorderBrush="#2E5F57" BorderThickness="1" CornerRadius="10" Padding="14">
-                        <Grid RowDefinitions="Auto,Auto,Auto,*">
+                  <Grid Grid.Column="1" Margin="6,0" ZIndex="10">
+                        <Border Background="{DynamicResource Palette.PanelCenterBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
+                        <Grid Margin="14" RowDefinitions="Auto,Auto,Auto,*" ZIndex="1">
                               <TextBlock FontSize="20" FontWeight="Bold" Text="Activity Workspace" />
-                              <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="0.8" Text="Center context host for bot/server workflows" />
+                              <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="1" Text="Center context host for bot/server workflows" />
 
                               <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
                                     <Button Command="{Binding SetHomeContextCommand}" Content="Home" />
                                     <Button Command="{Binding SetBotContextCommand}" Content="Bot Context" />
                                     <Button Command="{Binding SetServerContextCommand}" Content="Server Context" />
-                                    <TextBlock VerticalAlignment="Center" Opacity="0.75" Text="{Binding CurrentContextLabel}" />
+                                    <TextBlock VerticalAlignment="Center" Opacity="1" Text="{Binding CurrentContextLabel}" />
                               </StackPanel>
 
-                              <Border Grid.Row="3" Background="#163939" BorderBrush="#357170" BorderThickness="1" CornerRadius="8" Padding="16">
+                              <Border Grid.Row="3" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
                                     <StackPanel Spacing="8">
                                           <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding WorkspaceTitle}" />
                                           <TextBlock TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
 
-                                          <Border Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="#2A5D60" CornerRadius="6" Background="#0F2D2E">
+                                          <Border Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                                       <TextBlock FontSize="15" FontWeight="SemiBold" Text="Bot Registration / Edit" />
 
                                                       <StackPanel Grid.Row="1" Margin="0,6,0,0" Spacing="2">
-                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Bot Name" />
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Bot Name" />
                                                             <TextBox Text="{Binding BotEditorName}" Watermark="Counter Bot" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="2" Margin="0,6,0,0" Spacing="2">
-                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Launch Path" />
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Launch Path" />
                                                             <TextBox Text="{Binding BotEditorLaunchPath}" Watermark="/opt/bots/mybot.py" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="3" Margin="0,6,0,0" Spacing="2">
-                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Launch Args (space-separated)" />
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Launch Args (space-separated)" />
                                                             <TextBox Text="{Binding BotEditorArgs}" Watermark="--mode ranked" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="4" Margin="0,6,0,0" Spacing="2">
-                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Metadata (k=v;k2=v2)" />
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Metadata (k=v;k2=v2)" />
                                                             <TextBox Text="{Binding BotEditorMetadata}" Watermark="lang=python;tier=alpha" />
                                                       </StackPanel>
 
@@ -110,41 +115,43 @@
                                                             <Button Command="{Binding DisarmSelectedBotCommand}" Content="Disarm" />
                                                       </StackPanel>
 
-                                                      <TextBlock Grid.Row="6" Margin="0,6,0,0" FontSize="12" Opacity="0.78" Text="{Binding BotEditorMessage}" />
+                                                      <TextBlock Grid.Row="6" Margin="0,6,0,0" FontSize="12" Opacity="1" Text="{Binding BotEditorMessage}" />
                                                 </Grid>
                                           </Border>
                                     </StackPanel>
                               </Border>
                         </Grid>
-                  </Border>
+                  </Grid>
 
-                  <Border Grid.Column="2" Margin="6,0,0,0" Background="#261E14" BorderBrush="#5F4A2E" BorderThickness="1" CornerRadius="10" Padding="12">
-                        <Grid RowDefinitions="Auto,Auto,*">
+                  <Grid Grid.Column="2" Margin="6,0,0,0" ZIndex="0">
+                        <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
+                        <Grid Margin="12" RowDefinitions="Auto,Auto,*" ClipToBounds="True" ZIndex="1">
                               <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock FontSize="18" FontWeight="SemiBold" Text="Servers" />
                                     <Button Grid.Column="1" FontSize="11" Command="{Binding ToggleRightPanelCommand}" Content="{Binding RightPanelToggleText}" />
                               </Grid>
-                              <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="0.78" Text="Known server endpoints and status" />
+                              <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="1" Text="Known server endpoints and status" />
 
                               <ListBox Grid.Row="2"
                                                        IsVisible="{Binding IsRightPanelExpanded}"
                                                        Background="Transparent"
                                                        BorderThickness="0"
                                                        ItemsSource="{Binding Servers}"
+                                                       ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedServer}">
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:ServerSummaryItem">
                                                 <controls:SummaryCard Title="{Binding Name}"
                                                                                                                   Subtitle="{Binding Endpoint}"
                                                                                                                   StatusText="{Binding Status}"
-                                                                                                                  AccentBrush="#7D6438"
-                                                                                                                  BackgroundBrush="#362812" />
+                                                                                                                  AccentBrush="{DynamicResource Palette.AccentBrush}"
+                                                                                                                  BackgroundBrush="{DynamicResource Palette.SummaryCardBackgroundBrush}" />
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
 
                         </Grid>
-                  </Border>
+                  </Grid>
             </Grid>
   </Grid>
 </Window>

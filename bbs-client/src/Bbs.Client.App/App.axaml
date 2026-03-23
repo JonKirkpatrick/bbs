@@ -2,7 +2,70 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Bbs.Client.App.App"
              RequestedThemeVariant="Default">
+  <Application.Resources>
+    <Color x:Key="Palette.Bg">#f5f1e9</Color>
+    <Color x:Key="Palette.Paper">#fffaf3</Color>
+    <Color x:Key="Palette.Ink">#1b1c1f</Color>
+    <Color x:Key="Palette.Muted">#5d6068</Color>
+    <Color x:Key="Palette.Line">#ddd0b8</Color>
+    <Color x:Key="Palette.Brand">#cc5d22</Color>
+    <Color x:Key="Palette.BrandSoft">#f5d3c0</Color>
+    <Color x:Key="Palette.Accent">#0e7a6d</Color>
+    <Color x:Key="Palette.AccentSoft">#c5ece6</Color>
+
+    <SolidColorBrush x:Key="Palette.WindowBackgroundBrush" Color="{StaticResource Palette.Bg}" />
+    <SolidColorBrush x:Key="Palette.WindowForegroundBrush" Color="{StaticResource Palette.Ink}" />
+
+    <SolidColorBrush x:Key="Palette.PanelBackgroundBrush" Color="{StaticResource Palette.Paper}" />
+    <SolidColorBrush x:Key="Palette.HeaderBackgroundBrush" Color="{StaticResource Palette.Line}" />
+    <SolidColorBrush x:Key="Palette.BorderBrush" Color="{StaticResource Palette.Line}" />
+
+    <SolidColorBrush x:Key="Palette.BrandBrush" Color="{StaticResource Palette.Brand}" />
+    <SolidColorBrush x:Key="Palette.AccentBrush" Color="{StaticResource Palette.Accent}" />
+      
+    <SolidColorBrush x:Key="Palette.ButtonBackgroundBrush" Color="{StaticResource Palette.Brand}" />
+    <SolidColorBrush x:Key="Palette.ButtonForegroundBrush" Color="{StaticResource Palette.Paper}" />
+    <SolidColorBrush x:Key="Palette.ButtonHoverBackgroundBrush" Color="#b8531d" /> <SolidColorBrush x:Key="Palette.TextPrimaryBrush" Color="{StaticResource Palette.Ink}" />
+    <SolidColorBrush x:Key="Palette.TextSecondaryBrush" Color="{StaticResource Palette.Muted}" />
+        
+    <SolidColorBrush x:Key="Palette.InputBackgroundBrush" Color="{StaticResource Palette.Paper}" />
+    <SolidColorBrush x:Key="Palette.InputFocusBorderBrush" Color="{StaticResource Palette.Brand}" />
+  </Application.Resources>
   <Application.Styles>
     <FluentTheme />
+    <Style Selector="Window">
+      <Setter Property="Background" Value="{DynamicResource Palette.WindowBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource Palette.WindowForegroundBrush}" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource Palette.InputBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource Palette.InputForegroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Palette.BorderBrush}" />
+    </Style>
+    <Style Selector="TextBox:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource Palette.InputFocusBorderBrush}" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{DynamicResource Palette.ButtonBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource Palette.ButtonForegroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Palette.BorderBrush}" />
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Palette.ButtonHoverBackgroundBrush}" />
+    </Style>
+    <Style Selector="Button:pressed">
+      <Setter Property="Background" Value="{DynamicResource Palette.ButtonPressedBackgroundBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="Background" Value="{DynamicResource Palette.ListItemBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource Palette.ListItemForegroundBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Palette.ListItemHoverBackgroundBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected">
+      <Setter Property="Background" Value="{DynamicResource Palette.ListItemSelectedBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource Palette.ListItemForegroundBrush}" />
+    </Style>
   </Application.Styles>
 </Application>
