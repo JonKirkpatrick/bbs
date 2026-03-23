@@ -5,12 +5,14 @@ using Bbs.Client.App.ViewModels;
 using Bbs.Client.App.Views;
 using Bbs.Client.Core.Logging;
 using Bbs.Client.Infrastructure.Logging;
+using Bbs.Client.Infrastructure.Storage;
 
 namespace Bbs.Client.App;
 
 public partial class App : Application
 {
     private IClientLogger? _logger;
+    private SqliteClientStorage? _storage;
 
     public override void Initialize()
     {
@@ -20,7 +22,14 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         _logger = new FileClientLogger();
+        _storage = new SqliteClientStorage();
+        _storage.InitializeAsync().GetAwaiter().GetResult();
         _logger.Log(LogLevel.Information, "app_start", "BBS client started.");
+        _logger.Log(LogLevel.Information, "storage_initialized", "SQLite storage initialized.",
+            new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["db_path"] = _storage.DatabasePath
+            });
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

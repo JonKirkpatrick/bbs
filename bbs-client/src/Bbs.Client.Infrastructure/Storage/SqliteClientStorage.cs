@@ -1,0 +1,311 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Bbs.Client.Core.Domain;
+using Bbs.Client.Core.Storage;
+using Bbs.Client.Infrastructure.Paths;
+using Microsoft.Data.Sqlite;
+
+namespace Bbs.Client.Infrastructure.Storage;
+
+public sealed class SqliteClientStorage : IClientStorage
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly string _dbPath;
+
+    public SqliteClientStorage(string? dbPath = null)
+    {
+        _dbPath = dbPath ?? StoragePaths.GetDatabaseFilePath();
+    }
+
+    public string DatabasePath => _dbPath;
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        var directory = Path.GetDirectoryName(_dbPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+
+        var createSql = """
+            CREATE TABLE IF NOT EXISTS client_identity (
+                client_id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS bot_profiles (
+                bot_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                launch_path TEXT NOT NULL,
+                launch_args_json TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS known_servers (
+                server_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                use_tls INTEGER NOT NULL,
+                metadata_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS server_plugin_cache (
+                server_id TEXT PRIMARY KEY,
+                plugins_json TEXT NOT NULL,
+                cached_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_runtime_state (
+                bot_id TEXT PRIMARY KEY,
+                lifecycle_state INTEGER NOT NULL,
+                is_armed INTEGER NOT NULL,
+                last_error_code TEXT,
+                updated_at_utc TEXT NOT NULL
+            );
+            """;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = createSql;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<ClientIdentity?> GetClientIdentityAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT client_id, display_name, created_at_utc FROM client_identity LIMIT 1";
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new ClientIdentity(
+            reader.GetString(0),
+            reader.GetString(1),
+            DateTimeOffset.Parse(reader.GetString(2)));
+    }
+
+    public async Task SaveClientIdentityAsync(ClientIdentity identity, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO client_identity(client_id, display_name, created_at_utc)
+            VALUES ($id, $display_name, $created_at_utc)
+            ON CONFLICT(client_id)
+            DO UPDATE SET
+                display_name = excluded.display_name,
+                created_at_utc = excluded.created_at_utc
+            """;
+        command.Parameters.AddWithValue("$id", identity.ClientId);
+        command.Parameters.AddWithValue("$display_name", identity.DisplayName);
+        command.Parameters.AddWithValue("$created_at_utc", identity.CreatedAtUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<BotProfile>> ListBotProfilesAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT bot_id, name, launch_path, launch_args_json, metadata_json, created_at_utc, updated_at_utc FROM bot_profiles ORDER BY created_at_utc";
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<BotProfile>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var args = JsonSerializer.Deserialize<List<string>>(reader.GetString(3), JsonOptions) ?? new List<string>();
+            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(4), JsonOptions) ?? new Dictionary<string, string>();
+            results.Add(BotProfile.Create(
+                botId: reader.GetString(0),
+                name: reader.GetString(1),
+                launchPath: reader.GetString(2),
+                launchArgs: args,
+                metadata: metadata,
+                createdAtUtc: DateTimeOffset.Parse(reader.GetString(5)),
+                updatedAtUtc: DateTimeOffset.Parse(reader.GetString(6))));
+        }
+
+        return results;
+    }
+
+    public async Task UpsertBotProfileAsync(BotProfile profile, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO bot_profiles(bot_id, name, launch_path, launch_args_json, metadata_json, created_at_utc, updated_at_utc)
+            VALUES ($id, $name, $launch_path, $launch_args_json, $metadata_json, $created_at_utc, $updated_at_utc)
+            ON CONFLICT(bot_id)
+            DO UPDATE SET
+                name = excluded.name,
+                launch_path = excluded.launch_path,
+                launch_args_json = excluded.launch_args_json,
+                metadata_json = excluded.metadata_json,
+                created_at_utc = excluded.created_at_utc,
+                updated_at_utc = excluded.updated_at_utc
+            """;
+        command.Parameters.AddWithValue("$id", profile.BotId);
+        command.Parameters.AddWithValue("$name", profile.Name);
+        command.Parameters.AddWithValue("$launch_path", profile.LaunchPath);
+        command.Parameters.AddWithValue("$launch_args_json", JsonSerializer.Serialize(profile.LaunchArgs, JsonOptions));
+        command.Parameters.AddWithValue("$metadata_json", JsonSerializer.Serialize(profile.Metadata, JsonOptions));
+        command.Parameters.AddWithValue("$created_at_utc", profile.CreatedAtUtc.ToString("O"));
+        command.Parameters.AddWithValue("$updated_at_utc", profile.UpdatedAtUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<KnownServer>> ListKnownServersAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT server_id, name, host, port, use_tls, metadata_json, created_at_utc, updated_at_utc FROM known_servers ORDER BY created_at_utc";
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var results = new List<KnownServer>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(5), JsonOptions) ?? new Dictionary<string, string>();
+            results.Add(KnownServer.Create(
+                serverId: reader.GetString(0),
+                name: reader.GetString(1),
+                host: reader.GetString(2),
+                port: reader.GetInt32(3),
+                useTls: reader.GetInt32(4) == 1,
+                metadata: metadata,
+                createdAtUtc: DateTimeOffset.Parse(reader.GetString(6)),
+                updatedAtUtc: DateTimeOffset.Parse(reader.GetString(7))));
+        }
+
+        return results;
+    }
+
+    public async Task UpsertKnownServerAsync(KnownServer server, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO known_servers(server_id, name, host, port, use_tls, metadata_json, created_at_utc, updated_at_utc)
+            VALUES ($id, $name, $host, $port, $use_tls, $metadata_json, $created_at_utc, $updated_at_utc)
+            ON CONFLICT(server_id)
+            DO UPDATE SET
+                name = excluded.name,
+                host = excluded.host,
+                port = excluded.port,
+                use_tls = excluded.use_tls,
+                metadata_json = excluded.metadata_json,
+                created_at_utc = excluded.created_at_utc,
+                updated_at_utc = excluded.updated_at_utc
+            """;
+        command.Parameters.AddWithValue("$id", server.ServerId);
+        command.Parameters.AddWithValue("$name", server.Name);
+        command.Parameters.AddWithValue("$host", server.Host);
+        command.Parameters.AddWithValue("$port", server.Port);
+        command.Parameters.AddWithValue("$use_tls", server.UseTls ? 1 : 0);
+        command.Parameters.AddWithValue("$metadata_json", JsonSerializer.Serialize(server.Metadata, JsonOptions));
+        command.Parameters.AddWithValue("$created_at_utc", server.CreatedAtUtc.ToString("O"));
+        command.Parameters.AddWithValue("$updated_at_utc", server.UpdatedAtUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<ServerPluginCache?> GetServerPluginCacheAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT server_id, plugins_json, cached_at_utc FROM server_plugin_cache WHERE server_id = $server_id";
+        command.Parameters.AddWithValue("$server_id", serverId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var plugins = JsonSerializer.Deserialize<List<PluginDescriptor>>(reader.GetString(1), JsonOptions) ?? new List<PluginDescriptor>();
+        return ServerPluginCache.Create(
+            serverId: reader.GetString(0),
+            plugins: plugins,
+            cachedAtUtc: DateTimeOffset.Parse(reader.GetString(2)));
+    }
+
+    public async Task UpsertServerPluginCacheAsync(ServerPluginCache cache, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO server_plugin_cache(server_id, plugins_json, cached_at_utc)
+            VALUES ($server_id, $plugins_json, $cached_at_utc)
+            ON CONFLICT(server_id)
+            DO UPDATE SET
+                plugins_json = excluded.plugins_json,
+                cached_at_utc = excluded.cached_at_utc
+            """;
+        command.Parameters.AddWithValue("$server_id", cache.ServerId);
+        command.Parameters.AddWithValue("$plugins_json", JsonSerializer.Serialize(cache.Plugins, JsonOptions));
+        command.Parameters.AddWithValue("$cached_at_utc", cache.CachedAtUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<AgentRuntimeState?> GetAgentRuntimeStateAsync(string botId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT bot_id, lifecycle_state, is_armed, last_error_code, updated_at_utc FROM agent_runtime_state WHERE bot_id = $bot_id";
+        command.Parameters.AddWithValue("$bot_id", botId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new AgentRuntimeState(
+            BotId: reader.GetString(0),
+            LifecycleState: (AgentLifecycleState)reader.GetInt32(1),
+            IsArmed: reader.GetInt32(2) == 1,
+            LastErrorCode: reader.IsDBNull(3) ? null : reader.GetString(3),
+            UpdatedAtUtc: DateTimeOffset.Parse(reader.GetString(4)));
+    }
+
+    public async Task UpsertAgentRuntimeStateAsync(AgentRuntimeState state, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO agent_runtime_state(bot_id, lifecycle_state, is_armed, last_error_code, updated_at_utc)
+            VALUES ($bot_id, $lifecycle_state, $is_armed, $last_error_code, $updated_at_utc)
+            ON CONFLICT(bot_id)
+            DO UPDATE SET
+                lifecycle_state = excluded.lifecycle_state,
+                is_armed = excluded.is_armed,
+                last_error_code = excluded.last_error_code,
+                updated_at_utc = excluded.updated_at_utc
+            """;
+        command.Parameters.AddWithValue("$bot_id", state.BotId);
+        command.Parameters.AddWithValue("$lifecycle_state", (int)state.LifecycleState);
+        command.Parameters.AddWithValue("$is_armed", state.IsArmed ? 1 : 0);
+        command.Parameters.AddWithValue("$last_error_code", (object?)state.LastErrorCode ?? DBNull.Value);
+        command.Parameters.AddWithValue("$updated_at_utc", state.UpdatedAtUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task<SqliteConnection> OpenConnectionAsync(CancellationToken cancellationToken)
+    {
+        var connection = new SqliteConnection($"Data Source={_dbPath}");
+        await connection.OpenAsync(cancellationToken);
+        return connection;
+    }
+}

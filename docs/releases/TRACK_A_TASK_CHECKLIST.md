@@ -32,8 +32,8 @@ Estimate scale:
 | A0-02 | A0 | Establish MVVM conventions and base view model infrastructure | S | A0-01 | in-progress | Base view model + command patterns used by at least one screen |
 | A0-03 | A0 | Define client domain models (`ClientIdentity`, `BotProfile`, `KnownServer`, `ServerPluginCache`, `AgentRuntimeState`) | S | A0-01 | done | Models compile, are serializable/mappable, and have basic validation |
 | A0-04 | A0 | Add local logging/telemetry abstraction for app runtime diagnostics | S | A0-01 | in-progress | App writes structured local logs with levels and timestamps |
-| A1-01 | A1 | Implement storage abstraction interfaces for client persistence | S | A0-03 | todo | Storage contracts support identity, bots, servers, plugin cache, runtime state |
-| A1-02 | A1 | Implement SQLite-backed storage provider and startup initialization | M | A1-01 | todo | DB file is created automatically and startup does not require manual steps |
+| A1-01 | A1 | Implement storage abstraction interfaces for client persistence | S | A0-03 | done | Storage contracts support identity, bots, servers, plugin cache, runtime state |
+| A1-02 | A1 | Implement SQLite-backed storage provider and startup initialization | M | A1-01 | done | DB file is created automatically and startup does not require manual steps |
 | A1-03 | A1 | Add schema version table + migration runner | M | A1-02 | todo | Migration path runs idempotently and reports current schema version |
 | A1-04 | A1 | Implement first-launch client identity bootstrap + durable save | S | A1-02 | todo | First launch creates identity, restart loads same identity |
 | A2-01 | A2 | Build unified main workspace view (left panel, center host, right panel) | M | A0-02, A1-02 | todo | App launches directly into unified workspace |
