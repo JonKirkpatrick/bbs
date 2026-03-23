@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:vm="using:Bbs.Client.App.ViewModels"
+        x:Class="Bbs.Client.App.Views.MainWindow"
+  x:DataType="vm:MainWindowViewModel"
+        Width="1040"
+        Height="720"
+        MinWidth="900"
+        MinHeight="600"
+        Title="{Binding WindowTitle}"
+        mc:Ignorable="d">
+  <Grid RowDefinitions="Auto,*" Margin="20">
+    <TextBlock FontSize="26" FontWeight="SemiBold" Text="Build-a-Bot Stadium Client" />
+
+    <Border Grid.Row="1"
+            Margin="0,16,0,0"
+            BorderBrush="#35566E"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="20">
+      <StackPanel Spacing="12">
+        <TextBlock FontSize="18" FontWeight="SemiBold" Text="Foundation shell is running" />
+        <TextBlock TextWrapping="Wrap"
+                   Text="This window is the Sprint 1 foundation shell. Unified workspace panels and center activity views land in A2." />
+        <Button Width="240"
+                HorizontalAlignment="Left"
+                Command="{Binding EmitSampleLogCommand}"
+                Content="Write sample structured log" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
