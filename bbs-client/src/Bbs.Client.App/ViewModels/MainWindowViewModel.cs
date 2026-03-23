@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using System.Windows.Input;
 using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
+using Bbs.Client.Core.Orchestration;
 using Bbs.Client.Core.Storage;
 
 namespace Bbs.Client.App.ViewModels;
@@ -14,6 +15,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 {
     private readonly IClientLogger _logger;
     private readonly IClientStorage _storage;
+    private readonly IBotOrchestrationService _orchestration;
     private WorkspaceContext _currentContext;
     private BotSummaryItem? _selectedBot;
     private ServerSummaryItem? _selectedServer;
@@ -25,10 +27,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _botEditorMetadata = string.Empty;
     private string _botEditorMessage = "Fill out the bot form and save.";
 
-    public MainWindowViewModel(IClientLogger logger, IClientStorage storage)
+    public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
     {
         _logger = logger;
         _storage = storage;
+        _orchestration = orchestration;
         EmitSampleLogCommand = new RelayCommand(EmitSampleLog);
         ToggleLeftPanelCommand = new RelayCommand(ToggleLeftPanel);
         ToggleRightPanelCommand = new RelayCommand(ToggleRightPanel);
@@ -37,6 +40,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         SetServerContextCommand = new RelayCommand(SetServerContextFromSelection, () => SelectedServer is not null);
         SaveBotProfileCommand = new RelayCommand(SaveBotProfile);
         StartNewBotCommand = new RelayCommand(StartNewBot);
+        ArmSelectedBotCommand = new RelayCommand(ArmSelectedBot, () => SelectedBot is not null);
+        DisarmSelectedBotCommand = new RelayCommand(DisarmSelectedBot, () => SelectedBot is not null);
 
         Bots = new ObservableCollection<BotSummaryItem>();
 
@@ -193,6 +198,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             _selectedBot = value;
             OnPropertyChanged();
             ((RelayCommand)SetBotContextCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)ArmSelectedBotCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)DisarmSelectedBotCommand).RaiseCanExecuteChanged();
             if (value is not null)
             {
                 PopulateBotEditor(value);
@@ -231,6 +238,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand SetServerContextCommand { get; }
     public ICommand SaveBotProfileCommand { get; }
     public ICommand StartNewBotCommand { get; }
+    public ICommand ArmSelectedBotCommand { get; }
+    public ICommand DisarmSelectedBotCommand { get; }
 
     private void EmitSampleLog()
     {
@@ -348,6 +357,34 @@ public sealed class MainWindowViewModel : ViewModelBase
             });
     }
 
+    private void ArmSelectedBot()
+    {
+        if (SelectedBot is null)
+        {
+            return;
+        }
+
+        var profile = SelectedBot.ToProfile();
+        var result = _orchestration.ArmBotAsync(profile).GetAwaiter().GetResult();
+        LoadBotsFromStorage();
+        SelectedBot = FindBotById(profile.BotId);
+        BotEditorMessage = result.Message;
+    }
+
+    private void DisarmSelectedBot()
+    {
+        if (SelectedBot is null)
+        {
+            return;
+        }
+
+        var profile = SelectedBot.ToProfile();
+        var result = _orchestration.DisarmBotAsync(profile).GetAwaiter().GetResult();
+        LoadBotsFromStorage();
+        SelectedBot = FindBotById(profile.BotId);
+        BotEditorMessage = result.Message;
+    }
+
     private void LoadBotsFromStorage()
     {
         var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
@@ -355,7 +392,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         Bots.Clear();
         foreach (var profile in profiles)
         {
-            Bots.Add(BotSummaryItem.FromProfile(profile));
+            var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
+            Bots.Add(BotSummaryItem.FromProfile(profile, runtimeState));
         }
 
         OnPropertyChanged(nameof(Bots));
@@ -441,20 +479,44 @@ public sealed class BotSummaryItem
     public required IReadOnlyList<string> LaunchArgs { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
     public required DateTimeOffset CreatedAtUtc { get; init; }
+    public AgentLifecycleState LifecycleState { get; init; }
+    public bool IsArmed { get; init; }
+    public string? LastErrorCode { get; init; }
 
-    public static BotSummaryItem FromProfile(BotProfile profile)
+    public static BotSummaryItem FromProfile(BotProfile profile, AgentRuntimeState? runtimeState)
     {
+        var status = runtimeState is null
+            ? "State: registered"
+            : runtimeState.IsArmed
+                ? $"State: armed ({runtimeState.LifecycleState})"
+                : $"State: {runtimeState.LifecycleState}";
+
         return new BotSummaryItem
         {
             BotId = profile.BotId,
             Name = profile.Name,
             Summary = $"Entry: {profile.LaunchPath}",
-            Status = "State: registered",
+            Status = status,
             LaunchPath = profile.LaunchPath,
             LaunchArgs = profile.LaunchArgs,
             Metadata = profile.Metadata,
-            CreatedAtUtc = profile.CreatedAtUtc
+            CreatedAtUtc = profile.CreatedAtUtc,
+            LifecycleState = runtimeState?.LifecycleState ?? AgentLifecycleState.Unknown,
+            IsArmed = runtimeState?.IsArmed ?? false,
+            LastErrorCode = runtimeState?.LastErrorCode
         };
+    }
+
+    public BotProfile ToProfile()
+    {
+        return BotProfile.Create(
+            botId: BotId,
+            name: Name,
+            launchPath: LaunchPath,
+            launchArgs: LaunchArgs,
+            metadata: new Dictionary<string, string>(Metadata),
+            createdAtUtc: CreatedAtUtc,
+            updatedAtUtc: DateTimeOffset.UtcNow);
     }
 }
 

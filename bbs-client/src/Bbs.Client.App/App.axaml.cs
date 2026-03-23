@@ -6,6 +6,7 @@ using Bbs.Client.App.Views;
 using Bbs.Client.Core.Logging;
 using Bbs.Client.Infrastructure.Identity;
 using Bbs.Client.Infrastructure.Logging;
+using Bbs.Client.Infrastructure.Orchestration;
 using Bbs.Client.Infrastructure.Storage;
 
 namespace Bbs.Client.App;
@@ -25,6 +26,7 @@ public partial class App : Application
         _logger = new FileClientLogger();
         _storage = new SqliteClientStorage();
         _storage.InitializeAsync().GetAwaiter().GetResult();
+        var orchestration = new LocalBotOrchestrationService(_storage, _logger);
         var schemaVersion = _storage.GetSchemaVersionAsync().GetAwaiter().GetResult();
         var identityBootstrap = new ClientIdentityBootstrapper(_storage);
         var identity = identityBootstrap.EnsureClientIdentityAsync().GetAwaiter().GetResult();
@@ -47,7 +49,7 @@ public partial class App : Application
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(_logger, _storage)
+                DataContext = new MainWindowViewModel(_logger, _storage, orchestration)
             };
 
             desktop.Exit += OnDesktopExit;
