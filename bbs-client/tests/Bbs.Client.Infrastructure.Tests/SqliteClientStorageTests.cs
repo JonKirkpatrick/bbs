@@ -142,6 +142,28 @@ public sealed class SqliteClientStorageTests
         Assert.Equal(first.Identity.CreatedAtUtc, second.Identity.CreatedAtUtc);
     }
 
+    [Fact]
+    public async Task BotProfiles_PersistAcrossStorageInstances()
+    {
+        var dbPath = NewTempDatabasePath();
+
+        var storage1 = new SqliteClientStorage(dbPath);
+        await storage1.InitializeAsync();
+        var bot = BotProfile.Create(
+            botId: "bot-persist-1",
+            name: "Persistent Bot",
+            launchPath: "/opt/bots/persistent.py",
+            launchArgs: new[] { "--ranked" },
+            metadata: new Dictionary<string, string> { ["lang"] = "python" });
+        await storage1.UpsertBotProfileAsync(bot);
+
+        var storage2 = new SqliteClientStorage(dbPath);
+        await storage2.InitializeAsync();
+        var loaded = await storage2.ListBotProfilesAsync();
+
+        Assert.Contains(loaded, b => b.BotId == "bot-persist-1" && b.Name == "Persistent Bot");
+    }
+
     private static async Task CreateLegacyDatabaseAsync(string dbPath)
     {
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");

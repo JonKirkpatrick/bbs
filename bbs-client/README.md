@@ -42,3 +42,5 @@ The app currently launches into a unified workspace shell with:
 - Left panel: bot cards
 - Center panel: activity workspace host
 - Right panel: server cards
+
+Bot registration/edit is available in the center workspace, and saved bot profiles persist in SQLite and reload into the left panel on startup.
