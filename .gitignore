@@ -16,6 +16,10 @@
 dist/
 /tmp/
 
+# .NET build artifacts
+**/bin/
+**/obj/
+
 # LaTeX artifacts
 *.aux
 *.log
