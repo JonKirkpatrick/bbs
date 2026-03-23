@@ -37,9 +37,9 @@ Estimate scale:
 | A1-03 | A1 | Add schema version table + migration runner | M | A1-02 | done | Migration path runs idempotently and reports current schema version |
 | A1-04 | A1 | Implement first-launch client identity bootstrap + durable save | S | A1-02 | done | First launch creates identity, restart loads same identity |
 | A2-01 | A2 | Build unified main workspace view (left panel, center host, right panel) | M | A0-02, A1-02 | done | App launches directly into unified workspace |
-| A2-02 | A2 | Implement collapsible behavior for left and right panels | S | A2-01 | todo | Both panels can collapse/expand and layout remains stable |
-| A2-03 | A2 | Implement context host navigation model for center activity area | M | A2-01 | todo | Selecting contexts swaps center content predictably |
-| A2-04 | A2 | Create reusable card components for bot/server entries with status style hooks | S | A2-01 | todo | Card component supports title, metadata, status style, click/select |
+| A2-02 | A2 | Implement collapsible behavior for left and right panels | S | A2-01 | done | Both panels can collapse/expand and layout remains stable |
+| A2-03 | A2 | Implement context host navigation model for center activity area | M | A2-01 | done | Selecting contexts swaps center content predictably |
+| A2-04 | A2 | Create reusable card components for bot/server entries with status style hooks | S | A2-01 | done | Card component supports title, metadata, status style, click/select |
 | A3-01 | A3 | Implement bot registration/edit form in center activity area | M | A2-03, A1-02 | todo | User can add and edit bot path/args/metadata |
 | A3-02 | A3 | Persist bot profiles and display them in left panel cards | S | A3-01 | todo | Bot list survives restart and renders from storage |
 | A3-03 | A3 | Implement arm/disarm orchestration service for bot+agent lifecycle | L | A3-02 | todo | Arm launches processes and disarm stops them with clear result state |

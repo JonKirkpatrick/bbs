@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                         xmlns:vm="using:Bbs.Client.App.ViewModels"
+      xmlns:controls="using:Bbs.Client.App.Controls"
         x:Class="Bbs.Client.App.Views.MainWindow"
                         x:DataType="vm:MainWindowViewModel"
         Width="1040"
@@ -26,34 +27,54 @@
                   </Grid>
             </Border>
 
-            <Grid Grid.Row="1" Margin="0,12,0,0" ColumnDefinitions="280,*,280">
+            <Grid Grid.Row="1" Margin="0,12,0,0">
+                  <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{Binding LeftPanelWidth}" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="{Binding RightPanelWidth}" />
+                  </Grid.ColumnDefinitions>
+
                   <Border Grid.Column="0" Margin="0,0,6,0" Background="#101E2A" BorderBrush="#2A4358" BorderThickness="1" CornerRadius="10" Padding="12">
                         <Grid RowDefinitions="Auto,Auto,*">
-                              <TextBlock FontSize="18" FontWeight="SemiBold" Text="Bots" />
+                              <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Bots" />
+                                    <Button Grid.Column="1" FontSize="11" Command="{Binding ToggleLeftPanelCommand}" Content="{Binding LeftPanelToggleText}" />
+                              </Grid>
                               <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="0.78" Text="Registered and local to this client" />
 
-                              <ListBox Grid.Row="2" Background="Transparent" BorderThickness="0" ItemsSource="{Binding Bots}">
+                              <ListBox Grid.Row="2"
+                                                       IsVisible="{Binding IsLeftPanelExpanded}"
+                                                       Background="Transparent"
+                                                       BorderThickness="0"
+                                                       ItemsSource="{Binding Bots}"
+                                                       SelectedItem="{Binding SelectedBot}">
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:BotSummaryItem">
-                                                <Border Margin="0,0,0,8" Padding="10" CornerRadius="8" BorderBrush="#365875" BorderThickness="1" Background="#152A3A">
-                                                      <StackPanel Spacing="3">
-                                                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                                                            <TextBlock FontSize="12" Opacity="0.85" Text="{Binding Summary}" />
-                                                            <TextBlock FontSize="11" Opacity="0.75" Text="{Binding Status}" />
-                                                      </StackPanel>
-                                                </Border>
+                                                <controls:SummaryCard Title="{Binding Name}"
+                                                                                                                  Subtitle="{Binding Summary}"
+                                                                                                                  StatusText="{Binding Status}"
+                                                                                                                  AccentBrush="#365875"
+                                                                                                                  BackgroundBrush="#152A3A" />
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
+
                         </Grid>
                   </Border>
 
                   <Border Grid.Column="1" Margin="6,0" Background="#102B2B" BorderBrush="#2E5F57" BorderThickness="1" CornerRadius="10" Padding="14">
-                        <Grid RowDefinitions="Auto,Auto,*">
+                        <Grid RowDefinitions="Auto,Auto,Auto,*">
                               <TextBlock FontSize="20" FontWeight="Bold" Text="Activity Workspace" />
                               <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="0.8" Text="Center context host for bot/server workflows" />
 
-                              <Border Grid.Row="2" Background="#163939" BorderBrush="#357170" BorderThickness="1" CornerRadius="8" Padding="16">
+                              <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+                                    <Button Command="{Binding SetHomeContextCommand}" Content="Home" />
+                                    <Button Command="{Binding SetBotContextCommand}" Content="Bot Context" />
+                                    <Button Command="{Binding SetServerContextCommand}" Content="Server Context" />
+                                    <TextBlock VerticalAlignment="Center" Opacity="0.75" Text="{Binding CurrentContextLabel}" />
+                              </StackPanel>
+
+                              <Border Grid.Row="3" Background="#163939" BorderBrush="#357170" BorderThickness="1" CornerRadius="8" Padding="16">
                                     <StackPanel Spacing="8">
                                           <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding WorkspaceTitle}" />
                                           <TextBlock TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
@@ -65,22 +86,29 @@
 
                   <Border Grid.Column="2" Margin="6,0,0,0" Background="#261E14" BorderBrush="#5F4A2E" BorderThickness="1" CornerRadius="10" Padding="12">
                         <Grid RowDefinitions="Auto,Auto,*">
-                              <TextBlock FontSize="18" FontWeight="SemiBold" Text="Servers" />
+                              <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Servers" />
+                                    <Button Grid.Column="1" FontSize="11" Command="{Binding ToggleRightPanelCommand}" Content="{Binding RightPanelToggleText}" />
+                              </Grid>
                               <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="0.78" Text="Known server endpoints and status" />
 
-                              <ListBox Grid.Row="2" Background="Transparent" BorderThickness="0" ItemsSource="{Binding Servers}">
+                              <ListBox Grid.Row="2"
+                                                       IsVisible="{Binding IsRightPanelExpanded}"
+                                                       Background="Transparent"
+                                                       BorderThickness="0"
+                                                       ItemsSource="{Binding Servers}"
+                                                       SelectedItem="{Binding SelectedServer}">
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:ServerSummaryItem">
-                                                <Border Margin="0,0,0,8" Padding="10" CornerRadius="8" BorderBrush="#7D6438" BorderThickness="1" Background="#362812">
-                                                      <StackPanel Spacing="3">
-                                                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                                                            <TextBlock FontSize="12" Opacity="0.85" Text="{Binding Endpoint}" />
-                                                            <TextBlock FontSize="11" Opacity="0.75" Text="{Binding Status}" />
-                                                      </StackPanel>
-                                                </Border>
+                                                <controls:SummaryCard Title="{Binding Name}"
+                                                                                                                  Subtitle="{Binding Endpoint}"
+                                                                                                                  StatusText="{Binding Status}"
+                                                                                                                  AccentBrush="#7D6438"
+                                                                                                                  BackgroundBrush="#362812" />
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
+
                         </Grid>
                   </Border>
             </Grid>
