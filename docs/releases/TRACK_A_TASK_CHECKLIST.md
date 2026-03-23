@@ -40,8 +40,8 @@ Estimate scale:
 | A2-02 | A2 | Implement collapsible behavior for left and right panels | S | A2-01 | done | Both panels can collapse/expand and layout remains stable |
 | A2-03 | A2 | Implement context host navigation model for center activity area | M | A2-01 | done | Selecting contexts swaps center content predictably |
 | A2-04 | A2 | Create reusable card components for bot/server entries with status style hooks | S | A2-01 | done | Card component supports title, metadata, status style, click/select |
-| A3-01 | A3 | Implement bot registration/edit form in center activity area | M | A2-03, A1-02 | todo | User can add and edit bot path/args/metadata |
-| A3-02 | A3 | Persist bot profiles and display them in left panel cards | S | A3-01 | todo | Bot list survives restart and renders from storage |
+| A3-01 | A3 | Implement bot registration/edit form in center activity area | M | A2-03, A1-02 | done | User can add and edit bot path/args/metadata |
+| A3-02 | A3 | Persist bot profiles and display them in left panel cards | S | A3-01 | done | Bot list survives restart and renders from storage |
 | A3-03 | A3 | Implement arm/disarm orchestration service for bot+agent lifecycle | L | A3-02 | todo | Arm launches processes and disarm stops them with clear result state |
 | A3-04 | A3 | Wire control-channel status/lifecycle updates into bot runtime state model | M | A3-03 | todo | Runtime updates reflected in state store and visible in UI |
 | A3-05 | A3 | Apply bot card glow rules (amber armed, green active session, red error) | S | A3-04, A2-04 | todo | Glows match state transitions and update in near-real time |

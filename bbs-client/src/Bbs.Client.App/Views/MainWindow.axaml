@@ -78,7 +78,39 @@
                                     <StackPanel Spacing="8">
                                           <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding WorkspaceTitle}" />
                                           <TextBlock TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
-                                          <TextBlock FontSize="12" Opacity="0.75" Text="Sprint 2 PR1 delivers the unified layout shell. Context routing and collapsible behavior land in PR2." />
+
+                                          <Border Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="#2A5D60" CornerRadius="6" Background="#0F2D2E">
+                                                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                                      <TextBlock FontSize="15" FontWeight="SemiBold" Text="Bot Registration / Edit" />
+
+                                                      <StackPanel Grid.Row="1" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Bot Name" />
+                                                            <TextBox Text="{Binding BotEditorName}" Watermark="Counter Bot" />
+                                                      </StackPanel>
+
+                                                      <StackPanel Grid.Row="2" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Launch Path" />
+                                                            <TextBox Text="{Binding BotEditorLaunchPath}" Watermark="/opt/bots/mybot.py" />
+                                                      </StackPanel>
+
+                                                      <StackPanel Grid.Row="3" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Launch Args (space-separated)" />
+                                                            <TextBox Text="{Binding BotEditorArgs}" Watermark="--mode ranked" />
+                                                      </StackPanel>
+
+                                                      <StackPanel Grid.Row="4" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="0.8" Text="Metadata (k=v;k2=v2)" />
+                                                            <TextBox Text="{Binding BotEditorMetadata}" Watermark="lang=python;tier=alpha" />
+                                                      </StackPanel>
+
+                                                      <StackPanel Grid.Row="5" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                                                            <Button Command="{Binding SaveBotProfileCommand}" Content="Save Bot" />
+                                                            <Button Command="{Binding StartNewBotCommand}" Content="New Bot" />
+                                                      </StackPanel>
+
+                                                      <TextBlock Grid.Row="6" Margin="0,6,0,0" FontSize="12" Opacity="0.78" Text="{Binding BotEditorMessage}" />
+                                                </Grid>
+                                          </Border>
                                     </StackPanel>
                               </Border>
                         </Grid>

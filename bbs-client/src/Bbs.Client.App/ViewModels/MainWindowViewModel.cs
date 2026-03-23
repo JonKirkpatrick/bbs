@@ -1,36 +1,44 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using System.Windows.Input;
+using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
+using Bbs.Client.Core.Storage;
 
 namespace Bbs.Client.App.ViewModels;
 
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private readonly IClientLogger _logger;
+    private readonly IClientStorage _storage;
     private WorkspaceContext _currentContext;
     private BotSummaryItem? _selectedBot;
     private ServerSummaryItem? _selectedServer;
     private bool _isLeftPanelExpanded = true;
     private bool _isRightPanelExpanded = true;
+    private string _botEditorName = string.Empty;
+    private string _botEditorLaunchPath = string.Empty;
+    private string _botEditorArgs = string.Empty;
+    private string _botEditorMetadata = string.Empty;
+    private string _botEditorMessage = "Fill out the bot form and save.";
 
-    public MainWindowViewModel(IClientLogger logger)
+    public MainWindowViewModel(IClientLogger logger, IClientStorage storage)
     {
         _logger = logger;
+        _storage = storage;
         EmitSampleLogCommand = new RelayCommand(EmitSampleLog);
         ToggleLeftPanelCommand = new RelayCommand(ToggleLeftPanel);
         ToggleRightPanelCommand = new RelayCommand(ToggleRightPanel);
         SetHomeContextCommand = new RelayCommand(SetHomeContext);
         SetBotContextCommand = new RelayCommand(SetBotContextFromSelection, () => SelectedBot is not null);
         SetServerContextCommand = new RelayCommand(SetServerContextFromSelection, () => SelectedServer is not null);
+        SaveBotProfileCommand = new RelayCommand(SaveBotProfile);
+        StartNewBotCommand = new RelayCommand(StartNewBot);
 
-        Bots = new ReadOnlyCollection<BotSummaryItem>(new[]
-        {
-            new BotSummaryItem("Counter Bot", "Python entry: /opt/bots/counter.py", "State: idle"),
-            new BotSummaryItem("Gridworld Q Bot", "Python entry: /opt/bots/gridworld_q.py", "State: disarmed")
-        });
+        Bots = new ObservableCollection<BotSummaryItem>();
 
         Servers = new ReadOnlyCollection<ServerSummaryItem>(new[]
         {
@@ -39,8 +47,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         });
 
         _currentContext = WorkspaceContext.Home;
-        _selectedBot = Bots[0];
+        LoadBotsFromStorage();
+        _selectedBot = Bots.Count > 0 ? Bots[0] : null;
         _selectedServer = Servers[0];
+        if (_selectedBot is not null)
+        {
+            PopulateBotEditor(_selectedBot);
+        }
         RefreshContextProjection();
     }
 
@@ -89,8 +102,83 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string LeftPanelToggleText => IsLeftPanelExpanded ? "Collapse Bots" : "Expand Bots";
     public string RightPanelToggleText => IsRightPanelExpanded ? "Collapse Servers" : "Expand Servers";
 
-    public IReadOnlyList<BotSummaryItem> Bots { get; }
+    public ObservableCollection<BotSummaryItem> Bots { get; }
     public IReadOnlyList<ServerSummaryItem> Servers { get; }
+
+    public string BotEditorName
+    {
+        get => _botEditorName;
+        set
+        {
+            if (_botEditorName == value)
+            {
+                return;
+            }
+
+            _botEditorName = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string BotEditorLaunchPath
+    {
+        get => _botEditorLaunchPath;
+        set
+        {
+            if (_botEditorLaunchPath == value)
+            {
+                return;
+            }
+
+            _botEditorLaunchPath = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string BotEditorArgs
+    {
+        get => _botEditorArgs;
+        set
+        {
+            if (_botEditorArgs == value)
+            {
+                return;
+            }
+
+            _botEditorArgs = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string BotEditorMetadata
+    {
+        get => _botEditorMetadata;
+        set
+        {
+            if (_botEditorMetadata == value)
+            {
+                return;
+            }
+
+            _botEditorMetadata = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string BotEditorMessage
+    {
+        get => _botEditorMessage;
+        private set
+        {
+            if (_botEditorMessage == value)
+            {
+                return;
+            }
+
+            _botEditorMessage = value;
+            OnPropertyChanged();
+        }
+    }
 
     public BotSummaryItem? SelectedBot
     {
@@ -107,6 +195,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             ((RelayCommand)SetBotContextCommand).RaiseCanExecuteChanged();
             if (value is not null)
             {
+                PopulateBotEditor(value);
                 _currentContext = WorkspaceContext.BotDetails;
                 RefreshContextProjection();
             }
@@ -140,6 +229,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand SetHomeContextCommand { get; }
     public ICommand SetBotContextCommand { get; }
     public ICommand SetServerContextCommand { get; }
+    public ICommand SaveBotProfileCommand { get; }
+    public ICommand StartNewBotCommand { get; }
 
     private void EmitSampleLog()
     {
@@ -184,10 +275,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         switch (_currentContext)
         {
             case WorkspaceContext.BotDetails:
-                WorkspaceTitle = SelectedBot is null ? "Bot Context" : $"Bot: {SelectedBot.Name}";
+                WorkspaceTitle = SelectedBot is null ? "Bot Registration" : $"Bot: {SelectedBot.Name}";
                 WorkspaceDescription = SelectedBot is null
-                    ? "Select a bot card to load bot context."
-                    : $"{SelectedBot.Summary} | {SelectedBot.Status}";
+                    ? "Use the form to register a new bot profile."
+                    : "Edit and save this bot profile from the center workspace.";
                 break;
             case WorkspaceContext.ServerDetails:
                 WorkspaceTitle = SelectedServer is null ? "Server Context" : $"Server: {SelectedServer.Name}";
@@ -205,9 +296,167 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(WorkspaceDescription));
     }
+
+    private void StartNewBot()
+    {
+        SelectedBot = null;
+        _currentContext = WorkspaceContext.BotDetails;
+        BotEditorName = string.Empty;
+        BotEditorLaunchPath = string.Empty;
+        BotEditorArgs = string.Empty;
+        BotEditorMetadata = string.Empty;
+        BotEditorMessage = "Creating a new bot profile.";
+        RefreshContextProjection();
+    }
+
+    private void SaveBotProfile()
+    {
+        var botId = SelectedBot?.BotId ?? Guid.NewGuid().ToString("N");
+        var createdAt = SelectedBot?.CreatedAtUtc ?? DateTimeOffset.UtcNow;
+        var updatedAt = DateTimeOffset.UtcNow;
+
+        var profile = BotProfile.Create(
+            botId: botId,
+            name: BotEditorName.Trim(),
+            launchPath: BotEditorLaunchPath.Trim(),
+            launchArgs: ParseArgs(BotEditorArgs),
+            metadata: ParseMetadata(BotEditorMetadata),
+            createdAtUtc: createdAt,
+            updatedAtUtc: updatedAt);
+
+        var errors = profile.Validate();
+        if (errors.Count > 0)
+        {
+            BotEditorMessage = $"Cannot save bot: {string.Join(", ", errors)}";
+            _logger.Log(LogLevel.Warning, "bot_profile_validation_failed", "Bot profile save validation failed.",
+                new Dictionary<string, string>
+                {
+                    ["errors"] = string.Join(",", errors)
+                });
+            return;
+        }
+
+        _storage.UpsertBotProfileAsync(profile).GetAwaiter().GetResult();
+        LoadBotsFromStorage();
+        SelectedBot = FindBotById(botId);
+        BotEditorMessage = $"Saved bot profile: {profile.Name}";
+        _logger.Log(LogLevel.Information, "bot_profile_saved", "Bot profile persisted.",
+            new Dictionary<string, string>
+            {
+                ["bot_id"] = profile.BotId,
+                ["name"] = profile.Name
+            });
+    }
+
+    private void LoadBotsFromStorage()
+    {
+        var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
+
+        Bots.Clear();
+        foreach (var profile in profiles)
+        {
+            Bots.Add(BotSummaryItem.FromProfile(profile));
+        }
+
+        OnPropertyChanged(nameof(Bots));
+    }
+
+    private BotSummaryItem? FindBotById(string botId)
+    {
+        foreach (var bot in Bots)
+        {
+            if (bot.BotId == botId)
+            {
+                return bot;
+            }
+        }
+
+        return null;
+    }
+
+    private void PopulateBotEditor(BotSummaryItem bot)
+    {
+        BotEditorName = bot.Name;
+        BotEditorLaunchPath = bot.LaunchPath;
+        BotEditorArgs = string.Join(" ", bot.LaunchArgs);
+        BotEditorMetadata = FormatMetadata(bot.Metadata);
+        BotEditorMessage = $"Editing bot profile: {bot.Name}";
+    }
+
+    private static IReadOnlyList<string> ParseArgs(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return Array.Empty<string>();
+        }
+
+        return raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private static Dictionary<string, string> ParseMetadata(string raw)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return result;
+        }
+
+        var pairs = raw.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var pair in pairs)
+        {
+            var parts = pair.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
+            {
+                result[parts[0]] = parts[1];
+            }
+        }
+
+        return result;
+    }
+
+    private static string FormatMetadata(IReadOnlyDictionary<string, string> metadata)
+    {
+        if (metadata.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string>();
+        foreach (var item in metadata)
+        {
+            parts.Add($"{item.Key}={item.Value}");
+        }
+
+        return string.Join(';', parts);
+    }
 }
 
-public sealed record BotSummaryItem(string Name, string Summary, string Status);
+public sealed class BotSummaryItem
+{
+    public required string BotId { get; init; }
+    public required string Name { get; init; }
+    public required string Summary { get; init; }
+    public required string Status { get; init; }
+    public required string LaunchPath { get; init; }
+    public required IReadOnlyList<string> LaunchArgs { get; init; }
+    public required IReadOnlyDictionary<string, string> Metadata { get; init; }
+    public required DateTimeOffset CreatedAtUtc { get; init; }
+
+    public static BotSummaryItem FromProfile(BotProfile profile)
+    {
+        return new BotSummaryItem
+        {
+            BotId = profile.BotId,
+            Name = profile.Name,
+            Summary = $"Entry: {profile.LaunchPath}",
+            Status = "State: registered",
+            LaunchPath = profile.LaunchPath,
+            LaunchArgs = profile.LaunchArgs,
+            Metadata = profile.Metadata,
+            CreatedAtUtc = profile.CreatedAtUtc
+        };
+    }
+}
 
 public sealed record ServerSummaryItem(string Name, string Endpoint, string Status);
 

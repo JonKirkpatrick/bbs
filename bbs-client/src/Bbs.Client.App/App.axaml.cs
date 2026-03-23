@@ -47,7 +47,7 @@ public partial class App : Application
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(_logger)
+                DataContext = new MainWindowViewModel(_logger, _storage)
             };
 
             desktop.Exit += OnDesktopExit;
