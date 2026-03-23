@@ -34,8 +34,8 @@ Estimate scale:
 | A0-04 | A0 | Add local logging/telemetry abstraction for app runtime diagnostics | S | A0-01 | in-progress | App writes structured local logs with levels and timestamps |
 | A1-01 | A1 | Implement storage abstraction interfaces for client persistence | S | A0-03 | done | Storage contracts support identity, bots, servers, plugin cache, runtime state |
 | A1-02 | A1 | Implement SQLite-backed storage provider and startup initialization | M | A1-01 | done | DB file is created automatically and startup does not require manual steps |
-| A1-03 | A1 | Add schema version table + migration runner | M | A1-02 | todo | Migration path runs idempotently and reports current schema version |
-| A1-04 | A1 | Implement first-launch client identity bootstrap + durable save | S | A1-02 | todo | First launch creates identity, restart loads same identity |
+| A1-03 | A1 | Add schema version table + migration runner | M | A1-02 | done | Migration path runs idempotently and reports current schema version |
+| A1-04 | A1 | Implement first-launch client identity bootstrap + durable save | S | A1-02 | done | First launch creates identity, restart loads same identity |
 | A2-01 | A2 | Build unified main workspace view (left panel, center host, right panel) | M | A0-02, A1-02 | todo | App launches directly into unified workspace |
 | A2-02 | A2 | Implement collapsible behavior for left and right panels | S | A2-01 | todo | Both panels can collapse/expand and layout remains stable |
 | A2-03 | A2 | Implement context host navigation model for center activity area | M | A2-01 | todo | Selecting contexts swaps center content predictably |

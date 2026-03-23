@@ -8,6 +8,7 @@ namespace Bbs.Client.Core.Storage;
 public interface IClientStorage
 {
     Task InitializeAsync(CancellationToken cancellationToken = default);
+    Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default);
 
     Task<ClientIdentity?> GetClientIdentityAsync(CancellationToken cancellationToken = default);
     Task SaveClientIdentityAsync(ClientIdentity identity, CancellationToken cancellationToken = default);

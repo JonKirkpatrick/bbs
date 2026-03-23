@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Bbs.Client.Core.Domain;
+using Bbs.Client.Infrastructure.Identity;
 using Bbs.Client.Infrastructure.Storage;
 using Xunit;
 
@@ -12,15 +13,32 @@ namespace Bbs.Client.Infrastructure.Tests;
 public sealed class SqliteClientStorageTests
 {
     [Fact]
-    public async Task InitializeAsync_CreatesDatabaseFile_AndIsIdempotent()
+    public async Task InitializeAsync_CreatesDatabaseFile_IsIdempotent_AndSetsSchemaVersion()
     {
         var dbPath = NewTempDatabasePath();
         var storage = new SqliteClientStorage(dbPath);
 
         await storage.InitializeAsync();
         await storage.InitializeAsync();
+        var schemaVersion = await storage.GetSchemaVersionAsync();
 
         Assert.True(File.Exists(dbPath));
+        Assert.Equal(1, schemaVersion);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_UpgradesLegacyDatabaseWithoutSchemaVersion()
+    {
+        var dbPath = NewTempDatabasePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+
+        await CreateLegacyDatabaseAsync(dbPath);
+
+        var storage = new SqliteClientStorage(dbPath);
+        await storage.InitializeAsync();
+        var schemaVersion = await storage.GetSchemaVersionAsync();
+
+        Assert.Equal(1, schemaVersion);
     }
 
     [Fact]
@@ -99,6 +117,45 @@ public sealed class SqliteClientStorageTests
         Assert.Equal(runtime.BotId, loadedRuntime!.BotId);
         Assert.Equal(runtime.LifecycleState, loadedRuntime.LifecycleState);
         Assert.True(loadedRuntime.IsArmed);
+    }
+
+    [Fact]
+    public async Task ClientIdentityBootstrapper_CreatesOnFirstLaunch_AndPersistsAcrossRestart()
+    {
+        var dbPath = NewTempDatabasePath();
+
+        var storage1 = new SqliteClientStorage(dbPath);
+        await storage1.InitializeAsync();
+        var bootstrapper1 = new ClientIdentityBootstrapper(storage1);
+        var first = await bootstrapper1.EnsureClientIdentityAsync();
+
+        Assert.True(first.Created);
+
+        var storage2 = new SqliteClientStorage(dbPath);
+        await storage2.InitializeAsync();
+        var bootstrapper2 = new ClientIdentityBootstrapper(storage2);
+        var second = await bootstrapper2.EnsureClientIdentityAsync();
+
+        Assert.False(second.Created);
+        Assert.Equal(first.Identity.ClientId, second.Identity.ClientId);
+        Assert.Equal(first.Identity.DisplayName, second.Identity.DisplayName);
+        Assert.Equal(first.Identity.CreatedAtUtc, second.Identity.CreatedAtUtc);
+    }
+
+    private static async Task CreateLegacyDatabaseAsync(string dbPath)
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS client_identity (
+                client_id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+            """;
+        await command.ExecuteNonQueryAsync();
     }
 
     private static string NewTempDatabasePath()

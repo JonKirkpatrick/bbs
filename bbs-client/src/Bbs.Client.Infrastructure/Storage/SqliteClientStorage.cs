@@ -14,6 +14,7 @@ namespace Bbs.Client.Infrastructure.Storage;
 public sealed class SqliteClientStorage : IClientStorage
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const int CurrentSchemaVersion = 1;
     private readonly string _dbPath;
 
     public SqliteClientStorage(string? dbPath = null)
@@ -32,53 +33,26 @@ public sealed class SqliteClientStorage : IClientStorage
         }
 
         await using var connection = await OpenConnectionAsync(cancellationToken);
+        await EnsureSchemaVersionTableAsync(connection, cancellationToken);
 
-        var createSql = """
-            CREATE TABLE IF NOT EXISTS client_identity (
-                client_id TEXT PRIMARY KEY,
-                display_name TEXT NOT NULL,
-                created_at_utc TEXT NOT NULL
-            );
+        var version = await ReadSchemaVersionAsync(connection, cancellationToken);
+        if (version < 1)
+        {
+            await ApplyMigrationV1Async(connection, cancellationToken);
+            version = 1;
+        }
 
-            CREATE TABLE IF NOT EXISTS bot_profiles (
-                bot_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                launch_path TEXT NOT NULL,
-                launch_args_json TEXT NOT NULL,
-                metadata_json TEXT NOT NULL,
-                created_at_utc TEXT NOT NULL,
-                updated_at_utc TEXT NOT NULL
-            );
+        if (version < CurrentSchemaVersion)
+        {
+            throw new InvalidOperationException($"Database schema version {version} is lower than expected {CurrentSchemaVersion} after migration.");
+        }
+    }
 
-            CREATE TABLE IF NOT EXISTS known_servers (
-                server_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                host TEXT NOT NULL,
-                port INTEGER NOT NULL,
-                use_tls INTEGER NOT NULL,
-                metadata_json TEXT NOT NULL,
-                created_at_utc TEXT NOT NULL,
-                updated_at_utc TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS server_plugin_cache (
-                server_id TEXT PRIMARY KEY,
-                plugins_json TEXT NOT NULL,
-                cached_at_utc TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS agent_runtime_state (
-                bot_id TEXT PRIMARY KEY,
-                lifecycle_state INTEGER NOT NULL,
-                is_armed INTEGER NOT NULL,
-                last_error_code TEXT,
-                updated_at_utc TEXT NOT NULL
-            );
-            """;
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = createSql;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+    public async Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await EnsureSchemaVersionTableAsync(connection, cancellationToken);
+        return await ReadSchemaVersionAsync(connection, cancellationToken);
     }
 
     public async Task<ClientIdentity?> GetClientIdentityAsync(CancellationToken cancellationToken = default)
@@ -307,5 +281,104 @@ public sealed class SqliteClientStorage : IClientStorage
         var connection = new SqliteConnection($"Data Source={_dbPath}");
         await connection.OpenAsync(cancellationToken);
         return connection;
+    }
+
+    private static async Task EnsureSchemaVersionTableAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY CHECK(id = 1),
+                version INTEGER NOT NULL,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            INSERT INTO schema_version(id, version, updated_at_utc)
+            VALUES (1, 0, $updated_at_utc)
+            ON CONFLICT(id) DO NOTHING;
+            """;
+        command.Parameters.AddWithValue("$updated_at_utc", DateTimeOffset.UtcNow.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<int> ReadSchemaVersionAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT version FROM schema_version WHERE id = 1";
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        if (result is null || result is DBNull)
+        {
+            return 0;
+        }
+
+        return Convert.ToInt32(result);
+    }
+
+    private static async Task ApplyMigrationV1Async(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var transaction = connection.BeginTransaction();
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                CREATE TABLE IF NOT EXISTS client_identity (
+                    client_id TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    created_at_utc TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS bot_profiles (
+                    bot_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    launch_path TEXT NOT NULL,
+                    launch_args_json TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL,
+                    created_at_utc TEXT NOT NULL,
+                    updated_at_utc TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS known_servers (
+                    server_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    use_tls INTEGER NOT NULL,
+                    metadata_json TEXT NOT NULL,
+                    created_at_utc TEXT NOT NULL,
+                    updated_at_utc TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS server_plugin_cache (
+                    server_id TEXT PRIMARY KEY,
+                    plugins_json TEXT NOT NULL,
+                    cached_at_utc TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS agent_runtime_state (
+                    bot_id TEXT PRIMARY KEY,
+                    lifecycle_state INTEGER NOT NULL,
+                    is_armed INTEGER NOT NULL,
+                    last_error_code TEXT,
+                    updated_at_utc TEXT NOT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var updateVersion = connection.CreateCommand())
+        {
+            updateVersion.Transaction = transaction;
+            updateVersion.CommandText = """
+                UPDATE schema_version
+                SET version = 1,
+                    updated_at_utc = $updated_at_utc
+                WHERE id = 1
+                """;
+            updateVersion.Parameters.AddWithValue("$updated_at_utc", DateTimeOffset.UtcNow.ToString("O"));
+            await updateVersion.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        transaction.Commit();
     }
 }
