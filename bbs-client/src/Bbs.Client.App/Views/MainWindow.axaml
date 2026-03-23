@@ -106,6 +106,8 @@
                                                       <StackPanel Grid.Row="5" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
                                                             <Button Command="{Binding SaveBotProfileCommand}" Content="Save Bot" />
                                                             <Button Command="{Binding StartNewBotCommand}" Content="New Bot" />
+                                                            <Button Command="{Binding ArmSelectedBotCommand}" Content="Arm" />
+                                                            <Button Command="{Binding DisarmSelectedBotCommand}" Content="Disarm" />
                                                       </StackPanel>
 
                                                       <TextBlock Grid.Row="6" Margin="0,6,0,0" FontSize="12" Opacity="0.78" Text="{Binding BotEditorMessage}" />
