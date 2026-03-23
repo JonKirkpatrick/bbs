@@ -7,7 +7,7 @@
 
 \title{Build-a-Bot Stadium\\As-Built Summary}
 \author{Project Snapshot}
-\date{22 March 2026}
+\date{23 March 2026}
 
 \begin{document}
 \maketitle
@@ -18,10 +18,17 @@ This document summarizes the current \emph{as-built} state of Build-a-Bot Stadiu
 The summary focuses on implemented capabilities and operational characteristics rather than design aspirations.
 
 \section{System Overview}
-Build-a-Bot Stadium is currently implemented as a single Go runtime with two primary external surfaces:
+Build-a-Bot Stadium is currently implemented as a Go server runtime plus an in-repository Avalonia desktop client (Track A alpha).
+
+Server runtime primary external surfaces:
 \begin{itemize}[leftmargin=*]
   \item A TCP bot protocol endpoint (default \texttt{:8080})
   \item An HTTP dashboard and viewer endpoint (default \texttt{:3000})
+\end{itemize}
+
+Desktop client surface:
+\begin{itemize}[leftmargin=*]
+  \item Avalonia unified workspace shell in \texttt{bbs-client/} with left bot panel, center activity host, and right server panel
 \end{itemize}
 
 The platform follows a plugin-only game architecture:
@@ -150,6 +157,30 @@ Implemented bridge model:
   \item Local socket endpoint and message contract v0.2
   \item \texttt{hello} / \texttt{welcome} / \texttt{turn} / \texttt{action} message loop
   \item Support for domain-agnostic contract-compliant usage patterns
+\end{itemize}
+
+\subsection{Desktop Client Alpha (Track A)}
+The repository now includes a functional desktop client alpha implementation in \texttt{bbs-client/}. Current implemented scope aligns with Track A slices A0-A3 baseline:
+\begin{itemize}[leftmargin=*]
+  \item Unified single-view workspace with collapsible left/right side panels and context-driven center host
+  \item Durable local client state via SQLite (identity, bot profiles, known servers, plugin cache, runtime state contracts)
+  \item First-launch client identity bootstrap with idempotent schema initialization/migration
+  \item Bot registration/edit flow in center workspace with persistence and reload on restart
+  \item Arm/disarm orchestration baseline with persisted lifecycle state projection into bot card status text
+  \item Iterated side-panel UX polish (card-centric selection/hover visuals, keyboard focus-visible cues, centered headers, icon collapse controls)
+\end{itemize}
+
+Current limitations relative to full Track A alpha intent:
+\begin{itemize}[leftmargin=*]
+  \item Bot glow-state color semantics (amber/green/red) remain pending as a dedicated follow-up slice
+  \item Known-server persistence/probing, server detail workflows, and owner-token-gated actions remain planned work
+\end{itemize}
+
+Primary references:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{bbs-client/README.md}
+  \item \texttt{docs/releases/TRACK\_A\_TASK\_CHECKLIST.md}
+  \item \texttt{docs/releases/ROADMAP.md}
 \end{itemize}
 
 Primary references:
@@ -294,6 +325,10 @@ A pragmatic next phase that aligns with the current architecture would be:
 \path{docs/guides/PLUGIN_AUTHORING.md} & Plugin manifest schema, local workflow, CI checks, and release checklist. \\
 \hline
 \path{docs/guides/DASHBOARD_REMOTE_QUICKSTART.md} & Remote operator workflow for connecting bots through dashboard-issued owner tokens. \\
+\hline
+\path{bbs-client/README.md} & Desktop client build/run guide and current Track A alpha surface description. \\
+\hline
+\path{docs/releases/TRACK_A_TASK_CHECKLIST.md} & Track A implementation checklist with per-slice status and completion criteria. \\
 \hline
 \path{deploy/truenas/README.md} & Docker-based TrueNAS deployment and update operations. \\
 \hline

@@ -42,7 +42,15 @@ The app currently launches into a unified workspace shell with:
 - Left panel: bot cards
 - Center panel: activity workspace host
 - Right panel: server cards
+- Left and right panel collapse/expand toggles with centered panel headers
 
 Bot registration/edit is available in the center workspace, and saved bot profiles persist in SQLite and reload into the left panel on startup.
 
 Arm/disarm baseline controls are available in the center bot workspace. Lifecycle state transitions are persisted in SQLite and reflected in left-panel bot card status text.
+
+Current UX refinements in this shell include:
+
+- Card-focused selection and hover treatment in side panels
+- Keyboard focus-visible styling for side-panel list navigation
+- Bottom-row full-width `New Bot` action on the left panel
+- Mirrored disabled `New Server` placeholder action on the right panel for future server registration flow

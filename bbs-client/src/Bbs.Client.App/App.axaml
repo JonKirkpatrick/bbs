@@ -18,6 +18,7 @@
 
     <SolidColorBrush x:Key="Palette.PanelBackgroundBrush" Color="{StaticResource Palette.Paper}" />
     <SolidColorBrush x:Key="Palette.HeaderBackgroundBrush" Color="{StaticResource Palette.Line}" />
+    <SolidColorBrush x:Key="Palette.SummaryCardBackgroundBrush" Color="{StaticResource Palette.Paper}" />
     <SolidColorBrush x:Key="Palette.BorderBrush" Color="{StaticResource Palette.Line}" />
 
     <SolidColorBrush x:Key="Palette.BrandBrush" Color="{StaticResource Palette.Brand}" />
@@ -25,11 +26,24 @@
       
     <SolidColorBrush x:Key="Palette.ButtonBackgroundBrush" Color="{StaticResource Palette.Brand}" />
     <SolidColorBrush x:Key="Palette.ButtonForegroundBrush" Color="{StaticResource Palette.Paper}" />
-    <SolidColorBrush x:Key="Palette.ButtonHoverBackgroundBrush" Color="#b8531d" /> <SolidColorBrush x:Key="Palette.TextPrimaryBrush" Color="{StaticResource Palette.Ink}" />
+    <SolidColorBrush x:Key="Palette.ButtonHoverBackgroundBrush" Color="#b8531d" />
+    <SolidColorBrush x:Key="Palette.ButtonPressedBackgroundBrush" Color="#9f4919" />
+
+    <SolidColorBrush x:Key="Palette.TextPrimaryBrush" Color="{StaticResource Palette.Ink}" />
     <SolidColorBrush x:Key="Palette.TextSecondaryBrush" Color="{StaticResource Palette.Muted}" />
+    <SolidColorBrush x:Key="Palette.TextTertiaryBrush" Color="#7a7d85" />
         
     <SolidColorBrush x:Key="Palette.InputBackgroundBrush" Color="{StaticResource Palette.Paper}" />
+    <SolidColorBrush x:Key="Palette.InputForegroundBrush" Color="{StaticResource Palette.Ink}" />
     <SolidColorBrush x:Key="Palette.InputFocusBorderBrush" Color="{StaticResource Palette.Brand}" />
+
+    <SolidColorBrush x:Key="Palette.ListItemBackgroundBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="Palette.ListItemForegroundBrush" Color="{StaticResource Palette.Ink}" />
+    <SolidColorBrush x:Key="Palette.ListItemHoverBackgroundBrush" Color="#f0e7d8" />
+    <SolidColorBrush x:Key="Palette.ListItemSelectedBackgroundBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="Palette.ListItemSelectedBorderBrush" Color="{StaticResource Palette.AccentSoft}" />
+    <SolidColorBrush x:Key="Palette.ListItemFocusBorderBrush" Color="{StaticResource Palette.Brand}" />
+    <SolidColorBrush x:Key="Palette.CardHoverBackgroundBrush" Color="{StaticResource Palette.AccentSoft}" />
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
@@ -56,16 +70,52 @@
     <Style Selector="Button:pressed">
       <Setter Property="Background" Value="{DynamicResource Palette.ButtonPressedBackgroundBrush}" />
     </Style>
-    <Style Selector="ListBoxItem">
-      <Setter Property="Background" Value="{DynamicResource Palette.ListItemBackgroundBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource Palette.ListItemForegroundBrush}" />
+
+    <Style Selector="Button.panel-icon-toggle">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
     </Style>
-    <Style Selector="ListBoxItem:pointerover">
-      <Setter Property="Background" Value="{DynamicResource Palette.ListItemHoverBackgroundBrush}" />
+    <Style Selector="Button.panel-icon-toggle:pointerover">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.panel-icon-toggle:pressed">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Path.panel-icon">
+      <Setter Property="Fill" Value="Transparent" />
+      <Setter Property="Stroke" Value="{DynamicResource Palette.BrandBrush}" />
+      <Setter Property="StrokeThickness" Value="1.4" />
+      <Setter Property="StrokeJoin" Value="Round" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+    </Style>
+    <Style Selector="Button.panel-icon-toggle:pointerover Path.panel-icon">
+      <Setter Property="StrokeThickness" Value="2.1" />
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="ListBoxItem:selected">
       <Setter Property="Background" Value="{DynamicResource Palette.ListItemSelectedBackgroundBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource Palette.ListItemForegroundBrush}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ListBoxItem:selected:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Palette.ListItemSelectedBackgroundBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem:focus-visible /template/ Border#ItemContainerChrome">
+      <Setter Property="BorderBrush" Value="{DynamicResource Palette.ListItemFocusBorderBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
     </Style>
   </Application.Styles>
 </Application>

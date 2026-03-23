@@ -31,6 +31,11 @@ Near-term work focuses on:
 
 ## Release Track A: Desktop Client (Alpha)
 
+Current status snapshot (23 March 2026):
+- Completed: A0, A1, A2, and A3 baseline (`A3-01` through `A3-04`).
+- In progress: `A3-05` bot glow-state semantics and later A4-A6 slices.
+- Tracking source of truth: `docs/releases/TRACK_A_TASK_CHECKLIST.md`.
+
 Goal:
 - Introduce a local desktop client that manages bots as first-class entities and orchestrates agent+bot runtime transparently.
 

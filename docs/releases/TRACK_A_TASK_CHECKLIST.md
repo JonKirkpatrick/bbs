@@ -14,6 +14,13 @@ Estimate scale:
 - `L`: 3 to 5 days
 - `XL`: more than 5 days
 
+## Progress Snapshot (23 March 2026)
+
+- Slices A0, A1, and A2 are complete.
+- Slice A3 baseline (`A3-01` through `A3-04`) is complete.
+- Remaining A3 work is visual status-glow rules (`A3-05`).
+- A6 storage/identity integration coverage (`A6-01`) is complete; orchestration hardening coverage (`A6-02`) is underway.
+
 ## Milestone Order
 
 1. A0 Foundation
@@ -28,10 +35,10 @@ Estimate scale:
 
 | ID | Slice | Task | Estimate | Depends On | Status | Definition of done |
 | --- | --- | --- | --- | --- | --- | --- |
-| A0-01 | A0 | Create Avalonia solution + project structure (`App`, `Core`, `Infrastructure`) | M | - | in-progress | Solution builds and launches app shell on Linux |
-| A0-02 | A0 | Establish MVVM conventions and base view model infrastructure | S | A0-01 | in-progress | Base view model + command patterns used by at least one screen |
+| A0-01 | A0 | Create Avalonia solution + project structure (`App`, `Core`, `Infrastructure`) | M | - | done | Solution builds and launches app shell on Linux |
+| A0-02 | A0 | Establish MVVM conventions and base view model infrastructure | S | A0-01 | done | Base view model + command patterns used by at least one screen |
 | A0-03 | A0 | Define client domain models (`ClientIdentity`, `BotProfile`, `KnownServer`, `ServerPluginCache`, `AgentRuntimeState`) | S | A0-01 | done | Models compile, are serializable/mappable, and have basic validation |
-| A0-04 | A0 | Add local logging/telemetry abstraction for app runtime diagnostics | S | A0-01 | in-progress | App writes structured local logs with levels and timestamps |
+| A0-04 | A0 | Add local logging/telemetry abstraction for app runtime diagnostics | S | A0-01 | done | App writes structured local logs with levels and timestamps |
 | A1-01 | A1 | Implement storage abstraction interfaces for client persistence | S | A0-03 | done | Storage contracts support identity, bots, servers, plugin cache, runtime state |
 | A1-02 | A1 | Implement SQLite-backed storage provider and startup initialization | M | A1-01 | done | DB file is created automatically and startup does not require manual steps |
 | A1-03 | A1 | Add schema version table + migration runner | M | A1-02 | done | Migration path runs idempotently and reports current schema version |
@@ -54,8 +61,8 @@ Estimate scale:
 | A5-02 | A5 | Retrieve and display agent `server_access` metadata (owner token + dashboard endpoint) | M | A3-04, A5-01 | todo | Access metadata shown for armed bot sessions and refreshable |
 | A5-03 | A5 | Add owner-token-gated action stubs (create/join arena command path placeholders) | M | A5-02 | todo | Gated actions appear only when session metadata is valid |
 | A5-04 | A5 | Add server plugin catalog viewer pane in center activity area | S | A5-01, A4-02 | todo | Cached plugin data is readable in UI |
-| A6-01 | A6 | Add integration tests for first-launch identity + storage migration | M | A1-03, A1-04 | todo | Tests validate initialization and schema progression behavior |
-| A6-02 | A6 | Add integration tests for arm/disarm/lifecycle/quit orchestration states | M | A3-04 | todo | Tests cover expected transitions and failure handling |
+| A6-01 | A6 | Add integration tests for first-launch identity + storage migration | M | A1-03, A1-04 | done | Tests validate initialization and schema progression behavior |
+| A6-02 | A6 | Add integration tests for arm/disarm/lifecycle/quit orchestration states | M | A3-04 | in-progress | Tests cover expected transitions and failure handling |
 | A6-03 | A6 | Add resilient error handling for stale process handles and socket failures | M | A3-03 | todo | User-visible errors are clear and app recovers without restart |
 | A6-04 | A6 | Document Linux build/run packaging and local development workflow | S | A2-01, A6-02 | todo | Docs allow clean setup and launch on a fresh Linux environment |
 | A6-05 | A6 | Alpha readiness pass (UX sanity, data durability checks, smoke checklist) | M | A6-01, A6-02, A6-04 | todo | Internal alpha sign-off checklist completed |

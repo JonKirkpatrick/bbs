@@ -14,6 +14,31 @@
         Foreground="{DynamicResource Palette.WindowForegroundBrush}"
         Title="{Binding WindowTitle}"
         mc:Ignorable="d">
+      <Window.Resources>
+            <ControlTheme x:Key="CardListBoxItemTheme" TargetType="ListBoxItem">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Margin" Value="0" />
+                  <Setter Property="Background" Value="Transparent" />
+                  <Setter Property="BorderBrush" Value="Transparent" />
+                  <Setter Property="BorderThickness" Value="0" />
+                  <Setter Property="IsTabStop" Value="True" />
+                  <Setter Property="Template">
+                        <ControlTemplate>
+                              <Border x:Name="ItemContainerChrome"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      CornerRadius="6"
+                                      Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter Content="{TemplateBinding Content}"
+                                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                              </Border>
+                        </ControlTemplate>
+                  </Setter>
+            </ControlTheme>
+      </Window.Resources>
       <Grid RowDefinitions="Auto,*" Margin="16">
             <Border CornerRadius="10" Padding="14" Background="{DynamicResource Palette.HeaderBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1">
                   <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
@@ -38,23 +63,40 @@
 
                   <Grid Grid.Column="0" Margin="0,0,6,0" ZIndex="0">
                         <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
-                        <Grid Margin="12" RowDefinitions="Auto,Auto,*" ClipToBounds="True" ZIndex="1">
-                              <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Bots" />
-                                    <Button Grid.Column="1" FontSize="11" Command="{Binding ToggleLeftPanelCommand}" Content="{Binding LeftPanelToggleText}" />
+                        <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ClipToBounds="True" ZIndex="1">
+                              <Grid>
+                                    <TextBlock IsVisible="{Binding IsLeftPanelExpanded}" HorizontalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="Bots" />
+                                    <Button Classes="panel-icon-toggle" HorizontalAlignment="Right" Width="28" Height="28" Padding="4" Command="{Binding ToggleLeftPanelCommand}">
+                                          <Grid>
+                                                <Path IsVisible="{Binding IsLeftPanelExpanded}"
+                                                      Classes="panel-icon"
+                                                      Width="10"
+                                                      Height="14"
+                                                      Stretch="Uniform"
+                                                      Data="M 7.238105,0.18057061 C 6.923615,0.18057061 6.450145,0.45014061 6.180565,0.76192061 L 0.180525,7.2619006 C -0.060175,7.5428006 -0.060175,7.9572006 0.180525,8.2381006 L 6.180565,15.238101 C 6.450145,15.552601 6.923615,15.589001 7.238105,15.319501 C 7.552595,15.049901 7.589025,14.576401 7.319455,14.261901 L 1.737825,7.7500006 L 7.319455,1.2381106 C 7.589025,0.92361061 7.552595,0.45014061 7.238105,0.18057061 Z" />
+                                                <Path IsVisible="{Binding IsLeftPanelCollapsed}"
+                                                      Classes="panel-icon"
+                                                      Width="10"
+                                                      Height="14"
+                                                      Stretch="Uniform"
+                                                      Data="M 0.26192061,0.18057061 C 0.57641061,-0.08899939 1.0498906,-0.05256939 1.3194606,0.26192061 L 7.3195006,7.2619006 C 7.5602006,7.5428006 7.5602006,7.9572006 7.3195006,8.2381006 L 1.3194606,15.238101 C 1.0498906,15.552601 0.57641061,15.589001 0.26192061,15.319501 C -0.05256939,15.049901 -0.08899939,14.576401 0.18057061,14.261901 L 5.7622006,7.7500006 L 0.18057061,1.2381106 C -0.08899939,0.92361061 -0.05256939,0.45014061 0.26192061,0.18057061 Z" />
+                                          </Grid>
+                                    </Button>
                               </Grid>
-                              <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="1" Text="Registered and local to this client" />
+                              <TextBlock Grid.Row="1" IsVisible="{Binding IsLeftPanelExpanded}" Margin="0,8,0,8" Opacity="1" Text="Registered and local to this client" />
 
                               <ListBox Grid.Row="2"
                                                        IsVisible="{Binding IsLeftPanelExpanded}"
                                                        Background="Transparent"
                                                        BorderThickness="0"
+                                                       ItemContainerTheme="{StaticResource CardListBoxItemTheme}"
                                                        ItemsSource="{Binding Bots}"
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedBot}">
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:BotSummaryItem">
                                                 <controls:SummaryCard Title="{Binding Name}"
+                                                                                                                  IsActive="{Binding $parent[ListBoxItem].IsSelected}"
                                                                                                                   Subtitle="{Binding Summary}"
                                                                                                                   StatusText="{Binding Status}"
                                                                                                                   AccentBrush="{DynamicResource Palette.AccentBrush}"
@@ -63,23 +105,33 @@
                                     </ListBox.ItemTemplate>
                               </ListBox>
 
+                              <Button Grid.Row="3"
+                                      IsVisible="{Binding IsLeftPanelExpanded}"
+                                      Margin="0,8,0,0"
+                                      HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Center"
+                                      Command="{Binding StartNewBotCommand}"
+                                      Content="New Bot" />
+
                         </Grid>
                   </Grid>
 
                   <Grid Grid.Column="1" Margin="6,0" ZIndex="10">
                         <Border Background="{DynamicResource Palette.PanelCenterBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
-                        <Grid Margin="14" RowDefinitions="Auto,Auto,Auto,*" ZIndex="1">
-                              <TextBlock FontSize="20" FontWeight="Bold" Text="Activity Workspace" />
-                              <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="1" Text="Center context host for bot/server workflows" />
+                        <Grid Margin="14" RowDefinitions="Auto,Auto,*" ZIndex="1">
+                              <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                                    <TextBlock FontSize="20" FontWeight="Bold" Text="ActivitySpace" />
+                                    <Button Grid.Column="1" Classes="panel-icon-toggle" Width="28" Height="28" Padding="4" Command="{Binding SetHomeContextCommand}">
+                                          <Path Classes="panel-icon"
+                                                Width="12"
+                                                Height="12"
+                                                Stretch="Uniform"
+                                                Data="M 2,2 L 10,10 M 10,2 L 2,10" />
+                                    </Button>
+                              </Grid>
+                              <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="1" Text="{Binding CurrentContextLabel}" />
 
-                              <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
-                                    <Button Command="{Binding SetHomeContextCommand}" Content="Home" />
-                                    <Button Command="{Binding SetBotContextCommand}" Content="Bot Context" />
-                                    <Button Command="{Binding SetServerContextCommand}" Content="Server Context" />
-                                    <TextBlock VerticalAlignment="Center" Opacity="1" Text="{Binding CurrentContextLabel}" />
-                              </StackPanel>
-
-                              <Border Grid.Row="3" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
+                              <Border Grid.Row="2" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
                                     <StackPanel Spacing="8">
                                           <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding WorkspaceTitle}" />
                                           <TextBlock TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
@@ -110,7 +162,6 @@
 
                                                       <StackPanel Grid.Row="5" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
                                                             <Button Command="{Binding SaveBotProfileCommand}" Content="Save Bot" />
-                                                            <Button Command="{Binding StartNewBotCommand}" Content="New Bot" />
                                                             <Button Command="{Binding ArmSelectedBotCommand}" Content="Arm" />
                                                             <Button Command="{Binding DisarmSelectedBotCommand}" Content="Disarm" />
                                                       </StackPanel>
@@ -125,23 +176,40 @@
 
                   <Grid Grid.Column="2" Margin="6,0,0,0" ZIndex="0">
                         <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
-                        <Grid Margin="12" RowDefinitions="Auto,Auto,*" ClipToBounds="True" ZIndex="1">
-                              <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Servers" />
-                                    <Button Grid.Column="1" FontSize="11" Command="{Binding ToggleRightPanelCommand}" Content="{Binding RightPanelToggleText}" />
+                        <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ClipToBounds="True" ZIndex="1">
+                              <Grid>
+                                    <TextBlock IsVisible="{Binding IsRightPanelExpanded}" HorizontalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="Servers" />
+                                    <Button Classes="panel-icon-toggle" HorizontalAlignment="Left" Width="28" Height="28" Padding="4" Command="{Binding ToggleRightPanelCommand}">
+                                          <Grid>
+                                                <Path IsVisible="{Binding IsRightPanelExpanded}"
+                                                      Classes="panel-icon"
+                                                      Width="10"
+                                                      Height="14"
+                                                      Stretch="Uniform"
+                                                      Data="M 0.26192061,0.18057061 C 0.57641061,-0.08899939 1.0498906,-0.05256939 1.3194606,0.26192061 L 7.3195006,7.2619006 C 7.5602006,7.5428006 7.5602006,7.9572006 7.3195006,8.2381006 L 1.3194606,15.238101 C 1.0498906,15.552601 0.57641061,15.589001 0.26192061,15.319501 C -0.05256939,15.049901 -0.08899939,14.576401 0.18057061,14.261901 L 5.7622006,7.7500006 L 0.18057061,1.2381106 C -0.08899939,0.92361061 -0.05256939,0.45014061 0.26192061,0.18057061 Z" />
+                                                <Path IsVisible="{Binding IsRightPanelCollapsed}"
+                                                      Classes="panel-icon"
+                                                      Width="10"
+                                                      Height="14"
+                                                      Stretch="Uniform"
+                                                      Data="M 7.238105,0.18057061 C 6.923615,0.18057061 6.450145,0.45014061 6.180565,0.76192061 L 0.180525,7.2619006 C -0.060175,7.5428006 -0.060175,7.9572006 0.180525,8.2381006 L 6.180565,15.238101 C 6.450145,15.552601 6.923615,15.589001 7.238105,15.319501 C 7.552595,15.049901 7.589025,14.576401 7.319455,14.261901 L 1.737825,7.7500006 L 7.319455,1.2381106 C 7.589025,0.92361061 7.552595,0.45014061 7.238105,0.18057061 Z" />
+                                          </Grid>
+                                    </Button>
                               </Grid>
-                              <TextBlock Grid.Row="1" Margin="0,8,0,8" Opacity="1" Text="Known server endpoints and status" />
+                              <TextBlock Grid.Row="1" IsVisible="{Binding IsRightPanelExpanded}" Margin="0,8,0,8" Opacity="1" Text="Known server endpoints and status" />
 
                               <ListBox Grid.Row="2"
                                                        IsVisible="{Binding IsRightPanelExpanded}"
                                                        Background="Transparent"
                                                        BorderThickness="0"
+                                                       ItemContainerTheme="{StaticResource CardListBoxItemTheme}"
                                                        ItemsSource="{Binding Servers}"
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedServer}">
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:ServerSummaryItem">
                                                 <controls:SummaryCard Title="{Binding Name}"
+                                                                                                                  IsActive="{Binding $parent[ListBoxItem].IsSelected}"
                                                                                                                   Subtitle="{Binding Endpoint}"
                                                                                                                   StatusText="{Binding Status}"
                                                                                                                   AccentBrush="{DynamicResource Palette.AccentBrush}"
@@ -149,6 +217,14 @@
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
+
+                              <Button Grid.Row="3"
+                                      IsVisible="{Binding IsRightPanelExpanded}"
+                                      IsEnabled="False"
+                                      Margin="0,8,0,0"
+                                      HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Center"
+                                      Content="New Server" />
 
                         </Grid>
                   </Grid>

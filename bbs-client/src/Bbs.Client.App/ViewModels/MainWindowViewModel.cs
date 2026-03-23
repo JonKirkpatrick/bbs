@@ -80,6 +80,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             _isLeftPanelExpanded = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsLeftPanelCollapsed));
             OnPropertyChanged(nameof(LeftPanelWidth));
             OnPropertyChanged(nameof(LeftPanelToggleText));
         }
@@ -97,10 +98,14 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             _isRightPanelExpanded = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsRightPanelCollapsed));
             OnPropertyChanged(nameof(RightPanelWidth));
             OnPropertyChanged(nameof(RightPanelToggleText));
         }
     }
+
+    public bool IsLeftPanelCollapsed => !IsLeftPanelExpanded;
+    public bool IsRightPanelCollapsed => !IsRightPanelExpanded;
 
     public GridLength LeftPanelWidth => IsLeftPanelExpanded ? new GridLength(280) : new GridLength(56);
     public GridLength RightPanelWidth => IsRightPanelExpanded ? new GridLength(280) : new GridLength(56);

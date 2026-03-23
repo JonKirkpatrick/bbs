@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Styling;
 
 namespace Bbs.Client.App.Controls;
 
@@ -21,9 +22,13 @@ public partial class SummaryCard : UserControl
     public static readonly StyledProperty<IBrush> BackgroundBrushProperty =
         AvaloniaProperty.Register<SummaryCard, IBrush>(nameof(BackgroundBrush), Brushes.Transparent);
 
+    public static readonly StyledProperty<bool> IsActiveProperty =
+        AvaloniaProperty.Register<SummaryCard, bool>(nameof(IsActive), false);
+
     public SummaryCard()
     {
         InitializeComponent();
+        UpdateSelectionVisual();
     }
 
     public string Title
@@ -55,4 +60,57 @@ public partial class SummaryCard : UserControl
         get => GetValue(BackgroundBrushProperty);
         set => SetValue(BackgroundBrushProperty, value);
     }
+
+    public bool IsActive
+    {
+        get => GetValue(IsActiveProperty);
+        set => SetValue(IsActiveProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == IsActiveProperty ||
+            change.Property == AccentBrushProperty)
+        {
+            UpdateSelectionVisual();
+        }
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        UpdateSelectionVisual();
+    }
+
+    private void UpdateSelectionVisual()
+    {
+        if (CardBorder is null)
+        {
+            return;
+        }
+
+        if (IsActive)
+        {
+            CardBorder.BorderThickness = new Thickness(3);
+            CardBorder.Padding = new Thickness(10);
+            CardBorder.BorderBrush = ResolveActiveBorderBrush() ?? AccentBrush;
+        }
+        else
+        {
+            CardBorder.BorderThickness = new Thickness(1);
+            CardBorder.Padding = new Thickness(12);
+            CardBorder.BorderBrush = AccentBrush;
+        }
+
+    }
+
+    private IBrush? ResolveActiveBorderBrush()
+    {
+        return TryGetResource("Palette.ListItemSelectedBorderBrush", ActualThemeVariant, out var value)
+            ? value as IBrush
+            : null;
+    }
+
 }
