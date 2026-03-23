@@ -27,3 +27,10 @@ Structured local logs are written to:
 
 - `$XDG_STATE_HOME/bbs-client/logs/client.log` when `XDG_STATE_HOME` is set
 - `~/.local/state/bbs-client/logs/client.log` otherwise
+
+## Storage
+
+SQLite storage is initialized automatically on startup at:
+
+- `$XDG_STATE_HOME/bbs-client/data/client.db` when `XDG_STATE_HOME` is set
+- `~/.local/state/bbs-client/data/client.db` otherwise
