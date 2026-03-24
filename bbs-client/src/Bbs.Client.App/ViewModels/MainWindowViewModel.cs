@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -30,9 +31,17 @@ public sealed class MainWindowViewModel : ViewModelBase
     private const int BotTcpDefaultPort = 8080;
     private const int ServerProbeMaxAttempts = 2;
     private const int ServerProbeRetryDelayMs = 200;
+    private const int DeployHandshakeTimeoutMs = 3000;
+    private const string RegisterEmptyToken = "\"\"";
     private const string ProbeStatusMetadataKey = "probe_status";
     private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
     private const string ProbeLastErrorMetadataKey = "probe_last_error";
+    private const string ServerAccessServerIdMetadataKey = "server_access.server_id";
+    private const string ServerAccessSessionIdMetadataKey = "server_access.session_id";
+    private const string ServerAccessOwnerTokenMetadataKey = "server_access.owner_token";
+    private const string ServerAccessDashboardEndpointMetadataKey = "server_access.dashboard_endpoint";
+    private const string ServerAccessBotIdMetadataKey = "server_access.bot_id";
+    private const string ServerAccessBotSecretMetadataKey = "server_access.bot_secret";
     private static readonly string[] DashboardEndpointMetadataKeys =
     {
         "dashboard_endpoint",
@@ -79,6 +88,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly HashSet<string> _serverCatalogRefreshInFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _serverProbeLock = new();
     private readonly object _serverCatalogRefreshLock = new();
+    private readonly object _deployConnectionLock = new();
+    private readonly Dictionary<string, TcpClient> _activeDeployConnections = new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
     {
@@ -510,8 +521,11 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (value is not null)
             {
                 PopulateBotEditor(value);
-                _currentContext = WorkspaceContext.BotDetails;
-                RefreshContextProjection();
+                if (_currentContext != WorkspaceContext.ServerDetails)
+                {
+                    _currentContext = WorkspaceContext.BotDetails;
+                    RefreshContextProjection();
+                }
             }
 
             TriggerServerAccessRefresh();
@@ -603,7 +617,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     private bool CanDeploySelectedBot()
     {
         return SelectedBot is { IsArmed: true } &&
+               SelectedBot.LifecycleState != AgentLifecycleState.ActiveSession &&
                SelectedServer is not null &&
+               _currentContext == WorkspaceContext.ServerDetails &&
+               !HasActiveDeployConnection(SelectedBot.BotId) &&
                !IsServerAccessLoading;
     }
 
@@ -688,6 +705,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(WorkspaceDescription));
         OnPropertyChanged(nameof(ShowBotEditor));
         OnPropertyChanged(nameof(ShowServerEditor));
+        ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
     }
 
     private void StartNewBot()
@@ -796,6 +814,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         var profile = SelectedBot.ToProfile();
         try
         {
+            DisconnectActiveDeploymentConnection(selectedBotId, sendQuit: true);
             var result = _orchestration.DisarmBotAsync(profile).GetAwaiter().GetResult();
             LoadBotsFromStorage();
             SelectedBot = FindBotById(profile.BotId);
@@ -838,18 +857,42 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        if (_currentContext != WorkspaceContext.ServerDetails)
+        {
+            BotEditorMessage = "Deploy requires an active server in the center activity space.";
+            return;
+        }
+
+        if (bot.LifecycleState == AgentLifecycleState.ActiveSession || HasActiveDeployConnection(bot.BotId))
+        {
+            BotEditorMessage = "This bot is already deployed. Disconnect it before deploying again.";
+            return;
+        }
+
         try
         {
             var sourceProfile = bot.ToProfile();
+            var registerResponse = RegisterBotSessionWithServer(server, sourceProfile);
             var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
             {
-                ["server_access.server_id"] = server.ServerId
+                [ServerAccessServerIdMetadataKey] = server.ServerId,
+                [ServerAccessSessionIdMetadataKey] = registerResponse.SessionId,
+                [ServerAccessBotIdMetadataKey] = registerResponse.ServerBotId
             };
 
-            var dashboardEndpoint = ResolveServerDashboardEndpoint(server);
-            if (!string.IsNullOrWhiteSpace(dashboardEndpoint))
+            if (!string.IsNullOrWhiteSpace(registerResponse.ServerBotSecret))
             {
-                attachedMetadata["server_access.dashboard_endpoint"] = dashboardEndpoint;
+                attachedMetadata[ServerAccessBotSecretMetadataKey] = registerResponse.ServerBotSecret;
+            }
+
+            if (!string.IsNullOrWhiteSpace(registerResponse.OwnerToken))
+            {
+                attachedMetadata[ServerAccessOwnerTokenMetadataKey] = registerResponse.OwnerToken;
+            }
+
+            if (!string.IsNullOrWhiteSpace(registerResponse.DashboardEndpoint))
+            {
+                attachedMetadata[ServerAccessDashboardEndpointMetadataKey] = registerResponse.DashboardEndpoint;
             }
 
             var attachedProfile = BotProfile.Create(
@@ -874,19 +917,264 @@ public sealed class MainWindowViewModel : ViewModelBase
             LoadBotsFromStorage();
             SelectedBot = FindBotById(sourceProfile.BotId);
             TriggerServerAccessRefresh();
-            BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; waiting for server token via agent metadata.";
+            BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; active session established.";
 
-            _logger.Log(LogLevel.Information, "bot_deploy_attached", "Bot deploy attached active session and server context metadata.",
+            _logger.Log(LogLevel.Information, "bot_deploy_attached", "Bot deploy completed server register handshake and attached active session metadata.",
                 new Dictionary<string, string>
                 {
                     ["bot_id"] = sourceProfile.BotId,
                     ["server_id"] = server.ServerId,
-                    ["dashboard_endpoint"] = dashboardEndpoint ?? ""
+                    ["session_id"] = registerResponse.SessionId,
+                    ["dashboard_endpoint"] = registerResponse.DashboardEndpoint
                 });
         }
         catch (Exception ex)
         {
             HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed", ex);
+        }
+    }
+
+    private RegisterHandshakeResult RegisterBotSessionWithServer(ServerSummaryItem server, BotProfile profile)
+    {
+        var metadata = new Dictionary<string, string>(profile.Metadata, StringComparer.OrdinalIgnoreCase);
+        var existingServerId = metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var value) ? value : string.Empty;
+        var canReuseIdentity = string.Equals(existingServerId, server.ServerId, StringComparison.OrdinalIgnoreCase);
+        var botIdentity = canReuseIdentity && metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botIdValue)
+            ? botIdValue.Trim()
+            : string.Empty;
+        var botSecret = canReuseIdentity && metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecretValue)
+            ? botSecretValue.Trim()
+            : string.Empty;
+        var ownerToken = canReuseIdentity && metadata.TryGetValue(ServerAccessOwnerTokenMetadataKey, out var ownerTokenValue)
+            ? ownerTokenValue.Trim()
+            : string.Empty;
+
+        var registerName = SanitizeRegisterName(profile.Name);
+        var registerCommand = BuildRegisterCommand(registerName, botIdentity, botSecret, ownerToken);
+        var endpointCandidates = BuildBotRegisterEndpointCandidates(server);
+        Exception? lastError = null;
+
+        foreach (var endpoint in endpointCandidates)
+        {
+            TcpClient? client = null;
+            try
+            {
+                client = new TcpClient();
+                var connectTask = client.ConnectAsync(endpoint.Host, endpoint.Port);
+                if (!connectTask.Wait(DeployHandshakeTimeoutMs))
+                {
+                    throw new TimeoutException($"Timeout connecting to {endpoint.Host}:{endpoint.Port}.");
+                }
+
+                var stream = client.GetStream();
+                stream.ReadTimeout = DeployHandshakeTimeoutMs;
+                stream.WriteTimeout = DeployHandshakeTimeoutMs;
+
+                using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true))
+                {
+                    _ = reader.ReadLine();
+
+                    using (var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true)
+                    {
+                        AutoFlush = true,
+                        NewLine = "\n"
+                    })
+                    {
+                        writer.WriteLine(registerCommand);
+                    }
+
+                    var responseLine = reader.ReadLine();
+                    if (string.IsNullOrWhiteSpace(responseLine))
+                    {
+                        throw new InvalidOperationException($"Server {endpoint.Host}:{endpoint.Port} returned an empty register response.");
+                    }
+
+                    var registerPayload = ParseRegisterResponse(responseLine);
+                    if (!registerPayload.Success)
+                    {
+                        throw new InvalidOperationException(registerPayload.ErrorMessage);
+                    }
+
+                    lock (_deployConnectionLock)
+                    {
+                        if (_activeDeployConnections.TryGetValue(profile.BotId, out var existing))
+                        {
+                            try { existing.Close(); } catch { }
+                        }
+
+                        _activeDeployConnections[profile.BotId] = client;
+                    }
+
+                    var dashboardEndpoint = NormalizeDashboardEndpoint(registerPayload.DashboardEndpoint, registerPayload.DashboardHost, registerPayload.DashboardPort, server.UseTls);
+                    return new RegisterHandshakeResult(
+                        SessionId: registerPayload.SessionId,
+                        ServerBotId: registerPayload.ServerBotId,
+                        ServerBotSecret: registerPayload.ServerBotSecret,
+                        OwnerToken: registerPayload.OwnerToken,
+                        DashboardEndpoint: dashboardEndpoint);
+                }
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                if (client is not null)
+                {
+                    try { client.Close(); } catch { }
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Failed to register bot session with server.", lastError);
+    }
+
+    private static string SanitizeRegisterName(string name)
+    {
+        var normalized = string.Join("_", name.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+        return string.IsNullOrWhiteSpace(normalized) ? "bot" : normalized;
+    }
+
+    private static string BuildRegisterCommand(string name, string serverBotId, string serverBotSecret, string ownerToken)
+    {
+        var parts = new List<string>
+        {
+            "REGISTER",
+            name,
+            string.IsNullOrWhiteSpace(serverBotId) ? RegisterEmptyToken : serverBotId,
+            string.IsNullOrWhiteSpace(serverBotSecret) ? RegisterEmptyToken : serverBotSecret
+        };
+
+        if (!string.IsNullOrWhiteSpace(ownerToken))
+        {
+            parts.Add($"owner_token={ownerToken}");
+        }
+
+        return string.Join(' ', parts);
+    }
+
+    private static IReadOnlyList<(string Host, int Port)> BuildBotRegisterEndpointCandidates(ServerSummaryItem server)
+    {
+        var ports = new List<int>();
+        if (server.Metadata.TryGetValue("bot_port", out var rawBotPort) && int.TryParse(rawBotPort, out var metadataBotPort) && metadataBotPort is > 0 and <= 65535)
+        {
+            ports.Add(metadataBotPort);
+        }
+
+        ports.Add(server.Port);
+        if (server.Port != BotTcpDefaultPort)
+        {
+            ports.Add(BotTcpDefaultPort);
+        }
+
+        return ports
+            .Where(p => p is > 0 and <= 65535)
+            .Distinct()
+            .Select(p => (server.Host, p))
+            .ToArray();
+    }
+
+    private static RegisterEnvelopePayload ParseRegisterResponse(string responseLine)
+    {
+        using var doc = JsonDocument.Parse(responseLine);
+        var root = doc.RootElement;
+
+        var status = root.TryGetProperty("status", out var statusValue) ? statusValue.GetString() ?? string.Empty : string.Empty;
+        var type = root.TryGetProperty("type", out var typeValue) ? typeValue.GetString() ?? string.Empty : string.Empty;
+        if (!string.Equals(status, "ok", StringComparison.OrdinalIgnoreCase) || !string.Equals(type, "register", StringComparison.OrdinalIgnoreCase))
+        {
+            var payloadText = root.TryGetProperty("payload", out var rawPayload)
+                ? rawPayload.ToString()
+                : "unknown_error";
+            return new RegisterEnvelopePayload(false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, payloadText);
+        }
+
+        if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
+        {
+            return new RegisterEnvelopePayload(false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, "register payload missing or invalid");
+        }
+
+        var sessionId = payload.TryGetProperty("session_id", out var sessionValue) ? sessionValue.ToString() : string.Empty;
+        var botId = payload.TryGetProperty("bot_id", out var botIdValue) ? botIdValue.GetString() ?? string.Empty : string.Empty;
+        var botSecret = payload.TryGetProperty("bot_secret", out var botSecretValue) ? botSecretValue.GetString() ?? string.Empty : string.Empty;
+        var ownerToken = payload.TryGetProperty("owner_token", out var ownerTokenValue) ? ownerTokenValue.GetString() ?? string.Empty : string.Empty;
+        var dashboardEndpoint = payload.TryGetProperty("dashboard_endpoint", out var dashboardEndpointValue) ? dashboardEndpointValue.GetString() ?? string.Empty : string.Empty;
+        var dashboardHost = payload.TryGetProperty("dashboard_host", out var dashboardHostValue) ? dashboardHostValue.GetString() ?? string.Empty : string.Empty;
+        var dashboardPort = payload.TryGetProperty("dashboard_port", out var dashboardPortValue) ? dashboardPortValue.GetString() ?? string.Empty : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(botId))
+        {
+            return new RegisterEnvelopePayload(false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, "register payload missing session_id or bot_id");
+        }
+
+        return new RegisterEnvelopePayload(true, sessionId, botId, botSecret, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort, string.Empty);
+    }
+
+    private static string NormalizeDashboardEndpoint(string rawEndpoint, string rawHost, string rawPort, bool useTls)
+    {
+        var scheme = useTls ? "https" : "http";
+        if (Uri.TryCreate(rawEndpoint, UriKind.Absolute, out var absolute))
+        {
+            return absolute.ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawEndpoint))
+        {
+            var withScheme = $"{scheme}://{rawEndpoint}";
+            if (Uri.TryCreate(withScheme, UriKind.Absolute, out absolute))
+            {
+                return absolute.ToString();
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawHost) && !string.IsNullOrWhiteSpace(rawPort))
+        {
+            var withScheme = $"{scheme}://{rawHost}:{rawPort}";
+            if (Uri.TryCreate(withScheme, UriKind.Absolute, out absolute))
+            {
+                return absolute.ToString();
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private bool HasActiveDeployConnection(string botId)
+    {
+        lock (_deployConnectionLock)
+        {
+            return _activeDeployConnections.ContainsKey(botId);
+        }
+    }
+
+    private void DisconnectActiveDeploymentConnection(string botId, bool sendQuit)
+    {
+        TcpClient? client = null;
+        lock (_deployConnectionLock)
+        {
+            if (_activeDeployConnections.TryGetValue(botId, out client))
+            {
+                _activeDeployConnections.Remove(botId);
+            }
+        }
+
+        if (client is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (sendQuit && client.Connected)
+            {
+                var bytes = Encoding.UTF8.GetBytes("QUIT\n");
+                client.GetStream().Write(bytes, 0, bytes.Length);
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            try { client.Close(); } catch { }
         }
     }
 
@@ -928,6 +1216,19 @@ public sealed class MainWindowViewModel : ViewModelBase
         foreach (var profile in profiles)
         {
             var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
+            if (runtimeState is not null &&
+                runtimeState.LifecycleState == AgentLifecycleState.ActiveSession &&
+                !profile.Metadata.ContainsKey(ServerAccessSessionIdMetadataKey))
+            {
+                runtimeState = new AgentRuntimeState(
+                    BotId: runtimeState.BotId,
+                    LifecycleState: AgentLifecycleState.Idle,
+                    IsArmed: true,
+                    LastErrorCode: null,
+                    UpdatedAtUtc: DateTimeOffset.UtcNow);
+                _storage.UpsertAgentRuntimeStateAsync(runtimeState).GetAwaiter().GetResult();
+            }
+
             Bots.Add(BotSummaryItem.FromProfile(
                 profile,
                 runtimeState,
@@ -1960,6 +2261,24 @@ public sealed class ServerSummaryItem
 public sealed record ServerMetadataEntryItem(string Key, string Value);
 
 public sealed record ServerPluginCatalogItem(string Name, string DisplayName, string Version);
+
+public sealed record RegisterHandshakeResult(
+    string SessionId,
+    string ServerBotId,
+    string ServerBotSecret,
+    string OwnerToken,
+    string DashboardEndpoint);
+
+public sealed record RegisterEnvelopePayload(
+    bool Success,
+    string SessionId,
+    string ServerBotId,
+    string ServerBotSecret,
+    string OwnerToken,
+    string DashboardEndpoint,
+    string DashboardHost,
+    string DashboardPort,
+    string ErrorMessage);
 
 
 public enum WorkspaceContext
