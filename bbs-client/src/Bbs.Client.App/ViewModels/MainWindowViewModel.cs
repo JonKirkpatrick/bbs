@@ -1277,60 +1277,88 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private async Task<(bool Succeeded, IReadOnlyList<PluginDescriptor> Plugins, string ErrorCode, string Source)> FetchServerPluginCatalogAsync(KnownServer knownServer, CancellationToken cancellationToken)
     {
-        var endpoint = BuildServerBaseEndpoint(knownServer);
+        var endpointCandidates = BuildServerBaseEndpointCandidates(knownServer);
+        var observedErrors = new List<string>();
 
-        try
+        foreach (var endpoint in endpointCandidates)
         {
-            var apiCatalogUri = new Uri(endpoint + "/api/game-catalog");
-            using var apiResponse = await _serverCatalogHttpClient.GetAsync(apiCatalogUri, cancellationToken);
-            if (apiResponse.IsSuccessStatusCode)
+            try
             {
-                var jsonPayload = await apiResponse.Content.ReadAsStringAsync(cancellationToken);
-                if (ServerPluginCatalogParser.TryParseFromJsonCatalog(jsonPayload, out var plugins, out _))
+                var apiCatalogUri = new Uri(endpoint + "/api/game-catalog");
+                using var apiResponse = await _serverCatalogHttpClient.GetAsync(apiCatalogUri, cancellationToken);
+                if (apiResponse.IsSuccessStatusCode)
                 {
-                    return (true, plugins, string.Empty, "api_game_catalog");
+                    var jsonPayload = await apiResponse.Content.ReadAsStringAsync(cancellationToken);
+                    if (ServerPluginCatalogParser.TryParseFromJsonCatalog(jsonPayload, out var plugins, out _))
+                    {
+                        return (true, plugins, string.Empty, "api_game_catalog");
+                    }
+
+                    observedErrors.Add($"api_parse_failed_{endpoint}");
+                }
+                else
+                {
+                    observedErrors.Add($"api_http_{(int)apiResponse.StatusCode}_{endpoint}");
                 }
             }
-        }
-        catch
-        {
-            // Fall through to dashboard HTML parsing.
-        }
-
-        try
-        {
-            using var dashboardResponse = await _serverCatalogHttpClient.GetAsync(new Uri(endpoint + "/"), cancellationToken);
-            if (!dashboardResponse.IsSuccessStatusCode)
+            catch (TaskCanceledException)
             {
-                return (false, Array.Empty<PluginDescriptor>(), $"dashboard_http_{(int)dashboardResponse.StatusCode}", "dashboard_html");
+                observedErrors.Add($"api_timeout_{endpoint}");
+            }
+            catch (HttpRequestException)
+            {
+                observedErrors.Add($"api_http_error_{endpoint}");
             }
 
-            var html = await dashboardResponse.Content.ReadAsStringAsync(cancellationToken);
-            if (!ServerPluginCatalogParser.TryParseFromDashboardHtml(html, out var plugins, out _))
+            try
             {
-                return (false, Array.Empty<PluginDescriptor>(), "dashboard_catalog_parse_failed", "dashboard_html");
-            }
+                using var dashboardResponse = await _serverCatalogHttpClient.GetAsync(new Uri(endpoint + "/"), cancellationToken);
+                if (!dashboardResponse.IsSuccessStatusCode)
+                {
+                    observedErrors.Add($"dashboard_http_{(int)dashboardResponse.StatusCode}_{endpoint}");
+                    continue;
+                }
 
-            return (true, plugins, string.Empty, "dashboard_html");
+                var html = await dashboardResponse.Content.ReadAsStringAsync(cancellationToken);
+                if (!ServerPluginCatalogParser.TryParseFromDashboardHtml(html, out var plugins, out _))
+                {
+                    observedErrors.Add($"dashboard_parse_failed_{endpoint}");
+                    continue;
+                }
+
+                return (true, plugins, string.Empty, "dashboard_html");
+            }
+            catch (TaskCanceledException)
+            {
+                observedErrors.Add($"dashboard_timeout_{endpoint}");
+            }
+            catch (HttpRequestException)
+            {
+                observedErrors.Add($"dashboard_http_error_{endpoint}");
+            }
+            catch
+            {
+                observedErrors.Add($"dashboard_fetch_failed_{endpoint}");
+            }
         }
-        catch (TaskCanceledException)
-        {
-            return (false, Array.Empty<PluginDescriptor>(), "plugin_catalog_timeout", "dashboard_html");
-        }
-        catch (HttpRequestException)
-        {
-            return (false, Array.Empty<PluginDescriptor>(), "plugin_catalog_http_error", "dashboard_html");
-        }
-        catch
-        {
-            return (false, Array.Empty<PluginDescriptor>(), "plugin_catalog_fetch_failed", "dashboard_html");
-        }
+
+        var errorCode = observedErrors.Count == 0
+            ? "plugin_catalog_fetch_failed"
+            : $"plugin_catalog_fetch_failed:{string.Join(',', observedErrors)}";
+
+        return (false, Array.Empty<PluginDescriptor>(), errorCode, "dashboard_html");
     }
 
-    private static string BuildServerBaseEndpoint(KnownServer knownServer)
+    private static IReadOnlyList<string> BuildServerBaseEndpointCandidates(KnownServer knownServer)
     {
-        var scheme = knownServer.UseTls ? "https" : "http";
-        return $"{scheme}://{knownServer.Host}:{knownServer.Port}";
+        var preferredScheme = knownServer.UseTls ? "https" : "http";
+        var alternateScheme = knownServer.UseTls ? "http" : "https";
+
+        return new[]
+        {
+            $"{preferredScheme}://{knownServer.Host}:{knownServer.Port}",
+            $"{alternateScheme}://{knownServer.Host}:{knownServer.Port}"
+        };
     }
 
     private void TriggerServerAccessRefresh()
