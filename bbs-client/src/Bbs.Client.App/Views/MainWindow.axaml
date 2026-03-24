@@ -171,7 +171,7 @@
                                           </Border>
 
                                           <Border IsVisible="{Binding ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
-                                                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                                       <TextBlock FontSize="15" FontWeight="SemiBold" Text="Server Detail" />
 
                                                       <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="Auto,*">
@@ -246,14 +246,30 @@
                                                             </StackPanel>
                                                       </Border>
 
-                                                      <TextBlock Grid.Row="6" Margin="0,10,0,0" FontSize="15" FontWeight="SemiBold" Text="Known Server Registration / Edit" />
+                                                      <Border Grid.Row="6" Margin="0,8,0,0" Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
+                                                            <StackPanel Spacing="6">
+                                                                  <TextBlock FontSize="13" FontWeight="SemiBold" Text="Owner-Token Actions (Placeholders)" />
+                                                                  <TextBlock IsVisible="{Binding ShowOwnerTokenActionsUnavailable}"
+                                                                             FontSize="12"
+                                                                             Text="Valid owner-token metadata is required to reveal action stubs." />
 
-                                                      <StackPanel Grid.Row="7" Margin="0,6,0,0" Spacing="2">
+                                                                  <StackPanel IsVisible="{Binding ShowOwnerTokenActions}" Orientation="Horizontal" Spacing="8">
+                                                                        <Button Command="{Binding CreateArenaStubCommand}" Content="Create Arena (Stub)" />
+                                                                        <Button Command="{Binding JoinArenaStubCommand}" Content="Join Arena (Stub)" />
+                                                                  </StackPanel>
+
+                                                                  <TextBlock FontSize="12" Text="{Binding OwnerTokenActionStatus}" TextWrapping="Wrap" />
+                                                            </StackPanel>
+                                                      </Border>
+
+                                                      <TextBlock Grid.Row="7" Margin="0,10,0,0" FontSize="15" FontWeight="SemiBold" Text="Known Server Registration / Edit" />
+
+                                                      <StackPanel Grid.Row="8" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Server Name" />
                                                             <TextBox Text="{Binding ServerEditorName}" Watermark="Local Stadium" />
                                                       </StackPanel>
 
-                                                      <Grid Grid.Row="8" Margin="0,6,0,0" ColumnDefinitions="2*,*,Auto">
+                                                      <Grid Grid.Row="9" Margin="0,6,0,0" ColumnDefinitions="2*,*,Auto">
                                                             <StackPanel Grid.Column="0" Spacing="2">
                                                                   <TextBlock FontSize="12" Opacity="1" Text="Host" />
                                                                   <TextBox Text="{Binding ServerEditorHost}" Watermark="127.0.0.1" />
@@ -268,12 +284,12 @@
                                                             </StackPanel>
                                                       </Grid>
 
-                                                      <StackPanel Grid.Row="9" Margin="0,6,0,0" Spacing="2">
+                                                      <StackPanel Grid.Row="10" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Metadata (k=v;k2=v2)" />
                                                             <TextBox Text="{Binding ServerEditorMetadata}" Watermark="region=local;tier=alpha" />
                                                       </StackPanel>
 
-                                                      <StackPanel Grid.Row="10" Margin="0,6,0,0" Spacing="2">
+                                                      <StackPanel Grid.Row="11" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Plugin Cache (one per line: name|display|version)" />
                                                             <TextBox Text="{Binding ServerEditorPlugins}"
                                                                      Height="92"
@@ -282,7 +298,7 @@
                                                                      Watermark="counter|Counter|1.0.0" />
                                                       </StackPanel>
 
-                                                      <StackPanel Grid.Row="11" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                                                      <StackPanel Grid.Row="12" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
                                                             <Button Command="{Binding SaveServerProfileCommand}" Content="Save Server" />
                                                             <Button Command="{Binding StartNewServerCommand}" Content="New Server" />
                                                       </StackPanel>
