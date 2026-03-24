@@ -6,14 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## Unreleased
 
-### Added
-(new changes will be captured here)
+### Added (Server)
+(new server changes will be captured here)
 
-### Changed
-(changes will be captured here)
+### Added (Client - bbs-client v0.1.0-alpha)
+- **Local Bot Orchestration**: Complete arm/disarm/deploy lifecycle for bot profiles with Unix socket IPC
+- **Bot Name Sanitization**: Client profiles control bot identity; names with spaces are automatically sanitized (spaces → underscores) when passed to agent
+- **Dynamic Server Registration**: `server_connect` control command allows client to register with a server without agent restart, with automatic retry on endpoint failure
+- **Endpoint Resilience**: Deploy automatically tries multiple server endpoint candidates (normalized loopback variants, IPv4 parsing, etc.) when initial connection fails
+- **Profile-Based Bot Management**: SQLite-backed bot profile storage with per-server bot state and credentials persistence
+- **Integration with Dashboard**: Live bot session cards respect profile-provided names; dashboard endpoint fallback for reliability
+- **Agent Control Socket**: Full control plane for arm/disarm/lifecycle/server_connect operations with JSON v0.2 protocol
 
-### Fixed
-(fixes will be captured here)
+### Changed (Client)
+- Agent no longer accepts name overrides from bot `hello` messages; bot author cannot control bot identity in active sessions
+- Deploy validation now includes endpoint candidate generation and fallback retry logic
+- Bot arguments now limited to `--socket` only; profile name is passed to agent via `--name` flag, not bot args
+
+### Changed (Server)
+(server changes will be captured here)
+
+### Fixed (Client)
+- Fixed deploy failing when server host is stored as malformed loopback (e.g., 127.0.01 instead of 127.0.0.1)
+- Fixed agent startup failure when bot profile names contained spaces
+
+### Fixed (Server)
+(server fixes will be captured here)
 
 ## [v0.3.0] - 2026-03-22
 

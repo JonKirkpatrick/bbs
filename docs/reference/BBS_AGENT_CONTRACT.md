@@ -72,7 +72,7 @@ It does not forward raw BBS server commands.
 
 Notes:
 
-- `name` defaults to `agent_bot` when omitted.
+- `name` in `hello` is informational only and does **not** override the agent's registered name (which is controlled by the client via `--name` CLI flag). The agent ignores bot-provided names to ensure clients maintain control over bot identity.
 - `capabilities` may be array or CSV (`capabilities_csv`).
 - `credentials_file` optional; default `<name>_credentials.txt`.
 - empty `bot_id`/`bot_secret` requests new identity issuance.
@@ -196,6 +196,67 @@ Ask the agent process to stop.
   }
 }
 ```
+
+### `server_connect`
+
+Dynamically register with a server (deploy flow). Used when the client wants to change servers or retry registration after initial failure.
+
+The agent will attempt to connect to the provided server endpoint, send a REGISTER command with its locally-configured identity, and capture the returned session metadata.
+
+**Request:**
+
+```json
+{
+  "v": "0.2",
+  "type": "server_connect",
+  "id": "req-deploy-1",
+  "payload": {
+    "server": "127.0.0.1:8080"
+  }
+}
+```
+
+**Successful response:**
+
+```json
+{
+  "v": "0.2",
+  "type": "server_connect",
+  "id": "req-deploy-1",
+  "payload": {
+    "session_id": 12,
+    "bot_id": "bot_abcd1234",
+    "bot_secret": "secret_xyz789",
+    "owner_token": "owner_token_abc123",
+    "dashboard_host": "127.0.0.1",
+    "dashboard_port": "3000",
+    "dashboard_endpoint": "127.0.0.1:3000",
+    "arena_id": null,
+    "capabilities": "any"
+  }
+}
+```
+
+**Error response (e.g., cannot reach server):**
+
+```json
+{
+  "v": "0.2",
+  "type": "control_error",
+  "id": "req-deploy-1",
+  "payload": {
+    "error": "server_connect_failed",
+    "message": "dial tcp: lookup 127.0.0.1: no such host"
+  }
+}
+```
+
+**Notes:**
+
+- The agent uses its local `--name` parameter (set by the client from the bot profile) as the bot identity in the REGISTER command.
+- The bot cannot override the name via its `hello` message; the client controls the name designation.
+- Multiple candidates may be tried by the client (e.g., normalized loopback IPs) if the first fails.
+- Session metadata is cached by the agent for retrieval via `server_access` command.
 
 ## Agent -> Bot
 
