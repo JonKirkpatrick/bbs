@@ -111,6 +111,8 @@ type agent struct {
 	lastStatePayload map[string]interface{}
 	pendingResponse  map[string]interface{}
 	awaitingAction   atomic.Bool
+
+	expectedServerDisconnects atomic.Int32
 }
 
 func main() {
@@ -188,20 +190,29 @@ func run() int {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
-	select {
-	case sig := <-sigCh:
-		fmt.Fprintf(os.Stderr, "[agent] signal received: %s\n", sig)
-	case err := <-ag.serverErrCh:
-		if err != nil && !errors.Is(err, io.EOF) {
-			fmt.Fprintf(os.Stderr, "[agent] server reader stopped: %v\n", err)
-		}
-	case err := <-ag.botReadErrCh:
-		if err != nil && !errors.Is(err, io.EOF) {
-			fmt.Fprintf(os.Stderr, "[agent] bot reader stopped: %v\n", err)
+	for {
+		select {
+		case sig := <-sigCh:
+			fmt.Fprintf(os.Stderr, "[agent] signal received: %s\n", sig)
+			return 0
+		case err := <-ag.serverErrCh:
+			if ag.consumeExpectedServerDisconnect() {
+				if err != nil && !errors.Is(err, io.EOF) {
+					fmt.Fprintf(os.Stderr, "[agent] server reader stopped during intentional reconnect: %v\n", err)
+				}
+				continue
+			}
+			if err != nil && !errors.Is(err, io.EOF) {
+				fmt.Fprintf(os.Stderr, "[agent] server reader stopped: %v\n", err)
+			}
+			return 0
+		case err := <-ag.botReadErrCh:
+			if err != nil && !errors.Is(err, io.EOF) {
+				fmt.Fprintf(os.Stderr, "[agent] bot reader stopped: %v\n", err)
+			}
+			return 0
 		}
 	}
-
-	return 0
 }
 
 type runtimeConfig struct {
@@ -720,6 +731,7 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 
 	a.server = strings.TrimSpace(server)
 	if a.conn != nil {
+		a.markExpectedServerDisconnect()
 		_ = a.conn.Close()
 		a.conn = nil
 	}
@@ -739,6 +751,7 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 		// Reconnect before retry so we do not reuse a server connection that may have been closed
 		// after the first auth/register failure.
 		if a.conn != nil {
+			a.markExpectedServerDisconnect()
 			_ = a.conn.Close()
 			a.conn = nil
 		}
@@ -784,6 +797,22 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 		"dashboard_port":     a.dashboardPort,
 		"dashboard_endpoint": a.dashboardEndpoint,
 	}, nil
+}
+
+func (a *agent) markExpectedServerDisconnect() {
+	a.expectedServerDisconnects.Add(1)
+}
+
+func (a *agent) consumeExpectedServerDisconnect() bool {
+	for {
+		current := a.expectedServerDisconnects.Load()
+		if current <= 0 {
+			return false
+		}
+		if a.expectedServerDisconnects.CompareAndSwap(current, current-1) {
+			return true
+		}
+	}
 }
 
 func (a *agent) sendRegisterAndWait(creds credentials) (serverMessage, error) {
