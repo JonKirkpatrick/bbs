@@ -937,20 +937,43 @@ public sealed class MainWindowViewModel : ViewModelBase
     private RegisterHandshakeResult RegisterBotSessionWithServer(ServerSummaryItem server, BotProfile profile)
     {
         var metadata = new Dictionary<string, string>(profile.Metadata, StringComparer.OrdinalIgnoreCase);
-        var existingServerId = metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var value) ? value : string.Empty;
-        var canReuseIdentity = string.Equals(existingServerId, server.ServerId, StringComparison.OrdinalIgnoreCase);
-        var botIdentity = canReuseIdentity && metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botIdValue)
+        var botIdentity = metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botIdValue)
             ? botIdValue.Trim()
             : string.Empty;
-        var botSecret = canReuseIdentity && metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecretValue)
+        var botSecret = metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecretValue)
             ? botSecretValue.Trim()
             : string.Empty;
-        var ownerToken = canReuseIdentity && metadata.TryGetValue(ServerAccessOwnerTokenMetadataKey, out var ownerTokenValue)
+        var ownerToken = metadata.TryGetValue(ServerAccessOwnerTokenMetadataKey, out var ownerTokenValue)
             ? ownerTokenValue.Trim()
             : string.Empty;
 
         var registerName = SanitizeRegisterName(profile.Name);
         var registerCommand = BuildRegisterCommand(registerName, botIdentity, botSecret, ownerToken);
+        var fallbackCommand = BuildRegisterCommand(registerName, string.Empty, string.Empty, string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(botIdentity) && !string.IsNullOrWhiteSpace(botSecret))
+        {
+            try
+            {
+                return ExecuteRegisterHandshake(server, profile.BotId, registerCommand);
+            }
+            catch (InvalidOperationException ex) when (IsIdentityCredentialFailure(ex.Message))
+            {
+                _logger.Log(LogLevel.Warning, "bot_deploy_identity_reissue", "Stored bot credentials were rejected; requesting fresh server identity.",
+                    new Dictionary<string, string>
+                    {
+                        ["bot_id"] = profile.BotId,
+                        ["server_id"] = server.ServerId,
+                        ["reason"] = ex.Message
+                    });
+            }
+        }
+
+        return ExecuteRegisterHandshake(server, profile.BotId, fallbackCommand);
+    }
+
+    private RegisterHandshakeResult ExecuteRegisterHandshake(ServerSummaryItem server, string profileBotId, string registerCommand)
+    {
         var endpointCandidates = BuildBotRegisterEndpointCandidates(server);
         Exception? lastError = null;
 
@@ -997,12 +1020,12 @@ public sealed class MainWindowViewModel : ViewModelBase
 
                     lock (_deployConnectionLock)
                     {
-                        if (_activeDeployConnections.TryGetValue(profile.BotId, out var existing))
+                        if (_activeDeployConnections.TryGetValue(profileBotId, out var existing))
                         {
                             try { existing.Close(); } catch { }
                         }
 
-                        _activeDeployConnections[profile.BotId] = client;
+                        _activeDeployConnections[profileBotId] = client;
                     }
 
                     var dashboardEndpoint = NormalizeDashboardEndpoint(registerPayload.DashboardEndpoint, registerPayload.DashboardHost, registerPayload.DashboardPort, server.UseTls);
@@ -1025,6 +1048,19 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         throw new InvalidOperationException("Failed to register bot session with server.", lastError);
+    }
+
+    private static bool IsIdentityCredentialFailure(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        return message.Contains("unknown bot_id", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("bot_secret required", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("invalid bot_secret", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("owner token is invalid", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string SanitizeRegisterName(string name)
