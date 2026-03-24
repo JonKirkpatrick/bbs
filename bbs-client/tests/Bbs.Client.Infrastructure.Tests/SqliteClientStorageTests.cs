@@ -209,6 +209,49 @@ public sealed class SqliteClientStorageTests
         Assert.Equal("viewer", loadedCache.Plugins[1].Name);
     }
 
+    [Fact]
+    public async Task KnownServer_ProbeMetadataUpdate_PersistsAcrossStorageInstances()
+    {
+        var dbPath = NewTempDatabasePath();
+
+        var storage1 = new SqliteClientStorage(dbPath);
+        await storage1.InitializeAsync();
+
+        var initialServer = KnownServer.Create(
+            serverId: "server-probe-1",
+            name: "Probe Stadium",
+            host: "127.0.0.1",
+            port: 8081,
+            useTls: false,
+            metadata: new Dictionary<string, string>());
+        await storage1.UpsertKnownServerAsync(initialServer);
+
+        var updatedServer = KnownServer.Create(
+            serverId: initialServer.ServerId,
+            name: initialServer.Name,
+            host: initialServer.Host,
+            port: initialServer.Port,
+            useTls: initialServer.UseTls,
+            metadata: new Dictionary<string, string>
+            {
+                ["probe_status"] = "unreachable",
+                ["probe_last_error"] = "timeout",
+                ["probe_last_checked_utc"] = DateTimeOffset.UtcNow.ToString("O")
+            },
+            createdAtUtc: initialServer.CreatedAtUtc,
+            updatedAtUtc: DateTimeOffset.UtcNow);
+        await storage1.UpsertKnownServerAsync(updatedServer);
+
+        var storage2 = new SqliteClientStorage(dbPath);
+        await storage2.InitializeAsync();
+
+        var loadedServers = await storage2.ListKnownServersAsync();
+        var loadedServer = Assert.Single(loadedServers);
+        Assert.Equal("unreachable", loadedServer.Metadata["probe_status"]);
+        Assert.Equal("timeout", loadedServer.Metadata["probe_last_error"]);
+        Assert.True(loadedServer.Metadata.ContainsKey("probe_last_checked_utc"));
+    }
+
     private static async Task CreateLegacyDatabaseAsync(string dbPath)
     {
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");

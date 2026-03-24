@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Threading;
 using System.Windows.Input;
 using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
@@ -14,6 +18,13 @@ namespace Bbs.Client.App.ViewModels;
 
 public sealed class MainWindowViewModel : ViewModelBase
 {
+    private const int ServerProbeTimeoutMs = 1200;
+    private const int ServerProbeMaxAttempts = 2;
+    private const int ServerProbeRetryDelayMs = 200;
+    private const string ProbeStatusMetadataKey = "probe_status";
+    private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
+    private const string ProbeLastErrorMetadataKey = "probe_last_error";
+
     private readonly IClientLogger _logger;
     private readonly IClientStorage _storage;
     private readonly IBotOrchestrationService _orchestration;
@@ -72,6 +83,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         RefreshContextProjection();
+        StartStartupServerProbe();
     }
 
     public string WindowTitle => "BBS Client Alpha";
@@ -654,6 +666,133 @@ public sealed class MainWindowViewModel : ViewModelBase
             });
     }
 
+    private void StartStartupServerProbe()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ProbeKnownServersAtStartupAsync(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning, "startup_server_probe_failed", "Startup server probe failed unexpectedly.",
+                    new Dictionary<string, string>
+                    {
+                        ["error"] = ex.GetType().Name
+                    });
+            }
+        });
+    }
+
+    private async Task ProbeKnownServersAtStartupAsync(CancellationToken cancellationToken)
+    {
+        var knownServers = await _storage.ListKnownServersAsync(cancellationToken);
+        if (knownServers.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var knownServer in knownServers)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var probeResult = await ProbeKnownServerWithRetryAsync(knownServer, cancellationToken);
+            var metadata = new Dictionary<string, string>(knownServer.Metadata, StringComparer.OrdinalIgnoreCase)
+            {
+                [ProbeStatusMetadataKey] = probeResult.IsReachable ? "reachable" : "unreachable",
+                [ProbeLastCheckedMetadataKey] = DateTimeOffset.UtcNow.ToString("O")
+            };
+
+            if (probeResult.IsReachable)
+            {
+                metadata.Remove(ProbeLastErrorMetadataKey);
+            }
+            else
+            {
+                metadata[ProbeLastErrorMetadataKey] = probeResult.ErrorCode;
+            }
+
+            var updatedServer = KnownServer.Create(
+                serverId: knownServer.ServerId,
+                name: knownServer.Name,
+                host: knownServer.Host,
+                port: knownServer.Port,
+                useTls: knownServer.UseTls,
+                metadata: metadata,
+                createdAtUtc: knownServer.CreatedAtUtc,
+                updatedAtUtc: DateTimeOffset.UtcNow);
+
+            await _storage.UpsertKnownServerAsync(updatedServer, cancellationToken);
+            _logger.Log(LogLevel.Information, "startup_server_probe_result", "Startup probe completed for known server.",
+                new Dictionary<string, string>
+                {
+                    ["server_id"] = knownServer.ServerId,
+                    ["host"] = knownServer.Host,
+                    ["port"] = knownServer.Port.ToString(),
+                    ["reachable"] = probeResult.IsReachable.ToString(),
+                    ["attempts"] = probeResult.Attempts.ToString(),
+                    ["error"] = probeResult.ErrorCode
+                });
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var selectedServerId = SelectedServer?.ServerId;
+            LoadServersFromStorage();
+            if (!string.IsNullOrWhiteSpace(selectedServerId))
+            {
+                SelectedServer = FindServerById(selectedServerId);
+            }
+        });
+    }
+
+    private static async Task<(bool IsReachable, int Attempts, string ErrorCode)> ProbeKnownServerWithRetryAsync(KnownServer knownServer, CancellationToken cancellationToken)
+    {
+        string? lastError = null;
+        for (var attempt = 1; attempt <= ServerProbeMaxAttempts; attempt++)
+        {
+            var singleResult = await ProbeKnownServerOnceAsync(knownServer, cancellationToken);
+            if (singleResult.IsReachable)
+            {
+                return (true, attempt, string.Empty);
+            }
+
+            lastError = singleResult.ErrorCode;
+            if (attempt < ServerProbeMaxAttempts)
+            {
+                await Task.Delay(ServerProbeRetryDelayMs, cancellationToken);
+            }
+        }
+
+        return (false, ServerProbeMaxAttempts, lastError ?? "probe_failed");
+    }
+
+    private static async Task<(bool IsReachable, int Attempts, string ErrorCode)> ProbeKnownServerOnceAsync(KnownServer knownServer, CancellationToken cancellationToken)
+    {
+        using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        probeCts.CancelAfter(ServerProbeTimeoutMs);
+
+        try
+        {
+            using var socket = new TcpClient();
+            await socket.ConnectAsync(knownServer.Host, knownServer.Port, probeCts.Token);
+            return (true, 1, string.Empty);
+        }
+        catch (OperationCanceledException)
+        {
+            return (false, 1, "timeout");
+        }
+        catch (SocketException socketException)
+        {
+            return (false, 1, $"socket_{socketException.SocketErrorCode}".ToLowerInvariant());
+        }
+        catch
+        {
+            return (false, 1, "connect_failed");
+        }
+    }
+
     private static IReadOnlyList<string> ParseArgs(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -874,9 +1013,7 @@ public sealed class ServerSummaryItem
         var scheme = server.UseTls ? "https" : "http";
         var endpoint = $"{scheme}://{server.Host}:{server.Port}";
         var plugins = cache?.Plugins ?? Array.Empty<PluginDescriptor>();
-        var status = cache is null
-            ? "Status: cached plugins unavailable"
-            : $"Status: plugin cache has {cache.Plugins.Count} entries";
+        var status = BuildProbeAwareStatus(server.Metadata, cache);
 
         return new ServerSummaryItem
         {
@@ -892,7 +1029,28 @@ public sealed class ServerSummaryItem
             Status = status
         };
     }
+
+    private static string BuildProbeAwareStatus(IReadOnlyDictionary<string, string> metadata, ServerPluginCache? cache)
+    {
+        if (metadata.TryGetValue("probe_status", out var probeStatus))
+        {
+            if (string.Equals(probeStatus, "reachable", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Status: reachable";
+            }
+
+            var errorSuffix = metadata.TryGetValue("probe_last_error", out var errorValue) && !string.IsNullOrWhiteSpace(errorValue)
+                ? $" ({errorValue})"
+                : string.Empty;
+            return $"Status: unreachable{errorSuffix}";
+        }
+
+        return cache is null
+            ? "Status: pending probe"
+            : "Status: pending startup probe";
+    }
 }
+
 
 public enum WorkspaceContext
 {
