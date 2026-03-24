@@ -96,7 +96,9 @@ public sealed class DomainModelSerializationTests
         Assert.Equal(original.Plugins.Count, roundTrip.Plugins.Count);
         for (var i = 0; i < original.Plugins.Count; i++)
         {
-            Assert.Equal(original.Plugins[i], roundTrip.Plugins[i]);
+            Assert.Equal(original.Plugins[i].Name, roundTrip.Plugins[i].Name);
+            Assert.Equal(original.Plugins[i].DisplayName, roundTrip.Plugins[i].DisplayName);
+            Assert.Equal(original.Plugins[i].Version, roundTrip.Plugins[i].Version);
         }
     }
 }

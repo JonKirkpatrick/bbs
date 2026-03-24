@@ -86,6 +86,12 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
     private string _serverAccessStatus = "Select an armed bot session to load server access metadata.";
     private string _ownerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
+    private string _ownerArenaSelectedPlugin = string.Empty;
+    private string _ownerArenaArgs = string.Empty;
+    private string _ownerArenaTimeMs = string.Empty;
+    private bool _ownerArenaAllowHandicap = true;
+    private string _ownerJoinArenaId = string.Empty;
+    private string _ownerJoinHandicapPercent = "0";
     private string _serverAccessOwnerToken = "-";
     private string _serverAccessDashboardEndpoint = "-";
     private int _serverAccessRefreshVersion;
@@ -258,6 +264,97 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             _ownerTokenActionStatus = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string OwnerArenaSelectedPlugin
+    {
+        get => _ownerArenaSelectedPlugin;
+        set
+        {
+            if (string.Equals(_ownerArenaSelectedPlugin, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _ownerArenaSelectedPlugin = value;
+            OnPropertyChanged();
+            SyncOwnerArenaArgsFromSelectedPlugin();
+        }
+    }
+
+    public string OwnerArenaArgs
+    {
+        get => _ownerArenaArgs;
+        set
+        {
+            if (string.Equals(_ownerArenaArgs, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _ownerArenaArgs = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string OwnerArenaTimeMs
+    {
+        get => _ownerArenaTimeMs;
+        set
+        {
+            if (string.Equals(_ownerArenaTimeMs, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _ownerArenaTimeMs = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool OwnerArenaAllowHandicap
+    {
+        get => _ownerArenaAllowHandicap;
+        set
+        {
+            if (_ownerArenaAllowHandicap == value)
+            {
+                return;
+            }
+
+            _ownerArenaAllowHandicap = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string OwnerJoinArenaId
+    {
+        get => _ownerJoinArenaId;
+        set
+        {
+            if (string.Equals(_ownerJoinArenaId, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _ownerJoinArenaId = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string OwnerJoinHandicapPercent
+    {
+        get => _ownerJoinHandicapPercent;
+        set
+        {
+            if (string.Equals(_ownerJoinHandicapPercent, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _ownerJoinHandicapPercent = value;
             OnPropertyChanged();
         }
     }
@@ -633,15 +730,15 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private void ExecuteCreateArenaStub()
     {
-        ExecuteOwnerTokenActionStub(OwnerTokenActionType.CreateArena);
+        _ = ExecuteOwnerTokenActionAsync(OwnerTokenActionType.CreateArena);
     }
 
     private void ExecuteJoinArenaStub()
     {
-        ExecuteOwnerTokenActionStub(OwnerTokenActionType.JoinArena);
+        _ = ExecuteOwnerTokenActionAsync(OwnerTokenActionType.JoinArena);
     }
 
-    private void ExecuteOwnerTokenActionStub(OwnerTokenActionType actionType)
+    private async Task ExecuteOwnerTokenActionAsync(OwnerTokenActionType actionType)
     {
         var selectedServerId = SelectedServer?.ServerId;
         var guard = OwnerTokenGatedActionRules.Validate(actionType, ServerAccessMetadata, selectedServerId);
@@ -657,14 +754,135 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        OwnerTokenActionStatus = $"{guard.Message} Placeholder only: {guard.Plan.PlaceholderMethod} {guard.Plan.PlaceholderRoute}.";
-        _logger.Log(LogLevel.Information, "owner_token_action_stub_invoked", "Owner-token action stub invoked.",
-            new Dictionary<string, string>
+        if (!TryBuildOwnerActionFormFields(actionType, out var fields, out var validationError))
+        {
+            OwnerTokenActionStatus = validationError;
+            return;
+        }
+
+        var actionUri = BuildDashboardActionUri(ServerAccessMetadata.DashboardEndpoint, guard.Plan.PlaceholderRoute);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, actionUri)
             {
-                ["action"] = actionType.ToString(),
-                ["server_id"] = selectedServerId ?? "none",
-                ["route"] = guard.Plan.PlaceholderRoute
-            });
+                Content = new FormUrlEncodedContent(fields)
+            };
+            using var response = await _serverCatalogHttpClient.SendAsync(request);
+            var responseHtml = await response.Content.ReadAsStringAsync();
+            var message = ExtractDashboardActionMessage(responseHtml);
+
+            if (response.IsSuccessStatusCode)
+            {
+                OwnerTokenActionStatus = string.IsNullOrWhiteSpace(message)
+                    ? $"{guard.Plan.DisplayName} request accepted."
+                    : message;
+                _logger.Log(LogLevel.Information, "owner_token_action_invoked", "Owner-token action invoked successfully.",
+                    new Dictionary<string, string>
+                    {
+                        ["action"] = actionType.ToString(),
+                        ["server_id"] = selectedServerId ?? "none",
+                        ["route"] = guard.Plan.PlaceholderRoute
+                    });
+                return;
+            }
+
+            OwnerTokenActionStatus = string.IsNullOrWhiteSpace(message)
+                ? $"{guard.Plan.DisplayName} failed with HTTP {(int)response.StatusCode}."
+                : message;
+        }
+        catch (Exception ex)
+        {
+            OwnerTokenActionStatus = $"{guard.Plan.DisplayName} failed: {ex.Message}";
+            _logger.Log(LogLevel.Warning, "owner_token_action_failed", "Owner-token action failed.",
+                new Dictionary<string, string>
+                {
+                    ["action"] = actionType.ToString(),
+                    ["server_id"] = selectedServerId ?? "none",
+                    ["route"] = guard.Plan.PlaceholderRoute,
+                    ["error"] = ex.GetType().Name
+                });
+        }
+    }
+
+    private bool TryBuildOwnerActionFormFields(OwnerTokenActionType actionType, out IReadOnlyDictionary<string, string> fields, out string validationError)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["owner_token"] = ServerAccessMetadata.OwnerToken
+        };
+
+        if (actionType == OwnerTokenActionType.CreateArena)
+        {
+            if (string.IsNullOrWhiteSpace(OwnerArenaSelectedPlugin))
+            {
+                fields = values;
+                validationError = "Select a plugin before creating an arena.";
+                return false;
+            }
+
+            values["game"] = OwnerArenaSelectedPlugin.Trim();
+            if (!string.IsNullOrWhiteSpace(OwnerArenaArgs))
+            {
+                values["game_args"] = OwnerArenaArgs.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(OwnerArenaTimeMs))
+            {
+                values["time_ms"] = OwnerArenaTimeMs.Trim();
+            }
+
+            values["allow_handicap"] = OwnerArenaAllowHandicap ? "true" : "false";
+            fields = values;
+            validationError = string.Empty;
+            return true;
+        }
+
+        if (!int.TryParse(OwnerJoinArenaId.Trim(), out var arenaId) || arenaId <= 0)
+        {
+            fields = values;
+            validationError = "Join Arena requires a positive arena ID.";
+            return false;
+        }
+
+        if (!int.TryParse(OwnerJoinHandicapPercent.Trim(), out var handicapPercent))
+        {
+            fields = values;
+            validationError = "Join Arena handicap must be an integer.";
+            return false;
+        }
+
+        values["arena_id"] = arenaId.ToString();
+        values["handicap_percent"] = handicapPercent.ToString();
+        fields = values;
+        validationError = string.Empty;
+        return true;
+    }
+
+    private static Uri BuildDashboardActionUri(string dashboardEndpoint, string relativeRoute)
+    {
+        var endpoint = new Uri(dashboardEndpoint, UriKind.Absolute);
+        var builder = new UriBuilder(endpoint.Scheme, endpoint.Host, endpoint.Port)
+        {
+            Path = relativeRoute
+        };
+        return builder.Uri;
+    }
+
+    private static string ExtractDashboardActionMessage(string responseHtml)
+    {
+        if (string.IsNullOrWhiteSpace(responseHtml))
+        {
+            return string.Empty;
+        }
+
+        var start = responseHtml.IndexOf('>');
+        var end = responseHtml.LastIndexOf('<');
+        if (start >= 0 && end > start)
+        {
+            return responseHtml[(start + 1)..end].Trim();
+        }
+
+        return responseHtml.Trim();
     }
 
     private void SetHomeContext()
@@ -1377,8 +1595,10 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         foreach (var plugin in server.CachedPlugins)
         {
-            ServerPluginCatalogEntries.Add(new ServerPluginCatalogItem(plugin.Name, plugin.DisplayName, plugin.Version));
+            ServerPluginCatalogEntries.Add(new ServerPluginCatalogItem(plugin.Name, plugin.DisplayName, plugin.Version, plugin.Metadata));
         }
+
+        EnsureOwnerArenaPluginSelection();
 
         ServerCatalogStatus = server.CachedPlugins.Count == 0
             ? "No cached plugins available."
@@ -1393,6 +1613,87 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(ServerDetailProbeStatus));
 
         TriggerSelectedServerCatalogRefresh(server);
+    }
+
+    private void EnsureOwnerArenaPluginSelection()
+    {
+        if (ServerPluginCatalogEntries.Count == 0)
+        {
+            OwnerArenaSelectedPlugin = string.Empty;
+            OwnerArenaArgs = string.Empty;
+            return;
+        }
+
+        var exists = ServerPluginCatalogEntries.Any(p => string.Equals(p.Name, OwnerArenaSelectedPlugin, StringComparison.OrdinalIgnoreCase));
+        if (!exists)
+        {
+            OwnerArenaSelectedPlugin = ServerPluginCatalogEntries[0].Name;
+            return;
+        }
+
+        SyncOwnerArenaArgsFromSelectedPlugin();
+    }
+
+    private void SyncOwnerArenaArgsFromSelectedPlugin()
+    {
+        if (string.IsNullOrWhiteSpace(OwnerArenaSelectedPlugin))
+        {
+            OwnerArenaArgs = string.Empty;
+            return;
+        }
+
+        var selectedPlugin = ServerPluginCatalogEntries
+            .FirstOrDefault(p => string.Equals(p.Name, OwnerArenaSelectedPlugin, StringComparison.OrdinalIgnoreCase));
+        if (selectedPlugin is null)
+        {
+            OwnerArenaArgs = string.Empty;
+            return;
+        }
+
+        if (!selectedPlugin.Metadata.TryGetValue("args_json", out var argsJson) || string.IsNullOrWhiteSpace(argsJson))
+        {
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(argsJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            var parts = new List<string>();
+            foreach (var arg in doc.RootElement.EnumerateArray())
+            {
+                if (arg.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var key = arg.TryGetProperty("key", out var keyElement)
+                    ? keyElement.GetString()
+                    : null;
+                var defaultValue = arg.TryGetProperty("default_value", out var defaultElement)
+                    ? defaultElement.GetString()
+                    : null;
+
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(defaultValue))
+                {
+                    continue;
+                }
+
+                parts.Add($"{key.Trim()}={defaultValue.Trim()}");
+            }
+
+            if (parts.Count > 0)
+            {
+                OwnerArenaArgs = string.Join(' ', parts);
+            }
+        }
+        catch (JsonException)
+        {
+        }
     }
 
     private void SaveServerProfile()
@@ -2366,7 +2667,15 @@ public sealed class ServerSummaryItem
 
 public sealed record ServerMetadataEntryItem(string Key, string Value);
 
-public sealed record ServerPluginCatalogItem(string Name, string DisplayName, string Version);
+public sealed record ServerPluginCatalogItem(
+    string Name,
+    string DisplayName,
+    string Version,
+    IReadOnlyDictionary<string, string>? PluginMetadata = null)
+{
+    public IReadOnlyDictionary<string, string> Metadata { get; init; } =
+        PluginMetadata ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
 
 public sealed record RegisterHandshakeResult(
     string SessionId,

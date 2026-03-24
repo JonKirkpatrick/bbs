@@ -78,7 +78,7 @@ public sealed class OwnerTokenGatedActionRulesTests
         Assert.True(result.CanExecute);
         Assert.NotNull(result.Plan);
         Assert.Equal("Create Arena", result.Plan!.DisplayName);
-        Assert.Equal("/api/arena/create", result.Plan.PlaceholderRoute);
+        Assert.Equal("/owner/create-arena", result.Plan.PlaceholderRoute);
         Assert.Equal("POST", result.Plan.PlaceholderMethod);
     }
 
@@ -100,7 +100,7 @@ public sealed class OwnerTokenGatedActionRulesTests
         Assert.True(result.CanExecute);
         Assert.NotNull(result.Plan);
         Assert.Equal("Join Arena", result.Plan!.DisplayName);
-        Assert.Equal("/api/arena/join", result.Plan.PlaceholderRoute);
+        Assert.Equal("/owner/join-arena", result.Plan.PlaceholderRoute);
         Assert.Equal("POST", result.Plan.PlaceholderMethod);
     }
 }

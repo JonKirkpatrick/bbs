@@ -50,6 +50,9 @@ public sealed record PluginDescriptor(
     string DisplayName,
     string Version)
 {
+    public IReadOnlyDictionary<string, string> Metadata { get; init; } =
+        new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
@@ -67,6 +70,21 @@ public sealed record PluginDescriptor(
         if (string.IsNullOrWhiteSpace(Version))
         {
             errors.Add("version_required");
+        }
+
+        foreach (var entry in Metadata)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Key))
+            {
+                errors.Add("metadata_key_required");
+                break;
+            }
+
+            if (entry.Value is null)
+            {
+                errors.Add($"metadata_{entry.Key}_value_required");
+                break;
+            }
         }
 
         return errors;

@@ -66,7 +66,10 @@ public static partial class ServerPluginCatalogParser
                 .Select(e => new PluginDescriptor(
                     Name: e.Name!.Trim(),
                     DisplayName: string.IsNullOrWhiteSpace(e.DisplayName) ? e.Name!.Trim() : e.DisplayName.Trim(),
-                    Version: DefaultVersion))
+                    Version: DefaultVersion)
+                {
+                    Metadata = BuildPluginMetadata(e)
+                })
                 .ToArray();
 
             plugins = descriptors;
@@ -82,6 +85,27 @@ public static partial class ServerPluginCatalogParser
     [GeneratedRegex("const\\s+BBS_GAME_CATALOG\\s*=\\s*(\\[[\\s\\S]*?\\]);", RegexOptions.Compiled)]
     private static partial Regex DashboardCatalogRegex();
 
+    private static IReadOnlyDictionary<string, string> BuildPluginMetadata(GameCatalogEntryDto entry)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(entry.ViewerClientEntry))
+        {
+            metadata["viewer_client_entry"] = entry.ViewerClientEntry.Trim();
+        }
+
+        metadata["supports_replay"] = entry.SupportsReplay.ToString().ToLowerInvariant();
+        metadata["supports_move_clock"] = entry.SupportsMoveClock.ToString().ToLowerInvariant();
+        metadata["supports_handicap"] = entry.SupportsHandicap.ToString().ToLowerInvariant();
+
+        if (entry.Args is { Count: > 0 })
+        {
+            metadata["args_json"] = JsonSerializer.Serialize(entry.Args, JsonOptions);
+            metadata["arg_count"] = entry.Args.Count.ToString();
+        }
+
+        return metadata;
+    }
+
     private sealed class GameCatalogEntryDto
     {
         [JsonPropertyName("name")]
@@ -89,5 +113,44 @@ public static partial class ServerPluginCatalogParser
 
         [JsonPropertyName("display_name")]
         public string? DisplayName { get; init; }
+
+        [JsonPropertyName("args")]
+        public List<GameArgSpecDto>? Args { get; init; }
+
+        [JsonPropertyName("viewer_client_entry")]
+        public string? ViewerClientEntry { get; init; }
+
+        [JsonPropertyName("supports_replay")]
+        public bool SupportsReplay { get; init; }
+
+        [JsonPropertyName("supports_move_clock")]
+        public bool SupportsMoveClock { get; init; }
+
+        [JsonPropertyName("supports_handicap")]
+        public bool SupportsHandicap { get; init; }
+    }
+
+    private sealed class GameArgSpecDto
+    {
+        [JsonPropertyName("key")]
+        public string? Key { get; init; }
+
+        [JsonPropertyName("label")]
+        public string? Label { get; init; }
+
+        [JsonPropertyName("input_type")]
+        public string? InputType { get; init; }
+
+        [JsonPropertyName("placeholder")]
+        public string? Placeholder { get; init; }
+
+        [JsonPropertyName("default_value")]
+        public string? DefaultValue { get; init; }
+
+        [JsonPropertyName("required")]
+        public bool Required { get; init; }
+
+        [JsonPropertyName("help")]
+        public string? Help { get; init; }
     }
 }

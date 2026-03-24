@@ -10,7 +10,22 @@ public sealed class ServerPluginCatalogParserTests
     {
         const string payload = """
         [
-          { "name": "counter", "display_name": "Counter" },
+                    {
+                        "name": "counter",
+                        "display_name": "Counter",
+                        "supports_move_clock": true,
+                        "supports_handicap": true,
+                        "supports_replay": true,
+                        "viewer_client_entry": "counter_viewer.js",
+                        "args": [
+                            {
+                                "key": "target",
+                                "label": "Target",
+                                "input_type": "number",
+                                "default_value": "10"
+                            }
+                        ]
+                    },
           { "name": "gridworld_rl", "display_name": "Gridworld RL" }
         ]
         """;
@@ -23,6 +38,11 @@ public sealed class ServerPluginCatalogParserTests
         Assert.Equal("counter", plugins[0].Name);
         Assert.Equal("Counter", plugins[0].DisplayName);
         Assert.Equal("n/a", plugins[0].Version);
+        Assert.Equal("counter_viewer.js", plugins[0].Metadata["viewer_client_entry"]);
+        Assert.Equal("true", plugins[0].Metadata["supports_move_clock"]);
+        Assert.Equal("true", plugins[0].Metadata["supports_handicap"]);
+        Assert.Equal("true", plugins[0].Metadata["supports_replay"]);
+        Assert.True(plugins[0].Metadata.ContainsKey("args_json"));
     }
 
     [Fact]
@@ -46,6 +66,9 @@ public sealed class ServerPluginCatalogParserTests
         Assert.Equal("counter", plugins[0].Name);
         Assert.Equal("Counter", plugins[0].DisplayName);
         Assert.Equal("n/a", plugins[0].Version);
+        Assert.Equal("false", plugins[0].Metadata["supports_move_clock"]);
+        Assert.Equal("false", plugins[0].Metadata["supports_handicap"]);
+        Assert.Equal("false", plugins[0].Metadata["supports_replay"]);
     }
 
     [Fact]

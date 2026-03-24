@@ -64,12 +64,12 @@ public static class OwnerTokenGatedActionRules
             OwnerTokenActionType.CreateArena => new OwnerTokenActionPlan(
                 ActionType: OwnerTokenActionType.CreateArena,
                 DisplayName: "Create Arena",
-                PlaceholderRoute: "/api/arena/create",
+                PlaceholderRoute: "/owner/create-arena",
                 PlaceholderMethod: "POST"),
             OwnerTokenActionType.JoinArena => new OwnerTokenActionPlan(
                 ActionType: OwnerTokenActionType.JoinArena,
                 DisplayName: "Join Arena",
-                PlaceholderRoute: "/api/arena/join",
+                PlaceholderRoute: "/owner/join-arena",
                 PlaceholderMethod: "POST"),
             _ => throw new ArgumentOutOfRangeException(nameof(actionType), actionType, "Unsupported owner-token action type.")
         };
