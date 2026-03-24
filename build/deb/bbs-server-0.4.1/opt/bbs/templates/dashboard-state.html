@@ -1,0 +1,514 @@
+<div class="deck-grid">
+    <section class="panel owner-panel">
+        <h2>Bot Control</h2>
+        {{if .OwnerToken}}
+            <p class="admin-intro">This dashboard token can be claimed by one live bot session. Once a bot registers with it, the controls below apply only to that bot.</p>
+            <div class="owner-grid">
+                <article class="stat-card">
+                    <div class="stat-label">Bot Host/IP</div>
+                    <div class="stat-value">{{.BotHost}}</div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-label">Bot Port</div>
+                    <div class="stat-value">{{.BotPort}}</div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-label">Control Token</div>
+                    <div class="copy-row">
+                        <div class="token-value">{{.OwnerToken}}</div>
+                        <button type="button" class="copy-button" data-copy-text="{{.OwnerToken}}">Copy token</button>
+                    </div>
+                </article>
+            </div>
+
+            <section class="quickstart-panel">
+                <h3>Quickstart</h3>
+                <div class="quickstart-grid">
+                    <article class="quickstart-card">
+                        <div class="quickstart-step">1</div>
+                        <strong>Connect your bot</strong>
+                        <p>Point your client at <span class="quickstart-inline">{{.BotEndpoint}}</span>.</p>
+                    </article>
+                    <article class="quickstart-card">
+                        <div class="quickstart-step">2</div>
+                        <strong>Register with this token</strong>
+                        <p>Use a fresh identity or reuse an existing one. Capabilities can still be inserted before the owner token.</p>
+                        <pre class="quickstart-command">REGISTER your_bot "" "" &lt;game_name&gt; owner_token={{.OwnerToken}}</pre>
+                        <div class="copy-row">
+                            <button type="button" class="copy-button" data-copy-text="REGISTER your_bot &quot;&quot; &quot;&quot; &lt;game_name&gt; owner_token={{.OwnerToken}}">Copy sample command</button>
+                        </div>
+                    </article>
+                    <article class="quickstart-card">
+                        <div class="quickstart-step">3</div>
+                        <strong>Use the dashboard controls</strong>
+                        <p>After the session claims the token, this page unlocks create, join, and disconnect actions for that bot only.</p>
+                    </article>
+                </div>
+                <div class="copy-feedback" aria-live="polite"></div>
+            </section>
+
+            {{if .OwnerConnected}}
+                <div class="owner-status live">Linked to session #{{.OwnerSession.SessionID}} ({{.OwnerSession.BotName}}). {{if .OwnerSession.HasCurrentArena}}Current arena: #{{.OwnerSession.CurrentArenaID}}.{{else}}Bot is idle.{{end}}</div>
+            {{else}}
+                <div class="owner-status">Waiting for a bot to register with <strong>owner_token={{.OwnerToken}}</strong>.</div>
+            {{end}}
+
+            <details>
+                <summary>Connection Instructions</summary>
+                <pre>Connect your bot to {{.BotEndpoint}}
+
+New identity:
+REGISTER &lt;name&gt; "" "" owner_token={{.OwnerToken}}
+
+Returning identity:
+REGISTER &lt;name&gt; &lt;bot_id&gt; &lt;bot_secret&gt; owner_token={{.OwnerToken}}
+
+Optional capabilities can still be included before the owner token:
+REGISTER &lt;name&gt; "" "" &lt;game_name&gt; owner_token={{.OwnerToken}}</pre>
+            </details>
+
+            {{if .OwnerConnected}}
+                <div class="admin-actions">
+                    <form class="admin-action" data-role="arena-create-form" hx-post="/owner/create-arena" hx-target="#owner-result" hx-swap="innerHTML">
+                        <input type="hidden" name="owner_token" value="{{.OwnerToken}}" />
+                        <h3>Create Arena</h3>
+                        <label>Game</label>
+                        <select name="game" data-role="game-select" required>
+                            {{range $idx, $game := .GameCatalog}}
+                                <option value="{{$game.Name}}" {{if eq $idx 0}}selected{{end}}>{{$game.DisplayName}}</option>
+                            {{end}}
+                        </select>
+                        <div class="arena-runtime-hint muted" data-role="arena-runtime-hint"></div>
+                        <div class="arena-args" data-role="arena-args"></div>
+                        <input type="hidden" name="game_args" data-role="game-args" />
+                        <label>Time Limit (ms, optional)</label>
+                        <input type="number" min="1" name="time_ms" data-role="time-ms" placeholder="default 1000" />
+                        <label>Allow Handicap (optional)</label>
+                        <select name="allow_handicap" data-role="allow-handicap">
+                            <option value="" selected>auto</option>
+                            <option value="false">false</option>
+                            <option value="true">true</option>
+                        </select>
+                        <button type="submit">Create Arena</button>
+                    </form>
+
+                    {{if .OwnerSession.HasCurrentArena}}
+                        <form class="admin-action" hx-post="/owner/leave-arena" hx-target="#owner-result" hx-swap="innerHTML">
+                            <input type="hidden" name="owner_token" value="{{.OwnerToken}}" />
+                            <h3>Leave Arena</h3>
+                            <p>Bot is in arena #{{.OwnerSession.CurrentArenaID}}. Remove it from the arena while keeping the connection open.</p>
+                            <button type="submit">Leave Arena</button>
+                        </form>
+                    {{else}}
+                        <form class="admin-action" hx-post="/owner/join-arena" hx-target="#owner-result" hx-swap="innerHTML">
+                            <input type="hidden" name="owner_token" value="{{.OwnerToken}}" />
+                            <h3>Join Arena</h3>
+                            <label>Arena ID</label>
+                            <input type="number" min="1" name="arena_id" required />
+                            <label>Handicap Percent</label>
+                            <input type="number" name="handicap_percent" value="0" required />
+                            <button type="submit">Join Arena</button>
+                        </form>
+                    {{end}}
+
+                    <form class="admin-action" hx-post="/owner/eject-bot" hx-target="#owner-result" hx-swap="innerHTML">
+                        <input type="hidden" name="owner_token" value="{{.OwnerToken}}" />
+                        <h3>Disconnect Bot</h3>
+                        <label>Reason (optional)</label>
+                        <input type="text" name="reason" placeholder="Disconnected by dashboard owner" />
+                        <button type="submit">Disconnect</button>
+                    </form>
+                </div>
+            {{end}}
+            <div id="owner-result"></div>
+        {{else}}
+            <p class="empty">Click Register Bot in the top bar to mint a control token for this dashboard view.</p>
+        {{end}}
+    </section>
+
+    <section class="panel stats-panel">
+        <h2>Runtime Overview</h2>
+        <div class="stat-grid">
+            <article class="stat-card">
+                <div class="stat-label">Sessions</div>
+                <div class="stat-value">{{.Snapshot.SessionCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Arenas</div>
+                <div class="stat-value">{{.Snapshot.ArenaCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Subscribers</div>
+                <div class="stat-value">{{.Snapshot.SubscriberCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Persistent Bots</div>
+                <div class="stat-value">{{.Snapshot.BotCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Archived Matches</div>
+                <div class="stat-value">{{.Snapshot.MatchCount}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Next Session ID</div>
+                <div class="stat-value">{{.Snapshot.NextSessionID}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Next Arena ID</div>
+                <div class="stat-value">{{.Snapshot.NextArenaID}}</div>
+            </article>
+            <article class="stat-card">
+                <div class="stat-label">Next Match ID</div>
+                <div class="stat-value">{{.Snapshot.NextMatchID}}</div>
+            </article>
+        </div>
+        <p class="generated-at">Snapshot generated: {{fmtTime .Snapshot.GeneratedAt}}</p>
+    </section>
+
+    <section class="panel plugin-panel">
+        <h2>Plugin Discovery</h2>
+        <div class="plugin-summary-row">
+            <span class="pill">enabled: {{.PluginInfo.Enabled}}</span>
+            <span class="pill">dir: {{.PluginInfo.Directory}}</span>
+            {{if .PluginInfo.Enabled}}
+                <span class="pill">loaded: {{.PluginInfo.LoadedCount}}</span>
+                <span class="pill">skipped: {{.PluginInfo.SkippedCount}}</span>
+            {{end}}
+        </div>
+        {{if .PluginInfo.RefreshedAt}}
+            <p class="generated-at">Last scan: {{fmtTime .PluginInfo.RefreshedAt}}</p>
+        {{end}}
+
+        {{if .PluginInfo.Enabled}}
+            {{if .PluginInfo.Manifests}}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Manifest</th>
+                                <th>Plugin</th>
+                                <th>Status</th>
+                                <th>Executable</th>
+                                <th>Protocol</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .PluginInfo.Manifests}}
+                                <tr>
+                                    <td><code>{{.ManifestPath}}</code></td>
+                                    <td>{{if .DisplayName}}{{.DisplayName}}{{else if .Name}}{{.Name}}{{else}}<span class="muted">unknown</span>{{end}}</td>
+                                    <td>
+                                        <span class="pill {{if eq .Status "loaded"}}pill-good{{else}}pill-bad{{end}}">{{.Status}}</span>
+                                    </td>
+                                    <td>{{if .Executable}}<code>{{.Executable}}</code>{{else}}<span class="muted">n/a</span>{{end}}</td>
+                                    <td>{{if gt .ProtocolVersion 0}}{{.ProtocolVersion}}{{else}}<span class="muted">n/a</span>{{end}}</td>
+                                    <td>{{if .Reason}}{{.Reason}}{{else}}<span class="muted">ok</span>{{end}}</td>
+                                </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            {{else}}
+                <p class="empty">No plugin manifests were found in <code>{{.PluginInfo.Directory}}</code>.</p>
+            {{end}}
+        {{else}}
+            <p class="empty">Plugin loading is disabled. Set <code>BBS_ENABLE_GAME_PLUGINS=true</code> to enable scanning.</p>
+        {{end}}
+    </section>
+
+    <section class="panel sessions-panel">
+        <h2>Active Sessions</h2>
+        {{if .Snapshot.Sessions}}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Control</th>
+                            <th>Player</th>
+                            <th>Arena</th>
+                            <th>W-L-D</th>
+                            <th>Capabilities</th>
+                            <th>Remote</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {{range .Snapshot.Sessions}}
+                        <tr{{if and $.OwnerConnected (eq $.OwnerSession.SessionID .SessionID)}} class="session-owned"{{end}}>
+                            <td>{{.SessionID}}</td>
+                            <td><span class="bot-id-hint" title="Bot ID: {{.BotID}}">{{.BotName}}</span>{{if and $.OwnerConnected (eq $.OwnerSession.SessionID .SessionID)}}<span class="owned-label">yours</span>{{end}}</td>
+                            <td>{{if .HasOwnerToken}}<span class="pill">linked</span>{{else}}<span class="muted">none</span>{{end}}</td>
+                            <td>{{if eq .PlayerID 0}}-{{else}}{{.PlayerID}}{{end}}</td>
+                            <td>{{if .HasCurrentArena}}#{{.CurrentArenaID}}{{else}}-{{end}}</td>
+                            <td>{{.Wins}}-{{.Losses}}-{{.Draws}}</td>
+                            <td>
+                                {{if .Capabilities}}
+                                    {{range .Capabilities}}<span class="pill">{{.}}</span>{{end}}
+                                {{else}}
+                                    <span class="muted">none</span>
+                                {{end}}
+                            </td>
+                            <td>{{if .RemoteAddr}}{{.RemoteAddr}}{{else}}<span class="muted">unknown</span>{{end}}</td>
+                        </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+            </div>
+        {{else}}
+            <p class="empty">No active sessions.</p>
+        {{end}}
+    </section>
+
+    <section class="panel arenas-panel">
+        <h2>Arenas</h2>
+        {{if .Snapshot.Arenas}}
+            <div class="arena-grid">
+            {{range .Snapshot.Arenas}}
+                <article class="arena-card">
+                    <header>
+                        <h3>Arena #{{.ID}}</h3>
+                        <span class="status status-{{.Status}}">{{.Status}}</span>
+                    </header>
+                    <div class="viewer-links">
+                        <a href="/viewer?arena_id={{.ID}}{{if $.AdminKey}}&admin_key={{$.AdminKey | urlquery}}{{end}}" target="_blank" rel="noopener noreferrer">Watch Live</a>
+                    </div>
+                    <dl>
+                        <dt>Game</dt>
+                        <dd>{{.Game}}</dd>
+                        <dt>Required Players</dt>
+                        <dd>{{if eq .RequiredPlayers 0}}0 (autonomous){{else}}{{.RequiredPlayers}}{{end}}</dd>
+                        {{if .MoveClockEnabled}}
+                            <dt>Time Limit</dt>
+                            <dd>{{fmtSeconds .TimeLimitMS}}</dd>
+                            {{if .HandicapSupported}}
+                                <dt>Handicap Enabled</dt>
+                                <dd>{{.AllowHandicap}}</dd>
+                            {{end}}
+                            <dt>P1 Move Limit</dt>
+                            <dd>{{fmtSeconds .Bot1TimeMS}} ({{if ge .Player1Handicap 0}}+{{end}}{{.Player1Handicap}}%)</dd>
+                            {{if ge .RequiredPlayers 2}}
+                                <dt>P2 Move Limit</dt>
+                                <dd>{{fmtSeconds .Bot2TimeMS}} ({{if ge .Player2Handicap 0}}+{{end}}{{.Player2Handicap}}%)</dd>
+                            {{end}}
+                        {{else}}
+                            <dt>Move Clock</dt>
+                            <dd><span class="muted">disabled for this game</span></dd>
+                        {{end}}
+                        <dt>Last Move</dt>
+                        <dd>{{fmtTime .LastMove}}</dd>
+                        <dt>Move Count</dt>
+                        <dd>{{.MoveCount}}</dd>
+                        <dt>Created</dt>
+                        <dd>{{fmtTime .CreatedAt}}</dd>
+                        <dt>Activated</dt>
+                        <dd>{{if .ActivatedAt}}{{fmtTime .ActivatedAt}}{{else}}<span class="muted">not active yet</span>{{end}}</dd>
+                        <dt>Completed</dt>
+                        <dd>{{if .CompletedAt}}{{fmtTime .CompletedAt}}{{else}}<span class="muted">in progress</span>{{end}}</dd>
+                    </dl>
+                    <div class="players">
+                        <div>
+                            <strong>{{if eq .RequiredPlayers 0}}Mode{{else if eq .RequiredPlayers 1}}Agent{{else}}P1{{end}}:</strong>
+                            {{if eq .RequiredPlayers 0}}<span class="muted">autonomous (no player slots)</span>{{else if .HasPlayer1}}{{.Player1Name}} (ID {{.Player1Session}}){{else}}<span class="muted">empty</span>{{end}}
+                        </div>
+                        {{if ge .RequiredPlayers 2}}
+                            <div>
+                                <strong>P2:</strong>
+                                {{if .HasPlayer2}}{{.Player2Name}} (ID {{.Player2Session}}){{else}}<span class="muted">empty</span>{{end}}
+                            </div>
+                        {{end}}
+                    </div>
+                    <div class="observers">
+                        <strong>Observers ({{.ObserverCount}}):</strong>
+                        {{if .Observers}}
+                            <ul>
+                                {{range .Observers}}
+                                    <li>{{.BotName}} (ID {{.SessionID}})</li>
+                                {{end}}
+                            </ul>
+                        {{else}}
+                            <span class="muted">none</span>
+                        {{end}}
+                    </div>
+                    <details>
+                        <summary>Raw Game State</summary>
+                        <pre>{{.GameState}}</pre>
+                    </details>
+                </article>
+            {{end}}
+            </div>
+        {{else}}
+            <p class="empty">No arenas currently in memory.</p>
+        {{end}}
+    </section>
+
+    <section class="panel bots-panel">
+        <h2>Persistent Bot Registry</h2>
+        {{if .Snapshot.Bots}}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Bot</th>
+                            <th>Games</th>
+                            <th>W-L-D</th>
+                            <th>Registrations</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Snapshot.Bots}}
+                            <tr>
+                                <td>
+                                    <details class="bot-row-details">
+                                        <summary class="bot-summary" title="Bot ID: {{.BotID}}">{{.DisplayName}}</summary>
+                                        <article class="bot-detail-card">
+                                            <h4>Bot Profile</h4>
+                                            <dl>
+                                                <dt>Bot ID</dt>
+                                                <dd><code>{{.BotID}}</code></dd>
+                                                <dt>Created</dt>
+                                                <dd>{{fmtTime .CreatedAt}}</dd>
+                                                <dt>Last Seen</dt>
+                                                <dd>{{fmtTime .LastSeenAt}}</dd>
+                                                <dt>Games</dt>
+                                                <dd>{{.GamesPlayed}}</dd>
+                                                <dt>W-L-D</dt>
+                                                <dd>{{.Wins}}-{{.Losses}}-{{.Draws}}</dd>
+                                                <dt>Registrations</dt>
+                                                <dd>{{.RegistrationCount}}</dd>
+                                            </dl>
+                                        </article>
+                                    </details>
+                                </td>
+                                <td>{{.GamesPlayed}}</td>
+                                <td>{{.Wins}}-{{.Losses}}-{{.Draws}}</td>
+                                <td>{{.RegistrationCount}}</td>
+                                <td>{{fmtTime .LastSeenAt}}</td>
+                            </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        {{else}}
+            <p class="empty">No persistent bot profiles yet.</p>
+        {{end}}
+    </section>
+
+    <section class="panel matches-panel">
+        <h2>Recent Match Records</h2>
+        {{if .Snapshot.RecentMatches}}
+            <div class="arena-grid">
+                {{range .Snapshot.RecentMatches}}
+                    <article class="arena-card">
+                        <header>
+                            <h3>Match #{{.MatchID}} (Arena {{.ArenaID}})</h3>
+                            <span class="status status-{{.TerminalStatus}}">{{.TerminalStatus}}</span>
+                        </header>
+                        <div class="viewer-links">
+                            <a href="/viewer?match_id={{.MatchID}}{{if $.AdminKey}}&admin_key={{$.AdminKey | urlquery}}{{end}}" target="_blank" rel="noopener noreferrer">Watch Replay</a>
+                        </div>
+                        <dl>
+                            <dt>Game</dt>
+                            <dd>{{.Game}}</dd>
+                            <dt>Reason</dt>
+                            <dd>{{.EndReason}}</dd>
+                            <dt>Winner</dt>
+                            <dd>{{if .IsDraw}}draw{{else}}<span class="bot-id-hint" title="Bot ID: {{.WinnerBotID}}">{{.WinnerBotName}}</span>{{end}}</dd>
+                            <dt>Moves</dt>
+                            <dd>{{.MoveCount}}</dd>
+                            <dt>Started</dt>
+                            <dd>{{fmtTime .StartedAt}}</dd>
+                            <dt>Ended</dt>
+                            <dd>{{fmtTime .EndedAt}}</dd>
+                        </dl>
+                        <details>
+                            <summary>Move Preview</summary>
+                            {{if .CompactMoves}}
+                                {{if gt (len .CompactMoves) 512}}
+                                    <pre>{{printf "%.512s" .CompactMoves}}...</pre>
+                                    <p class="muted">Preview truncated. Use Watch Replay for the full timeline.</p>
+                                {{else}}
+                                    <pre>{{.CompactMoves}}</pre>
+                                {{end}}
+                            {{else}}
+                                <p class="empty">No moves were recorded.</p>
+                            {{end}}
+                        </details>
+                    </article>
+                {{end}}
+            </div>
+        {{else}}
+            <p class="empty">No finalized matches yet.</p>
+        {{end}}
+    </section>
+
+    <section class="panel admin-panel">
+        <h2>Admin Controls</h2>
+        {{if .IsAdmin}}
+            <p class="admin-intro">You are in admin mode. Actions below mutate live manager state immediately.</p>
+            <div class="admin-actions">
+                <form class="admin-action" hx-post="/admin/eject-bot" hx-target="#admin-result" hx-swap="innerHTML">
+                    <input type="hidden" name="admin_key" value="{{.AdminKey}}" />
+                    <h3>Eject Session</h3>
+                    <label>Session ID</label>
+                    <input type="number" min="1" name="session_id" required />
+                    <label>Reason (optional)</label>
+                    <input type="text" name="reason" placeholder="Removed by admin" />
+                    <button type="submit">Eject Bot</button>
+                </form>
+
+                <form class="admin-action" hx-post="/admin/leave-arena" hx-target="#admin-result" hx-swap="innerHTML">
+                    <input type="hidden" name="admin_key" value="{{.AdminKey}}" />
+                    <h3>Leave Arena (by session)</h3>
+                    <label>Session ID</label>
+                    <input type="number" min="1" name="session_id" required />
+                    <button type="submit">Remove from Arena</button>
+                </form>
+
+                <form class="admin-action" hx-post="/admin/join-arena" hx-target="#admin-result" hx-swap="innerHTML">
+                    <input type="hidden" name="admin_key" value="{{.AdminKey}}" />
+                    <h3>Join Arena (by session)</h3>
+                    <label>Session ID</label>
+                    <input type="number" min="1" name="session_id" required />
+                    <label>Arena ID</label>
+                    <input type="number" min="1" name="arena_id" required />
+                    <label>Handicap Percent</label>
+                    <input type="number" name="handicap_percent" value="0" required />
+                    <button type="submit">Join Arena</button>
+                </form>
+
+                <form class="admin-action" data-role="arena-create-form" hx-post="/admin/create-arena" hx-target="#admin-result" hx-swap="innerHTML">
+                    <input type="hidden" name="admin_key" value="{{.AdminKey}}" />
+                    <h3>Create Arena</h3>
+                    <label>Game</label>
+                    <select name="game" data-role="game-select" required>
+                        {{range $idx, $game := .GameCatalog}}
+                            <option value="{{$game.Name}}" {{if eq $idx 0}}selected{{end}}>{{$game.DisplayName}}</option>
+                        {{end}}
+                    </select>
+                    <div class="arena-runtime-hint muted" data-role="arena-runtime-hint"></div>
+                    <div class="arena-args" data-role="arena-args"></div>
+                    <input type="hidden" name="game_args" data-role="game-args" />
+                    <label>Time Limit (ms, optional)</label>
+                    <input type="number" min="1" name="time_ms" data-role="time-ms" placeholder="default 1000" />
+                    <label>Allow Handicap (optional)</label>
+                    <select name="allow_handicap" data-role="allow-handicap">
+                        <option value="" selected>auto</option>
+                        <option value="false">false</option>
+                        <option value="true">true</option>
+                    </select>
+                    <button type="submit">Create Arena</button>
+                </form>
+            </div>
+        {{else}}
+            {{if .AdminConfigured}}
+                <p class="empty">Viewer mode. Provide a valid admin key to unlock controls.</p>
+            {{else}}
+                <p class="empty">Admin controls are disabled. Set <code>BBS_DASHBOARD_ADMIN_KEY</code> on the server.</p>
+            {{end}}
+        {{end}}
+        <div id="admin-result"></div>
+    </section>
+</div>
