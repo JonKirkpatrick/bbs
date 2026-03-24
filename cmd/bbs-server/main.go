@@ -206,7 +206,9 @@ func handleBot(conn net.Conn) {
 
 	// Send a JSON welcome envelope so clients can stay in JSONL mode from first byte.
 	sess.SendJSON(stadium.Response{Status: "ok", Type: "welcome", Payload: map[string]string{
-		"message": "Welcome to the Build-a-Bot Stadium! Type HELP at any time for a command list.",
+		"message":        "Welcome to the Build-a-Bot Stadium! Type HELP at any time for a command list.",
+		"bot_port":       botServerPort,
+		"dashboard_port": dashboardServerPort,
 	}})
 	scanner := bufio.NewScanner(conn)
 

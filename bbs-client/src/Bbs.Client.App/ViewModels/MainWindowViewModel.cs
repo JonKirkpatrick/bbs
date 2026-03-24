@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -21,6 +23,7 @@ namespace Bbs.Client.App.ViewModels;
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private const int ServerProbeTimeoutMs = 1200;
+    private const int BotWelcomeReadTimeoutMs = 500;
     private const int ServerCatalogFetchTimeoutMs = 2000;
     private const int ServerCatalogSelectionRefreshCooldownMs = 5000;
     private const int DashboardPortFallback = 3000;
@@ -967,6 +970,13 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        var endpointGuardResult = ValidateServerEndpointBeforeSave(server);
+        if (!endpointGuardResult.Allowed)
+        {
+            ServerEditorMessage = endpointGuardResult.Message;
+            return;
+        }
+
         _storage.UpsertKnownServerAsync(server).GetAwaiter().GetResult();
         LoadServersFromStorage();
         SelectedServer = FindServerById(serverId);
@@ -982,6 +992,25 @@ public sealed class MainWindowViewModel : ViewModelBase
                 ["name"] = server.Name,
                 ["dashboard_port_hint"] = dashboardPortHint.Length == 0 ? "none" : "bot_port_likely"
             });
+    }
+
+    private (bool Allowed, string Message) ValidateServerEndpointBeforeSave(KnownServer server)
+    {
+        try
+        {
+            var dashboardPortHint = DetectBotPortDashboardHintAsync(server, CancellationToken.None).GetAwaiter().GetResult();
+            if (dashboardPortHint is null)
+            {
+                return (true, string.Empty);
+            }
+
+            return (false, $"Cannot save server endpoint: {server.Host}:{server.Port} appears to be the bot TCP port. Use dashboard port {dashboardPortHint.Value} instead.");
+        }
+        catch
+        {
+            // If endpoint validation cannot run, do not block user save.
+            return (true, string.Empty);
+        }
     }
 
     private void StartStartupServerProbe()
@@ -1083,6 +1112,10 @@ public sealed class MainWindowViewModel : ViewModelBase
             else
             {
                 metadata[ProbeLastErrorMetadataKey] = probeResult.ErrorCode;
+                if (TryParseDashboardPortFromProbeError(probeResult.ErrorCode, out var dashboardPort))
+                {
+                    metadata["probe_suggested_dashboard_port"] = dashboardPort.ToString();
+                }
                 unreachableCount++;
             }
 
@@ -1176,6 +1209,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             using var socket = new TcpClient();
             await socket.ConnectAsync(knownServer.Host, knownServer.Port, probeCts.Token);
+
+            var dashboardPortHint = await TryReadBotPortDashboardHintAsync(socket, cancellationToken);
+            if (dashboardPortHint is not null)
+            {
+                return (false, 1, $"bot_port_dashboard_{dashboardPortHint.Value}");
+            }
+
             return (true, 1, string.Empty);
         }
         catch (OperationCanceledException)
@@ -1189,6 +1229,77 @@ public sealed class MainWindowViewModel : ViewModelBase
         catch
         {
             return (false, 1, "connect_failed");
+        }
+    }
+
+    private static bool TryParseDashboardPortFromProbeError(string? errorCode, out int dashboardPort)
+    {
+        dashboardPort = 0;
+        if (string.IsNullOrWhiteSpace(errorCode))
+        {
+            return false;
+        }
+
+        const string prefix = "bot_port_dashboard_";
+        if (!errorCode.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var rawPort = errorCode[prefix.Length..];
+        return int.TryParse(rawPort, out dashboardPort) && dashboardPort is >= 1 and <= 65535;
+    }
+
+    private static async Task<int?> TryReadBotPortDashboardHintAsync(TcpClient socket, CancellationToken cancellationToken)
+    {
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        readCts.CancelAfter(BotWelcomeReadTimeoutMs);
+
+        try
+        {
+            var stream = socket.GetStream();
+            var buffer = new byte[2048];
+            var bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), readCts.Token);
+            if (bytesRead <= 0)
+            {
+                return null;
+            }
+
+            var line = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+            var firstLine = line.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+            if (string.IsNullOrWhiteSpace(firstLine))
+            {
+                return null;
+            }
+
+            return BotPortWelcomeHintParser.TryExtractDashboardPort(firstLine, out var dashboardPort)
+                ? dashboardPort
+                : null;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<int?> DetectBotPortDashboardHintAsync(KnownServer knownServer, CancellationToken cancellationToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(ServerProbeTimeoutMs);
+
+        try
+        {
+            using var socket = new TcpClient();
+            await socket.ConnectAsync(knownServer.Host, knownServer.Port, cts.Token);
+            return await TryReadBotPortDashboardHintAsync(socket, cts.Token);
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -1745,6 +1856,17 @@ public sealed class ServerSummaryItem
             if (string.Equals(probeStatus, "reachable", StringComparison.OrdinalIgnoreCase))
             {
                 return "Status: reachable";
+            }
+
+            if (metadata.TryGetValue("probe_last_error", out var probeError) &&
+                !string.IsNullOrWhiteSpace(probeError) &&
+                probeError.StartsWith("bot_port_dashboard_", StringComparison.OrdinalIgnoreCase))
+            {
+                var suggestedPort = probeError["bot_port_dashboard_".Length..];
+                if (!string.IsNullOrWhiteSpace(suggestedPort))
+                {
+                    return $"Status: wrong endpoint (bot port). Use dashboard port {suggestedPort}";
+                }
             }
 
             var errorSuffix = metadata.TryGetValue("probe_last_error", out var errorValue) && !string.IsNullOrWhiteSpace(errorValue)
