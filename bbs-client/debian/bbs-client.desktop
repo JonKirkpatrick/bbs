@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=BBS Client
+Comment=Bot orchestration and management for Build-a-Bot Stadium
+Icon=bbs-client
+Exec=bbs-client %U
+Terminal=false
+Categories=Development;Utility;
+Keywords=bot;arena;game;tournament;
+StartupNotify=true
