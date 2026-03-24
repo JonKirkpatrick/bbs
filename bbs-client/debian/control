@@ -13,7 +13,7 @@ Description: Build-a-Bot Stadium Client - Bot orchestration and management UI
   - Server connectivity and session management
   - Real-time bot status monitoring
   - Plugin catalog browsing and management
-Depends: dotnet-runtime-8.0 (>= 8.0) | dotnet-runtime-9.0 (>= 9.0), libgsl0 (>= 2.0)
+Depends: dotnet-runtime-8.0 (>= 8.0) | dotnet-runtime-9.0 (>= 9.0)
 Standards-Version: 4.6.1
 Section: misc
 Priority: optional
