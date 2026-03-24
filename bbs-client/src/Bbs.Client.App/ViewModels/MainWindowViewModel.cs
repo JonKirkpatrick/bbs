@@ -104,6 +104,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         StartNewBotCommand = new RelayCommand(StartNewBot);
         ArmSelectedBotCommand = new RelayCommand(ArmSelectedBot, () => SelectedBot is not null);
         DisarmSelectedBotCommand = new RelayCommand(DisarmSelectedBot, () => SelectedBot is not null);
+        DeploySelectedBotCommand = new RelayCommand(DeploySelectedBotToSelectedServer, CanDeploySelectedBot);
         SaveServerProfileCommand = new RelayCommand(SaveServerProfile);
         StartNewServerCommand = new RelayCommand(StartNewServer);
         ReprobeServersCommand = new RelayCommand(ReprobeServers, () => !IsServerProbeInProgress && Servers.Count > 0);
@@ -169,6 +170,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             OnPropertyChanged();
             ((RelayCommand)CreateArenaStubCommand).RaiseCanExecuteChanged();
             ((RelayCommand)JoinArenaStubCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
         }
     }
 
@@ -504,6 +506,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             ((RelayCommand)SetBotContextCommand).RaiseCanExecuteChanged();
             ((RelayCommand)ArmSelectedBotCommand).RaiseCanExecuteChanged();
             ((RelayCommand)DisarmSelectedBotCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
             if (value is not null)
             {
                 PopulateBotEditor(value);
@@ -532,6 +535,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
             RefreshSelectedServerDetail();
             ((RelayCommand)SetServerContextCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
             if (value is not null)
             {
                 _currentContext = WorkspaceContext.ServerDetails;
@@ -553,6 +557,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand StartNewBotCommand { get; }
     public ICommand ArmSelectedBotCommand { get; }
     public ICommand DisarmSelectedBotCommand { get; }
+    public ICommand DeploySelectedBotCommand { get; }
     public ICommand SaveServerProfileCommand { get; }
     public ICommand StartNewServerCommand { get; }
     public ICommand ReprobeServersCommand { get; }
@@ -593,6 +598,14 @@ public sealed class MainWindowViewModel : ViewModelBase
     private bool CanExecuteOwnerTokenActionStubs()
     {
         return HasValidServerAccess && !IsServerAccessLoading && SelectedServer is not null;
+    }
+
+    private bool CanDeploySelectedBot()
+    {
+        return SelectedBot is { IsArmed: true } &&
+               SelectedServer is not null &&
+               HasValidServerAccess &&
+               !IsServerAccessLoading;
     }
 
     private void ExecuteCreateArenaStub()
@@ -804,6 +817,82 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
+    private void DeploySelectedBotToSelectedServer()
+    {
+        var bot = SelectedBot;
+        var server = SelectedServer;
+        if (bot is null)
+        {
+            BotEditorMessage = "Select a bot before deploy.";
+            return;
+        }
+
+        if (!bot.IsArmed)
+        {
+            BotEditorMessage = "Deploy requires an armed bot.";
+            return;
+        }
+
+        if (server is null)
+        {
+            BotEditorMessage = "Deploy requires a selected server.";
+            return;
+        }
+
+        if (!ServerAccessMetadata.IsValid || string.IsNullOrWhiteSpace(ServerAccessMetadata.OwnerToken))
+        {
+            BotEditorMessage = "Deploy requires valid owner-token metadata from an armed bot session.";
+            return;
+        }
+
+        try
+        {
+            var sourceProfile = bot.ToProfile();
+            var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
+            {
+                ["server_access.owner_token"] = ServerAccessMetadata.OwnerToken,
+                ["server_access.dashboard_endpoint"] = ServerAccessMetadata.DashboardEndpoint,
+                ["server_access.server_id"] = server.ServerId
+            };
+
+            var attachedProfile = BotProfile.Create(
+                botId: sourceProfile.BotId,
+                name: sourceProfile.Name,
+                launchPath: sourceProfile.LaunchPath,
+                launchArgs: sourceProfile.LaunchArgs,
+                metadata: attachedMetadata,
+                createdAtUtc: sourceProfile.CreatedAtUtc,
+                updatedAtUtc: DateTimeOffset.UtcNow);
+
+            var activeSessionState = new AgentRuntimeState(
+                BotId: sourceProfile.BotId,
+                LifecycleState: AgentLifecycleState.ActiveSession,
+                IsArmed: true,
+                LastErrorCode: null,
+                UpdatedAtUtc: DateTimeOffset.UtcNow);
+
+            _storage.UpsertBotProfileAsync(attachedProfile).GetAwaiter().GetResult();
+            _storage.UpsertAgentRuntimeStateAsync(activeSessionState).GetAwaiter().GetResult();
+
+            LoadBotsFromStorage();
+            SelectedBot = FindBotById(sourceProfile.BotId);
+            TriggerServerAccessRefresh();
+            BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; active session attached.";
+
+            _logger.Log(LogLevel.Information, "bot_deploy_attached", "Bot deploy attached active session with owner token metadata.",
+                new Dictionary<string, string>
+                {
+                    ["bot_id"] = sourceProfile.BotId,
+                    ["server_id"] = server.ServerId,
+                    ["dashboard_endpoint"] = ServerAccessMetadata.DashboardEndpoint
+                });
+        }
+        catch (Exception ex)
+        {
+            HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed", ex);
+        }
+    }
+
     private void HandleOrchestrationException(string action, string botId, string errorCode, Exception ex)
     {
         BotEditorMessage = $"Unable to {action} bot ({errorCode}). You can retry without restarting the app.";
@@ -829,7 +918,12 @@ public sealed class MainWindowViewModel : ViewModelBase
         foreach (var profile in profiles)
         {
             var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
-            Bots.Add(BotSummaryItem.FromProfile(profile, runtimeState));
+            Bots.Add(BotSummaryItem.FromProfile(
+                profile,
+                runtimeState,
+                ArmSelectedBotCommand,
+                DisarmSelectedBotCommand,
+                DeploySelectedBotCommand));
         }
 
         OnPropertyChanged(nameof(Bots));
@@ -1562,6 +1656,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowOwnerTokenActionsUnavailable));
         ((RelayCommand)CreateArenaStubCommand).RaiseCanExecuteChanged();
         ((RelayCommand)JoinArenaStubCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
     }
 
     private ServerAccessMetadata ResolveServerAccessMetadata(string? selectedServerId, string? selectedBotId)
@@ -1681,8 +1776,18 @@ public sealed class BotSummaryItem
     public AgentLifecycleState LifecycleState { get; init; }
     public bool IsArmed { get; init; }
     public string? LastErrorCode { get; init; }
+    public required ICommand ArmCommand { get; init; }
+    public required ICommand DisarmCommand { get; init; }
+    public required ICommand DeployCommand { get; init; }
+    public bool CanArm => !IsArmed;
+    public bool CanDisarm => IsArmed;
 
-    public static BotSummaryItem FromProfile(BotProfile profile, AgentRuntimeState? runtimeState)
+    public static BotSummaryItem FromProfile(
+        BotProfile profile,
+        AgentRuntimeState? runtimeState,
+        ICommand armCommand,
+        ICommand disarmCommand,
+        ICommand deployCommand)
     {
         var visualState = BotCardVisualStateRules.Resolve(runtimeState);
         var status = BuildStatusText(runtimeState, visualState);
@@ -1692,7 +1797,7 @@ public sealed class BotSummaryItem
         {
             BotId = profile.BotId,
             Name = profile.Name,
-            Summary = $"Entry: {profile.LaunchPath}",
+            Summary = "Local profile",
             Status = status,
             AccentBrush = accentBrush,
             BackgroundBrush = backgroundBrush,
@@ -1703,7 +1808,10 @@ public sealed class BotSummaryItem
             VisualState = visualState,
             LifecycleState = runtimeState?.LifecycleState ?? AgentLifecycleState.Unknown,
             IsArmed = runtimeState?.IsArmed ?? false,
-            LastErrorCode = runtimeState?.LastErrorCode
+            LastErrorCode = runtimeState?.LastErrorCode,
+            ArmCommand = armCommand,
+            DisarmCommand = disarmCommand,
+            DeployCommand = deployCommand
         };
     }
 
@@ -1711,17 +1819,17 @@ public sealed class BotSummaryItem
     {
         if (runtimeState is null)
         {
-            return "State: registered";
+            return "Registered";
         }
 
         return visualState switch
         {
-            BotCardVisualState.Armed => $"State: armed ({runtimeState.LifecycleState})",
-            BotCardVisualState.ActiveSession => "State: active session",
+            BotCardVisualState.Armed => "Armed",
+            BotCardVisualState.ActiveSession => "Active Session",
             BotCardVisualState.Error => string.IsNullOrWhiteSpace(runtimeState.LastErrorCode)
-                ? "State: error"
-                : $"State: error ({runtimeState.LastErrorCode})",
-            _ => $"State: {runtimeState.LifecycleState}"
+                ? "Error"
+                : $"Error: {runtimeState.LastErrorCode}",
+            _ => runtimeState.LifecycleState.ToString()
         };
     }
 

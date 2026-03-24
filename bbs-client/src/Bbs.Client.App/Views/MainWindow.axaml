@@ -12,6 +12,7 @@
         MinHeight="600"
         Background="{DynamicResource Palette.WindowBackgroundBrush}"
         Foreground="{DynamicResource Palette.WindowForegroundBrush}"
+      x:Name="RootWindow"
         Title="{Binding WindowTitle}"
         mc:Ignorable="d">
       <Window.Resources>
@@ -94,13 +95,25 @@
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedBot}">
                                     <ListBox.ItemTemplate>
-                                          <DataTemplate x:DataType="vm:BotSummaryItem">
-                                                <controls:SummaryCard Title="{Binding Name}"
-                                                                                                                  IsActive="{Binding $parent[ListBoxItem].IsSelected}"
-                                                                                                                  Subtitle="{Binding Summary}"
-                                                                                                                  StatusText="{Binding Status}"
-                                                                                                                  AccentBrush="{Binding AccentBrush}"
-                                                                                                                  BackgroundBrush="{Binding BackgroundBrush}" />
+                                          <DataTemplate>
+                                                <StackPanel Spacing="0">
+                                                      <controls:SummaryCard Title="{Binding Name}"
+                                                                            IsActive="{Binding $parent[ListBoxItem].IsSelected}"
+                                                                            Subtitle="{Binding Summary}"
+                                                                            StatusText="{Binding Status}"
+                                                                            AccentBrush="{Binding AccentBrush}"
+                                                                            BackgroundBrush="{Binding BackgroundBrush}" />
+                                                      <StackPanel IsVisible="{Binding $parent[ListBoxItem].IsSelected}" Orientation="Horizontal" Spacing="6" Margin="0,-4,0,8">
+                                                                <Button IsVisible="{Binding CanArm}"
+                                                                      Command="{Binding ArmCommand}"
+                                                                    Content="Arm" />
+                                                                <Button IsVisible="{Binding CanDisarm}"
+                                                                      Command="{Binding DisarmCommand}"
+                                                                    Content="Disarm" />
+                                                                <Button Command="{Binding DeployCommand}"
+                                                                    Content="Deploy" />
+                                                      </StackPanel>
+                                                </StackPanel>
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
@@ -162,8 +175,6 @@
 
                                                       <StackPanel Grid.Row="5" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
                                                             <Button Command="{Binding SaveBotProfileCommand}" Content="Save Bot" />
-                                                            <Button Command="{Binding ArmSelectedBotCommand}" Content="Arm" />
-                                                            <Button Command="{Binding DisarmSelectedBotCommand}" Content="Disarm" />
                                                       </StackPanel>
 
                                                       <TextBlock Grid.Row="6" Margin="0,6,0,0" FontSize="12" Opacity="1" Text="{Binding BotEditorMessage}" />

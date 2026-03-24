@@ -24,7 +24,7 @@ Do not begin packaging/readiness work until all `P0` gaps are `done` and at leas
 | Gap ID | Priority | Area | Scope | Actionable coverage | Status |
 | --- | --- | --- | --- | --- | --- |
 | G4-S1 | P0 | Server interaction | Plugin catalog must come from server probe results, not manual entry. | Implement probe path that fetches plugin catalog and metadata; persist as last-known server cache; refresh cache when selected server is populated in center panel. | todo |
-| G4-B1 | P0 | Bot interaction | Bot summary card behavior should drive core workflow. | Remove entry/state text from bot cards, add arm/disarm toggle on bot summary card, add deploy button on bot summary card gated by armed bot plus selected server in center panel; deploy action must attach agent and establish active session with owner token. | todo |
+| G4-B1 | P0 | Bot interaction | Bot summary card behavior should drive core workflow. | Remove entry/state text from bot cards, add arm/disarm toggle on bot summary card, add deploy button on bot summary card gated by armed bot plus selected server in center panel; deploy action must attach agent and establish active session with owner token. | in-progress |
 
 ## Coverage Plan Template (Per Gap)
 
@@ -45,6 +45,7 @@ Record evidence entries as work closes gaps.
 
 | Date | Gap ID | Validation type | Evidence | Result |
 | --- | --- | --- | --- | --- |
+| 2026-03-24 | G4-B1 | unit/build | `dotnet build bbs-client/src/Bbs.Client.App/Bbs.Client.App.csproj`; `dotnet test bbs-client/tests/Bbs.Client.Core.Tests/Bbs.Client.Core.Tests.csproj`; `dotnet test bbs-client/tests/Bbs.Client.Infrastructure.Tests/Bbs.Client.Infrastructure.Tests.csproj` | pass |
 | TBD | TBD | unit/integration/manual | TBD | pending |
 
 ## Decisions Needed
