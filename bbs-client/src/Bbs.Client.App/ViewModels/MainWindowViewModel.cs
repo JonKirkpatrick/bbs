@@ -970,13 +970,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var endpointGuardResult = ValidateServerEndpointBeforeSave(server);
-        if (!endpointGuardResult.Allowed)
-        {
-            ServerEditorMessage = endpointGuardResult.Message;
-            return;
-        }
-
         _storage.UpsertKnownServerAsync(server).GetAwaiter().GetResult();
         LoadServersFromStorage();
         SelectedServer = FindServerById(serverId);
@@ -992,25 +985,6 @@ public sealed class MainWindowViewModel : ViewModelBase
                 ["name"] = server.Name,
                 ["dashboard_port_hint"] = dashboardPortHint.Length == 0 ? "none" : "bot_port_likely"
             });
-    }
-
-    private (bool Allowed, string Message) ValidateServerEndpointBeforeSave(KnownServer server)
-    {
-        try
-        {
-            var dashboardPortHint = DetectBotPortDashboardHintAsync(server, CancellationToken.None).GetAwaiter().GetResult();
-            if (dashboardPortHint is null)
-            {
-                return (true, string.Empty);
-            }
-
-            return (false, $"Cannot save server endpoint: {server.Host}:{server.Port} appears to be the bot TCP port. Use dashboard port {dashboardPortHint.Value} instead.");
-        }
-        catch
-        {
-            // If endpoint validation cannot run, do not block user save.
-            return (true, string.Empty);
-        }
     }
 
     private void StartStartupServerProbe()
@@ -1286,22 +1260,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private static async Task<int?> DetectBotPortDashboardHintAsync(KnownServer knownServer, CancellationToken cancellationToken)
-    {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(ServerProbeTimeoutMs);
-
-        try
-        {
-            using var socket = new TcpClient();
-            await socket.ConnectAsync(knownServer.Host, knownServer.Port, cts.Token);
-            return await TryReadBotPortDashboardHintAsync(socket, cts.Token);
-        }
-        catch
-        {
-            return null;
-        }
-    }
 
     private void TriggerSelectedServerCatalogRefresh(ServerSummaryItem server)
     {
