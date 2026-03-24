@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using System.Windows.Input;
 using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
@@ -476,25 +477,35 @@ public sealed class MainWindowViewModel : ViewModelBase
 
 public sealed class BotSummaryItem
 {
+    private static readonly IBrush DefaultAccentBrush = new SolidColorBrush(Color.Parse("#0e7a6d"));
+    private static readonly IBrush DefaultBackgroundBrush = new SolidColorBrush(Color.Parse("#fffaf3"));
+    private static readonly IBrush ArmedAccentBrush = new SolidColorBrush(Color.Parse("#b7791f"));
+    private static readonly IBrush ArmedBackgroundBrush = new SolidColorBrush(Color.Parse("#fff4df"));
+    private static readonly IBrush ActiveAccentBrush = new SolidColorBrush(Color.Parse("#2b8a3e"));
+    private static readonly IBrush ActiveBackgroundBrush = new SolidColorBrush(Color.Parse("#e8f8ec"));
+    private static readonly IBrush ErrorAccentBrush = new SolidColorBrush(Color.Parse("#c92a2a"));
+    private static readonly IBrush ErrorBackgroundBrush = new SolidColorBrush(Color.Parse("#fdecec"));
+
     public required string BotId { get; init; }
     public required string Name { get; init; }
     public required string Summary { get; init; }
     public required string Status { get; init; }
+    public required IBrush AccentBrush { get; init; }
+    public required IBrush BackgroundBrush { get; init; }
     public required string LaunchPath { get; init; }
     public required IReadOnlyList<string> LaunchArgs { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
     public required DateTimeOffset CreatedAtUtc { get; init; }
+    public BotCardVisualState VisualState { get; init; }
     public AgentLifecycleState LifecycleState { get; init; }
     public bool IsArmed { get; init; }
     public string? LastErrorCode { get; init; }
 
     public static BotSummaryItem FromProfile(BotProfile profile, AgentRuntimeState? runtimeState)
     {
-        var status = runtimeState is null
-            ? "State: registered"
-            : runtimeState.IsArmed
-                ? $"State: armed ({runtimeState.LifecycleState})"
-                : $"State: {runtimeState.LifecycleState}";
+        var visualState = BotCardVisualStateRules.Resolve(runtimeState);
+        var status = BuildStatusText(runtimeState, visualState);
+        var (accentBrush, backgroundBrush) = ResolveBrushes(visualState);
 
         return new BotSummaryItem
         {
@@ -502,13 +513,45 @@ public sealed class BotSummaryItem
             Name = profile.Name,
             Summary = $"Entry: {profile.LaunchPath}",
             Status = status,
+            AccentBrush = accentBrush,
+            BackgroundBrush = backgroundBrush,
             LaunchPath = profile.LaunchPath,
             LaunchArgs = profile.LaunchArgs,
             Metadata = profile.Metadata,
             CreatedAtUtc = profile.CreatedAtUtc,
+            VisualState = visualState,
             LifecycleState = runtimeState?.LifecycleState ?? AgentLifecycleState.Unknown,
             IsArmed = runtimeState?.IsArmed ?? false,
             LastErrorCode = runtimeState?.LastErrorCode
+        };
+    }
+
+    private static string BuildStatusText(AgentRuntimeState? runtimeState, BotCardVisualState visualState)
+    {
+        if (runtimeState is null)
+        {
+            return "State: registered";
+        }
+
+        return visualState switch
+        {
+            BotCardVisualState.Armed => $"State: armed ({runtimeState.LifecycleState})",
+            BotCardVisualState.ActiveSession => "State: active session",
+            BotCardVisualState.Error => string.IsNullOrWhiteSpace(runtimeState.LastErrorCode)
+                ? "State: error"
+                : $"State: error ({runtimeState.LastErrorCode})",
+            _ => $"State: {runtimeState.LifecycleState}"
+        };
+    }
+
+    private static (IBrush AccentBrush, IBrush BackgroundBrush) ResolveBrushes(BotCardVisualState visualState)
+    {
+        return visualState switch
+        {
+            BotCardVisualState.Armed => (ArmedAccentBrush, ArmedBackgroundBrush),
+            BotCardVisualState.ActiveSession => (ActiveAccentBrush, ActiveBackgroundBrush),
+            BotCardVisualState.Error => (ErrorAccentBrush, ErrorBackgroundBrush),
+            _ => (DefaultAccentBrush, DefaultBackgroundBrush)
         };
     }
 
