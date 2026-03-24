@@ -33,31 +33,35 @@ public sealed class SqliteClientStorage : IClientStorage
         }
 
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        await EnsureSchemaVersionTableAsync(connection, cancellationToken);
+        var hasSchemaVersionTable = await TableExistsAsync(connection, "schema_version", cancellationToken);
+        if (!hasSchemaVersionTable)
+        {
+            if (await HasAnyUserTablesAsync(connection, cancellationToken))
+            {
+                throw new InvalidOperationException("Legacy client database format is unsupported. Delete the database and reinitialize.");
+            }
+
+            await CreateCurrentSchemaAsync(connection, cancellationToken);
+            return;
+        }
 
         var version = await ReadSchemaVersionAsync(connection, cancellationToken);
-        if (version < 1)
+        if (version != CurrentSchemaVersion)
         {
-            await ApplyMigrationV1Async(connection, cancellationToken);
-            version = 1;
+            throw new InvalidOperationException($"Unsupported database schema version {version}. Expected {CurrentSchemaVersion}.");
         }
 
-        if (version < 2)
-        {
-            await ApplyMigrationV2Async(connection, cancellationToken);
-            version = 2;
-        }
-
-        if (version < CurrentSchemaVersion)
-        {
-            throw new InvalidOperationException($"Database schema version {version} is lower than expected {CurrentSchemaVersion} after migration.");
-        }
+        await EnsureCurrentTablesExistAsync(connection, cancellationToken);
     }
 
     public async Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        await EnsureSchemaVersionTableAsync(connection, cancellationToken);
+        if (!await TableExistsAsync(connection, "schema_version", cancellationToken))
+        {
+            return 0;
+        }
+
         return await ReadSchemaVersionAsync(connection, cancellationToken);
     }
 
@@ -384,22 +388,27 @@ public sealed class SqliteClientStorage : IClientStorage
         return connection;
     }
 
-    private static async Task EnsureSchemaVersionTableAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    private static async Task<bool> TableExistsAsync(SqliteConnection connection, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $name LIMIT 1";
+        command.Parameters.AddWithValue("$name", tableName);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not null && result is not DBNull;
+    }
+
+    private static async Task<bool> HasAnyUserTablesAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            CREATE TABLE IF NOT EXISTS schema_version (
-                id INTEGER PRIMARY KEY CHECK(id = 1),
-                version INTEGER NOT NULL,
-                updated_at_utc TEXT NOT NULL
-            );
-
-            INSERT INTO schema_version(id, version, updated_at_utc)
-            VALUES (1, 0, $updated_at_utc)
-            ON CONFLICT(id) DO NOTHING;
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name NOT LIKE 'sqlite_%'
+            LIMIT 1
             """;
-        command.Parameters.AddWithValue("$updated_at_utc", DateTimeOffset.UtcNow.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not null && result is not DBNull;
     }
 
     private static async Task<int> ReadSchemaVersionAsync(SqliteConnection connection, CancellationToken cancellationToken)
@@ -407,15 +416,10 @@ public sealed class SqliteClientStorage : IClientStorage
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT version FROM schema_version WHERE id = 1";
         var result = await command.ExecuteScalarAsync(cancellationToken);
-        if (result is null || result is DBNull)
-        {
-            return 0;
-        }
-
-        return Convert.ToInt32(result);
+        return result is null || result is DBNull ? 0 : Convert.ToInt32(result);
     }
 
-    private static async Task ApplyMigrationV1Async(SqliteConnection connection, CancellationToken cancellationToken)
+    private static async Task CreateCurrentSchemaAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         await using var transaction = connection.BeginTransaction();
 
@@ -423,6 +427,12 @@ public sealed class SqliteClientStorage : IClientStorage
         {
             command.Transaction = transaction;
             command.CommandText = """
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    id INTEGER PRIMARY KEY CHECK(id = 1),
+                    version INTEGER NOT NULL,
+                    updated_at_utc TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS client_identity (
                     client_id TEXT PRIMARY KEY,
                     display_name TEXT NOT NULL,
@@ -463,34 +473,7 @@ public sealed class SqliteClientStorage : IClientStorage
                     last_error_code TEXT,
                     updated_at_utc TEXT NOT NULL
                 );
-                """;
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
 
-        await using (var updateVersion = connection.CreateCommand())
-        {
-            updateVersion.Transaction = transaction;
-            updateVersion.CommandText = """
-                UPDATE schema_version
-                SET version = 1,
-                    updated_at_utc = $updated_at_utc
-                WHERE id = 1
-                """;
-            updateVersion.Parameters.AddWithValue("$updated_at_utc", DateTimeOffset.UtcNow.ToString("O"));
-            await updateVersion.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        transaction.Commit();
-    }
-
-    private static async Task ApplyMigrationV2Async(SqliteConnection connection, CancellationToken cancellationToken)
-    {
-        await using var transaction = connection.BeginTransaction();
-
-        await using (var command = connection.CreateCommand())
-        {
-            command.Transaction = transaction;
-            command.CommandText = """
                 CREATE TABLE IF NOT EXISTS bot_server_credentials (
                     client_bot_id TEXT NOT NULL,
                     server_id TEXT NOT NULL,
@@ -512,15 +495,80 @@ public sealed class SqliteClientStorage : IClientStorage
         {
             updateVersion.Transaction = transaction;
             updateVersion.CommandText = """
-                UPDATE schema_version
-                SET version = 2,
+                INSERT INTO schema_version(id, version, updated_at_utc)
+                VALUES (1, $version, $updated_at_utc)
+                ON CONFLICT(id)
+                DO UPDATE SET
+                    version = excluded.version,
                     updated_at_utc = $updated_at_utc
-                WHERE id = 1
                 """;
+            updateVersion.Parameters.AddWithValue("$version", CurrentSchemaVersion);
             updateVersion.Parameters.AddWithValue("$updated_at_utc", DateTimeOffset.UtcNow.ToString("O"));
             await updateVersion.ExecuteNonQueryAsync(cancellationToken);
         }
 
         transaction.Commit();
+    }
+
+    private static async Task EnsureCurrentTablesExistAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS client_identity (
+                client_id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS bot_profiles (
+                bot_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                launch_path TEXT NOT NULL,
+                launch_args_json TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS known_servers (
+                server_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                use_tls INTEGER NOT NULL,
+                metadata_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS server_plugin_cache (
+                server_id TEXT PRIMARY KEY,
+                plugins_json TEXT NOT NULL,
+                cached_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_runtime_state (
+                bot_id TEXT PRIMARY KEY,
+                lifecycle_state INTEGER NOT NULL,
+                is_armed INTEGER NOT NULL,
+                last_error_code TEXT,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS bot_server_credentials (
+                client_bot_id TEXT NOT NULL,
+                server_id TEXT NOT NULL,
+                server_global_id TEXT,
+                server_bot_id TEXT NOT NULL,
+                server_bot_secret TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                PRIMARY KEY (client_bot_id, server_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_bot_server_credentials_global
+            ON bot_server_credentials(client_bot_id, server_global_id);
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

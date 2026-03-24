@@ -40,9 +40,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     private const string ServerAccessSessionIdMetadataKey = "server_access.session_id";
     private const string ServerAccessOwnerTokenMetadataKey = "server_access.owner_token";
     private const string ServerAccessDashboardEndpointMetadataKey = "server_access.dashboard_endpoint";
-    private const string ServerAccessCredentialMapMetadataKey = "server_access.credentials_by_server";
-    private const string ServerAccessBotIdMetadataKey = "server_access.bot_id";
-    private const string ServerAccessBotSecretMetadataKey = "server_access.bot_secret";
     private static readonly string[] DashboardEndpointMetadataKeys =
     {
         "dashboard_endpoint",
@@ -886,14 +883,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             var registerResponse = RegisterBotSessionWithServer(server, sourceProfile);
             var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
             {
-                [ServerAccessServerIdMetadataKey] = server.ServerId,
-                [ServerAccessBotIdMetadataKey] = registerResponse.ServerBotId
+                [ServerAccessServerIdMetadataKey] = server.ServerId
             };
-
-            if (!string.IsNullOrWhiteSpace(registerResponse.ServerBotSecret))
-            {
-                attachedMetadata[ServerAccessBotSecretMetadataKey] = registerResponse.ServerBotSecret;
-            }
 
             if (!string.IsNullOrWhiteSpace(registerResponse.DashboardEndpoint))
             {
@@ -1269,9 +1260,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
 
         Bots.Clear();
-        foreach (var rawProfile in profiles)
+        foreach (var profile in profiles)
         {
-            var profile = SanitizePersistedBotProfile(rawProfile);
             var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
             if (runtimeState is not null &&
                 runtimeState.LifecycleState == AgentLifecycleState.ActiveSession &&
@@ -1295,48 +1285,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(Bots));
-    }
-
-    private BotProfile SanitizePersistedBotProfile(BotProfile profile)
-    {
-        var metadata = new Dictionary<string, string>(profile.Metadata, StringComparer.OrdinalIgnoreCase);
-        if (metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var serverId) &&
-            !string.IsNullOrWhiteSpace(serverId) &&
-            metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botId) &&
-            metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecret) &&
-            !string.IsNullOrWhiteSpace(botId) &&
-            !string.IsNullOrWhiteSpace(botSecret))
-        {
-            var migratedCredential = BotServerCredential.Create(
-                clientBotId: profile.BotId,
-                serverId: serverId.Trim(),
-                serverGlobalId: null,
-                serverBotId: botId.Trim(),
-                serverBotSecret: botSecret.Trim());
-            _storage.UpsertBotServerCredentialAsync(migratedCredential).GetAwaiter().GetResult();
-        }
-
-        var removedOwnerToken = metadata.Remove(ServerAccessOwnerTokenMetadataKey);
-        var removedSessionId = metadata.Remove(ServerAccessSessionIdMetadataKey);
-        var removedLegacyBotId = metadata.Remove(ServerAccessBotIdMetadataKey);
-        var removedLegacyBotSecret = metadata.Remove(ServerAccessBotSecretMetadataKey);
-        var removedLegacyCredentialMap = metadata.Remove(ServerAccessCredentialMapMetadataKey);
-        if (!removedOwnerToken && !removedSessionId && !removedLegacyBotId && !removedLegacyBotSecret && !removedLegacyCredentialMap)
-        {
-            return profile;
-        }
-
-        var sanitized = BotProfile.Create(
-            botId: profile.BotId,
-            name: profile.Name,
-            launchPath: profile.LaunchPath,
-            launchArgs: profile.LaunchArgs,
-            metadata: metadata,
-            createdAtUtc: profile.CreatedAtUtc,
-            updatedAtUtc: DateTimeOffset.UtcNow);
-
-        _storage.UpsertBotProfileAsync(sanitized).GetAwaiter().GetResult();
-        return sanitized;
     }
 
     private void LoadServersFromStorage()

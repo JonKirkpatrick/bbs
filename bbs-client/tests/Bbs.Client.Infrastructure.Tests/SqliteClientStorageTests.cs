@@ -27,7 +27,7 @@ public sealed class SqliteClientStorageTests
     }
 
     [Fact]
-    public async Task InitializeAsync_UpgradesLegacyDatabaseWithoutSchemaVersion()
+    public async Task InitializeAsync_ThrowsForLegacyDatabaseWithoutSchemaVersion()
     {
         var dbPath = NewTempDatabasePath();
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
@@ -35,10 +35,33 @@ public sealed class SqliteClientStorageTests
         await CreateLegacyDatabaseAsync(dbPath);
 
         var storage = new SqliteClientStorage(dbPath);
-        await storage.InitializeAsync();
-        var schemaVersion = await storage.GetSchemaVersionAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => storage.InitializeAsync());
+    }
 
-        Assert.Equal(2, schemaVersion);
+    [Fact]
+    public async Task InitializeAsync_ThrowsForUnsupportedSchemaVersion()
+    {
+        var dbPath = NewTempDatabasePath();
+
+        await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    id INTEGER PRIMARY KEY CHECK(id = 1),
+                    version INTEGER NOT NULL,
+                    updated_at_utc TEXT NOT NULL
+                );
+
+                INSERT INTO schema_version(id, version, updated_at_utc)
+                VALUES (1, 1, '2026-03-23T00:00:00+00:00');
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var storage = new SqliteClientStorage(dbPath);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => storage.InitializeAsync());
     }
 
     [Fact]
