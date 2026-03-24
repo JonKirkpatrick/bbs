@@ -164,6 +164,51 @@ public sealed class SqliteClientStorageTests
         Assert.Contains(loaded, b => b.BotId == "bot-persist-1" && b.Name == "Persistent Bot");
     }
 
+    [Fact]
+    public async Task KnownServers_AndPluginCache_PersistAcrossStorageInstances()
+    {
+        var dbPath = NewTempDatabasePath();
+
+        var storage1 = new SqliteClientStorage(dbPath);
+        await storage1.InitializeAsync();
+
+        var server = KnownServer.Create(
+            serverId: "server-persist-1",
+            name: "Persistent Stadium",
+            host: "127.0.0.1",
+            port: 8080,
+            useTls: false,
+            metadata: new Dictionary<string, string> { ["region"] = "local" });
+
+        var cache = ServerPluginCache.Create(
+            serverId: "server-persist-1",
+            plugins: new[]
+            {
+                new PluginDescriptor("counter", "Counter", "1.0.0"),
+                new PluginDescriptor("viewer", "Viewer", "1.1.0")
+            });
+
+        await storage1.UpsertKnownServerAsync(server);
+        await storage1.UpsertServerPluginCacheAsync(cache);
+
+        var storage2 = new SqliteClientStorage(dbPath);
+        await storage2.InitializeAsync();
+
+        var servers = await storage2.ListKnownServersAsync();
+        var loadedServer = Assert.Single(servers);
+        Assert.Equal("server-persist-1", loadedServer.ServerId);
+        Assert.Equal("Persistent Stadium", loadedServer.Name);
+        Assert.Equal("127.0.0.1", loadedServer.Host);
+        Assert.Equal(8080, loadedServer.Port);
+
+        var loadedCache = await storage2.GetServerPluginCacheAsync("server-persist-1");
+        Assert.NotNull(loadedCache);
+        Assert.Equal("server-persist-1", loadedCache!.ServerId);
+        Assert.Equal(2, loadedCache.Plugins.Count);
+        Assert.Equal("counter", loadedCache.Plugins[0].Name);
+        Assert.Equal("viewer", loadedCache.Plugins[1].Name);
+    }
+
     private static async Task CreateLegacyDatabaseAsync(string dbPath)
     {
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");

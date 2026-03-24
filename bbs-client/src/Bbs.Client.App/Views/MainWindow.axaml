@@ -136,7 +136,7 @@
                                           <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding WorkspaceTitle}" />
                                           <TextBlock TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
 
-                                          <Border Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                          <Border IsVisible="{Binding ShowBotEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                                       <TextBlock FontSize="15" FontWeight="SemiBold" Text="Bot Registration / Edit" />
 
@@ -167,6 +167,57 @@
                                                       </StackPanel>
 
                                                       <TextBlock Grid.Row="6" Margin="0,6,0,0" FontSize="12" Opacity="1" Text="{Binding BotEditorMessage}" />
+                                                </Grid>
+                                          </Border>
+
+                                          <Border IsVisible="{Binding ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                                      <TextBlock FontSize="15" FontWeight="SemiBold" Text="Known Server Registration / Edit" />
+
+                                                      <StackPanel Grid.Row="1" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Server Name" />
+                                                            <TextBox Text="{Binding ServerEditorName}" Watermark="Local Stadium" />
+                                                      </StackPanel>
+
+                                                      <Grid Grid.Row="2" Margin="0,6,0,0" ColumnDefinitions="2*,*,Auto">
+                                                            <StackPanel Grid.Column="0" Spacing="2">
+                                                                  <TextBlock FontSize="12" Opacity="1" Text="Host" />
+                                                                  <TextBox Text="{Binding ServerEditorHost}" Watermark="127.0.0.1" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="2">
+                                                                  <TextBlock FontSize="12" Opacity="1" Text="Port" />
+                                                                  <TextBox Text="{Binding ServerEditorPort}" Watermark="8080" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="2" Margin="8,20,0,0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4">
+                                                                  <CheckBox IsChecked="{Binding ServerEditorUseTls}" />
+                                                                  <TextBlock FontSize="12" Text="TLS" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                      </Grid>
+
+                                                      <StackPanel Grid.Row="3" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Metadata (k=v;k2=v2)" />
+                                                            <TextBox Text="{Binding ServerEditorMetadata}" Watermark="region=local;tier=alpha" />
+                                                      </StackPanel>
+
+                                                      <StackPanel Grid.Row="4" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Plugin Cache (one per line: name|display|version)" />
+                                                            <TextBox Text="{Binding ServerEditorPlugins}"
+                                                                     Height="92"
+                                                                     AcceptsReturn="True"
+                                                                     TextWrapping="Wrap"
+                                                                     Watermark="counter|Counter|1.0.0" />
+                                                      </StackPanel>
+
+                                                      <StackPanel Grid.Row="5" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                                                            <Button Command="{Binding SaveServerProfileCommand}" Content="Save Server" />
+                                                            <Button Command="{Binding StartNewServerCommand}" Content="New Server" />
+                                                      </StackPanel>
+
+                                                      <TextBlock Grid.Row="6"
+                                                                 Margin="0,6,0,0"
+                                                                 FontSize="12"
+                                                                 Opacity="1"
+                                                                 Text="{Binding ServerEditorMessage}" />
                                                 </Grid>
                                           </Border>
                                     </StackPanel>
@@ -220,11 +271,11 @@
 
                               <Button Grid.Row="3"
                                       IsVisible="{Binding IsRightPanelExpanded}"
-                                      IsEnabled="False"
                                       Margin="0,8,0,0"
                                       HorizontalAlignment="Stretch"
                                       HorizontalContentAlignment="Center"
-                                      Content="New Server" />
+                                          Command="{Binding StartNewServerCommand}"
+                                          Content="New Server" />
 
                         </Grid>
                   </Grid>

@@ -27,6 +27,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _botEditorArgs = string.Empty;
     private string _botEditorMetadata = string.Empty;
     private string _botEditorMessage = "Fill out the bot form and save.";
+    private string _serverEditorName = string.Empty;
+    private string _serverEditorHost = string.Empty;
+    private string _serverEditorPort = "8080";
+    private bool _serverEditorUseTls;
+    private string _serverEditorMetadata = string.Empty;
+    private string _serverEditorPlugins = string.Empty;
+    private string _serverEditorMessage = "Fill out the server form and save.";
 
     public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
     {
@@ -43,23 +50,27 @@ public sealed class MainWindowViewModel : ViewModelBase
         StartNewBotCommand = new RelayCommand(StartNewBot);
         ArmSelectedBotCommand = new RelayCommand(ArmSelectedBot, () => SelectedBot is not null);
         DisarmSelectedBotCommand = new RelayCommand(DisarmSelectedBot, () => SelectedBot is not null);
+        SaveServerProfileCommand = new RelayCommand(SaveServerProfile);
+        StartNewServerCommand = new RelayCommand(StartNewServer);
 
         Bots = new ObservableCollection<BotSummaryItem>();
-
-        Servers = new ReadOnlyCollection<ServerSummaryItem>(new[]
-        {
-            new ServerSummaryItem("Local Stadium", "127.0.0.1:8080", "Status: reachable"),
-            new ServerSummaryItem("Lab Server", "10.0.0.42:8080", "Status: pending probe")
-        });
+        Servers = new ObservableCollection<ServerSummaryItem>();
 
         _currentContext = WorkspaceContext.Home;
         LoadBotsFromStorage();
+        LoadServersFromStorage();
         _selectedBot = Bots.Count > 0 ? Bots[0] : null;
-        _selectedServer = Servers[0];
+        _selectedServer = Servers.Count > 0 ? Servers[0] : null;
         if (_selectedBot is not null)
         {
             PopulateBotEditor(_selectedBot);
         }
+
+        if (_selectedServer is not null)
+        {
+            PopulateServerEditor(_selectedServer);
+        }
+
         RefreshContextProjection();
     }
 
@@ -68,6 +79,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string WorkspaceDescription { get; private set; } = "Select a bot or server to load activity in this center workspace.";
 
     public string CurrentContextLabel => $"Context: {_currentContext}";
+    public bool ShowBotEditor => _currentContext != WorkspaceContext.ServerDetails;
+    public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerDetails;
 
     public bool IsLeftPanelExpanded
     {
@@ -114,7 +127,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string RightPanelToggleText => IsRightPanelExpanded ? "Collapse Servers" : "Expand Servers";
 
     public ObservableCollection<BotSummaryItem> Bots { get; }
-    public IReadOnlyList<ServerSummaryItem> Servers { get; }
+    public ObservableCollection<ServerSummaryItem> Servers { get; }
 
     public string BotEditorName
     {
@@ -191,6 +204,111 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
+    public string ServerEditorName
+    {
+        get => _serverEditorName;
+        set
+        {
+            if (_serverEditorName == value)
+            {
+                return;
+            }
+
+            _serverEditorName = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ServerEditorHost
+    {
+        get => _serverEditorHost;
+        set
+        {
+            if (_serverEditorHost == value)
+            {
+                return;
+            }
+
+            _serverEditorHost = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ServerEditorPort
+    {
+        get => _serverEditorPort;
+        set
+        {
+            if (_serverEditorPort == value)
+            {
+                return;
+            }
+
+            _serverEditorPort = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool ServerEditorUseTls
+    {
+        get => _serverEditorUseTls;
+        set
+        {
+            if (_serverEditorUseTls == value)
+            {
+                return;
+            }
+
+            _serverEditorUseTls = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ServerEditorMetadata
+    {
+        get => _serverEditorMetadata;
+        set
+        {
+            if (_serverEditorMetadata == value)
+            {
+                return;
+            }
+
+            _serverEditorMetadata = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ServerEditorPlugins
+    {
+        get => _serverEditorPlugins;
+        set
+        {
+            if (_serverEditorPlugins == value)
+            {
+                return;
+            }
+
+            _serverEditorPlugins = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ServerEditorMessage
+    {
+        get => _serverEditorMessage;
+        private set
+        {
+            if (_serverEditorMessage == value)
+            {
+                return;
+            }
+
+            _serverEditorMessage = value;
+            OnPropertyChanged();
+        }
+    }
+
     public BotSummaryItem? SelectedBot
     {
         get => _selectedBot;
@@ -231,6 +349,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (value is not null)
             {
                 _currentContext = WorkspaceContext.ServerDetails;
+                PopulateServerEditor(value);
                 RefreshContextProjection();
             }
         }
@@ -246,6 +365,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand StartNewBotCommand { get; }
     public ICommand ArmSelectedBotCommand { get; }
     public ICommand DisarmSelectedBotCommand { get; }
+    public ICommand SaveServerProfileCommand { get; }
+    public ICommand StartNewServerCommand { get; }
 
     private void EmitSampleLog()
     {
@@ -299,7 +420,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                 WorkspaceTitle = SelectedServer is null ? "Server Context" : $"Server: {SelectedServer.Name}";
                 WorkspaceDescription = SelectedServer is null
                     ? "Select a server card to load server context."
-                    : $"{SelectedServer.Endpoint} | {SelectedServer.Status}";
+                    : $"{SelectedServer.Endpoint} | {SelectedServer.Status} | Plugins: {SelectedServer.PluginCount}";
                 break;
             default:
                 WorkspaceTitle = "Context Host Ready";
@@ -310,6 +431,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(CurrentContextLabel));
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(WorkspaceDescription));
+        OnPropertyChanged(nameof(ShowBotEditor));
+        OnPropertyChanged(nameof(ShowServerEditor));
     }
 
     private void StartNewBot()
@@ -321,6 +444,20 @@ public sealed class MainWindowViewModel : ViewModelBase
         BotEditorArgs = string.Empty;
         BotEditorMetadata = string.Empty;
         BotEditorMessage = "Creating a new bot profile.";
+        RefreshContextProjection();
+    }
+
+    private void StartNewServer()
+    {
+        SelectedServer = null;
+        _currentContext = WorkspaceContext.ServerDetails;
+        ServerEditorName = string.Empty;
+        ServerEditorHost = string.Empty;
+        ServerEditorPort = "8080";
+        ServerEditorUseTls = false;
+        ServerEditorMetadata = string.Empty;
+        ServerEditorPlugins = string.Empty;
+        ServerEditorMessage = "Creating a new known server.";
         RefreshContextProjection();
     }
 
@@ -405,6 +542,20 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(Bots));
     }
 
+    private void LoadServersFromStorage()
+    {
+        var servers = _storage.ListKnownServersAsync().GetAwaiter().GetResult();
+
+        Servers.Clear();
+        foreach (var server in servers)
+        {
+            var cache = _storage.GetServerPluginCacheAsync(server.ServerId).GetAwaiter().GetResult();
+            Servers.Add(ServerSummaryItem.FromKnownServer(server, cache));
+        }
+
+        OnPropertyChanged(nameof(Servers));
+    }
+
     private BotSummaryItem? FindBotById(string botId)
     {
         foreach (var bot in Bots)
@@ -418,6 +569,19 @@ public sealed class MainWindowViewModel : ViewModelBase
         return null;
     }
 
+    private ServerSummaryItem? FindServerById(string serverId)
+    {
+        foreach (var server in Servers)
+        {
+            if (server.ServerId == serverId)
+            {
+                return server;
+            }
+        }
+
+        return null;
+    }
+
     private void PopulateBotEditor(BotSummaryItem bot)
     {
         BotEditorName = bot.Name;
@@ -425,6 +589,69 @@ public sealed class MainWindowViewModel : ViewModelBase
         BotEditorArgs = string.Join(" ", bot.LaunchArgs);
         BotEditorMetadata = FormatMetadata(bot.Metadata);
         BotEditorMessage = $"Editing bot profile: {bot.Name}";
+    }
+
+    private void PopulateServerEditor(ServerSummaryItem server)
+    {
+        ServerEditorName = server.Name;
+        ServerEditorHost = server.Host;
+        ServerEditorPort = server.Port.ToString();
+        ServerEditorUseTls = server.UseTls;
+        ServerEditorMetadata = FormatMetadata(server.Metadata);
+        ServerEditorPlugins = FormatPluginCatalog(server.CachedPlugins);
+        ServerEditorMessage = $"Editing known server: {server.Name}";
+    }
+
+    private void SaveServerProfile()
+    {
+        if (!int.TryParse(ServerEditorPort.Trim(), out var parsedPort))
+        {
+            ServerEditorMessage = "Cannot save server: server_port_invalid";
+            return;
+        }
+
+        var serverId = SelectedServer?.ServerId ?? Guid.NewGuid().ToString("N");
+        var createdAt = SelectedServer?.CreatedAtUtc ?? DateTimeOffset.UtcNow;
+        var updatedAt = DateTimeOffset.UtcNow;
+
+        var server = KnownServer.Create(
+            serverId: serverId,
+            name: ServerEditorName.Trim(),
+            host: ServerEditorHost.Trim(),
+            port: parsedPort,
+            useTls: ServerEditorUseTls,
+            metadata: ParseMetadata(ServerEditorMetadata),
+            createdAtUtc: createdAt,
+            updatedAtUtc: updatedAt);
+
+        var serverErrors = server.Validate();
+        if (serverErrors.Count > 0)
+        {
+            ServerEditorMessage = $"Cannot save server: {string.Join(", ", serverErrors)}";
+            return;
+        }
+
+        var plugins = ParsePluginCatalog(ServerEditorPlugins, out var pluginErrors);
+        if (pluginErrors.Count > 0)
+        {
+            ServerEditorMessage = $"Cannot save plugin cache: {string.Join(", ", pluginErrors)}";
+            return;
+        }
+
+        var cache = ServerPluginCache.Create(serverId, plugins, DateTimeOffset.UtcNow);
+
+        _storage.UpsertKnownServerAsync(server).GetAwaiter().GetResult();
+        _storage.UpsertServerPluginCacheAsync(cache).GetAwaiter().GetResult();
+        LoadServersFromStorage();
+        SelectedServer = FindServerById(serverId);
+        ServerEditorMessage = $"Saved known server: {server.Name}";
+        _logger.Log(LogLevel.Information, "known_server_saved", "Known server and plugin cache persisted.",
+            new Dictionary<string, string>
+            {
+                ["server_id"] = server.ServerId,
+                ["name"] = server.Name,
+                ["plugin_count"] = plugins.Count.ToString()
+            });
     }
 
     private static IReadOnlyList<string> ParseArgs(string raw)
@@ -472,6 +699,66 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         return string.Join(';', parts);
+    }
+
+    private static string FormatPluginCatalog(IReadOnlyList<PluginDescriptor> plugins)
+    {
+        if (plugins.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>(plugins.Count);
+        foreach (var plugin in plugins)
+        {
+            lines.Add($"{plugin.Name}|{plugin.DisplayName}|{plugin.Version}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static IReadOnlyList<PluginDescriptor> ParsePluginCatalog(string raw, out IReadOnlyList<string> errors)
+    {
+        var plugins = new List<PluginDescriptor>();
+        var parseErrors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            errors = parseErrors;
+            return plugins;
+        }
+
+        var lines = raw.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            var parts = line.Split('|', 3, StringSplitOptions.TrimEntries);
+            if (parts.Length != 3)
+            {
+                parseErrors.Add($"plugin_line_{i + 1}_format_invalid");
+                continue;
+            }
+
+            var descriptor = new PluginDescriptor(parts[0], parts[1], parts[2]);
+            var descriptorErrors = descriptor.Validate();
+            foreach (var descriptorError in descriptorErrors)
+            {
+                parseErrors.Add($"plugin_line_{i + 1}_{descriptorError}");
+            }
+
+            if (descriptorErrors.Count == 0)
+            {
+                plugins.Add(descriptor);
+            }
+        }
+
+        errors = parseErrors;
+        return plugins;
     }
 }
 
@@ -568,7 +855,44 @@ public sealed class BotSummaryItem
     }
 }
 
-public sealed record ServerSummaryItem(string Name, string Endpoint, string Status);
+public sealed class ServerSummaryItem
+{
+    public required string ServerId { get; init; }
+    public required string Name { get; init; }
+    public required string Host { get; init; }
+    public required int Port { get; init; }
+    public required bool UseTls { get; init; }
+    public required DateTimeOffset CreatedAtUtc { get; init; }
+    public required IReadOnlyDictionary<string, string> Metadata { get; init; }
+    public required IReadOnlyList<PluginDescriptor> CachedPlugins { get; init; }
+    public required string Endpoint { get; init; }
+    public required string Status { get; init; }
+    public int PluginCount => CachedPlugins.Count;
+
+    public static ServerSummaryItem FromKnownServer(KnownServer server, ServerPluginCache? cache)
+    {
+        var scheme = server.UseTls ? "https" : "http";
+        var endpoint = $"{scheme}://{server.Host}:{server.Port}";
+        var plugins = cache?.Plugins ?? Array.Empty<PluginDescriptor>();
+        var status = cache is null
+            ? "Status: cached plugins unavailable"
+            : $"Status: plugin cache has {cache.Plugins.Count} entries";
+
+        return new ServerSummaryItem
+        {
+            ServerId = server.ServerId,
+            Name = server.Name,
+            Host = server.Host,
+            Port = server.Port,
+            UseTls = server.UseTls,
+            CreatedAtUtc = server.CreatedAtUtc,
+            Metadata = server.Metadata,
+            CachedPlugins = plugins,
+            Endpoint = endpoint,
+            Status = status
+        };
+    }
+}
 
 public enum WorkspaceContext
 {
