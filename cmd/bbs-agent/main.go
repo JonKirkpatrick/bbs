@@ -728,19 +728,33 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 		return nil, fmt.Errorf("server connect failed: %w", err)
 	}
 
-	registerCommand := buildRegisterCommand(a.name, a.credentials, a.capabilities, "")
-	fmt.Fprintf(os.Stderr, "[agent] sending REGISTER to %s\n", a.server)
-	if err := a.sendServerCommand(registerCommand); err != nil {
-		return nil, fmt.Errorf("failed to send register command: %w", err)
-	}
-
-	registerMsg, err := waitForRegister(a.registerCh, a.registerWait)
+	registerMsg, err := a.sendRegisterAndWait(a.credentials)
 	if err != nil {
 		return nil, err
 	}
 
+	if shouldRetryRegisterWithFreshCredentials(registerMsg, a.credentials) {
+		fmt.Fprintln(os.Stderr, "[agent] register/auth failed with cached credentials; retrying with fresh identity request")
+
+		// Reconnect before retry so we do not reuse a server connection that may have been closed
+		// after the first auth/register failure.
+		if a.conn != nil {
+			_ = a.conn.Close()
+			a.conn = nil
+		}
+		if err := a.connectServer(); err != nil {
+			return nil, fmt.Errorf("server reconnect failed before credential reset retry: %w", err)
+		}
+
+		a.credentials = credentials{}
+		registerMsg, err = a.sendRegisterAndWait(a.credentials)
+		if err != nil {
+			return nil, fmt.Errorf("register retry with fresh credentials failed: %w", err)
+		}
+	}
+
 	if strings.ToLower(strings.TrimSpace(registerMsg.Status)) != "ok" {
-		return nil, fmt.Errorf("register rejected: %v", registerMsg.Payload)
+		return nil, fmt.Errorf("register rejected: type=%s status=%s payload=%v", registerMsg.Type, registerMsg.Status, registerMsg.Payload)
 	}
 
 	registerPayload, _ := registerMsg.Payload.(map[string]interface{})
@@ -770,6 +784,48 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 		"dashboard_port":     a.dashboardPort,
 		"dashboard_endpoint": a.dashboardEndpoint,
 	}, nil
+}
+
+func (a *agent) sendRegisterAndWait(creds credentials) (serverMessage, error) {
+	drainRegisterChannel(a.registerCh)
+
+	registerCommand := buildRegisterCommand(a.name, creds, a.capabilities, "")
+	fmt.Fprintf(os.Stderr, "[agent] sending REGISTER to %s\n", a.server)
+	if err := a.sendServerCommand(registerCommand); err != nil {
+		return serverMessage{}, fmt.Errorf("failed to send register command: %w", err)
+	}
+
+	registerMsg, err := waitForRegister(a.registerCh, a.registerWait)
+	if err != nil {
+		return serverMessage{}, err
+	}
+
+	return registerMsg, nil
+}
+
+func drainRegisterChannel(ch <-chan serverMessage) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
+}
+
+func shouldRetryRegisterWithFreshCredentials(registerMsg serverMessage, creds credentials) bool {
+	if strings.TrimSpace(creds.BotID) == "" || strings.TrimSpace(creds.BotSecret) == "" {
+		return false
+	}
+
+	msgType := strings.ToLower(strings.TrimSpace(registerMsg.Type))
+	status := strings.ToLower(strings.TrimSpace(registerMsg.Status))
+
+	if status != "ok" {
+		return true
+	}
+
+	return msgType == "auth"
 }
 
 func waitForRegister(ch <-chan serverMessage, timeout time.Duration) (serverMessage, error) {
