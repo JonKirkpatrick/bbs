@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+# Post-removal script for bbs-client
+
+# Clean up desktop database if present
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+
+# Clean up icon cache if present
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
+fi
+
+exit 0
