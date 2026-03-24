@@ -90,6 +90,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly object _serverCatalogRefreshLock = new();
     private readonly object _deployConnectionLock = new();
     private readonly Dictionary<string, TcpClient> _activeDeployConnections = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _activeAccessCacheLock = new();
+    private readonly Dictionary<string, (string ServerId, ServerAccessMetadata Access)> _activeServerAccessByBotId = new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
     {
@@ -815,6 +817,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         try
         {
             DisconnectActiveDeploymentConnection(selectedBotId, sendQuit: true);
+            ClearActiveServerAccess(selectedBotId);
             var result = _orchestration.DisarmBotAsync(profile).GetAwaiter().GetResult();
             LoadBotsFromStorage();
             SelectedBot = FindBotById(profile.BotId);
@@ -876,18 +879,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
             {
                 [ServerAccessServerIdMetadataKey] = server.ServerId,
-                [ServerAccessSessionIdMetadataKey] = registerResponse.SessionId,
                 [ServerAccessBotIdMetadataKey] = registerResponse.ServerBotId
             };
 
             if (!string.IsNullOrWhiteSpace(registerResponse.ServerBotSecret))
             {
                 attachedMetadata[ServerAccessBotSecretMetadataKey] = registerResponse.ServerBotSecret;
-            }
-
-            if (!string.IsNullOrWhiteSpace(registerResponse.OwnerToken))
-            {
-                attachedMetadata[ServerAccessOwnerTokenMetadataKey] = registerResponse.OwnerToken;
             }
 
             if (!string.IsNullOrWhiteSpace(registerResponse.DashboardEndpoint))
@@ -913,6 +910,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             _storage.UpsertBotProfileAsync(attachedProfile).GetAwaiter().GetResult();
             _storage.UpsertAgentRuntimeStateAsync(activeSessionState).GetAwaiter().GetResult();
+            SetActiveServerAccess(sourceProfile.BotId, server.ServerId, registerResponse.OwnerToken, registerResponse.DashboardEndpoint);
 
             LoadBotsFromStorage();
             SelectedBot = FindBotById(sourceProfile.BotId);
@@ -937,18 +935,17 @@ public sealed class MainWindowViewModel : ViewModelBase
     private RegisterHandshakeResult RegisterBotSessionWithServer(ServerSummaryItem server, BotProfile profile)
     {
         var metadata = new Dictionary<string, string>(profile.Metadata, StringComparer.OrdinalIgnoreCase);
-        var botIdentity = metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botIdValue)
+        var existingServerId = metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var value) ? value : string.Empty;
+        var canReuseIdentity = string.Equals(existingServerId, server.ServerId, StringComparison.OrdinalIgnoreCase);
+        var botIdentity = canReuseIdentity && metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botIdValue)
             ? botIdValue.Trim()
             : string.Empty;
-        var botSecret = metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecretValue)
+        var botSecret = canReuseIdentity && metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecretValue)
             ? botSecretValue.Trim()
-            : string.Empty;
-        var ownerToken = metadata.TryGetValue(ServerAccessOwnerTokenMetadataKey, out var ownerTokenValue)
-            ? ownerTokenValue.Trim()
             : string.Empty;
 
         var registerName = SanitizeRegisterName(profile.Name);
-        var registerCommand = BuildRegisterCommand(registerName, botIdentity, botSecret, ownerToken);
+        var registerCommand = BuildRegisterCommand(registerName, botIdentity, botSecret, string.Empty);
         var fallbackCommand = BuildRegisterCommand(registerName, string.Empty, string.Empty, string.Empty);
 
         if (!string.IsNullOrWhiteSpace(botIdentity) && !string.IsNullOrWhiteSpace(botSecret))
@@ -1249,12 +1246,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
 
         Bots.Clear();
-        foreach (var profile in profiles)
+        foreach (var rawProfile in profiles)
         {
+            var profile = SanitizePersistedBotProfile(rawProfile);
             var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
             if (runtimeState is not null &&
                 runtimeState.LifecycleState == AgentLifecycleState.ActiveSession &&
-                !profile.Metadata.ContainsKey(ServerAccessSessionIdMetadataKey))
+                !HasActiveDeployConnection(profile.BotId))
             {
                 runtimeState = new AgentRuntimeState(
                     BotId: runtimeState.BotId,
@@ -1274,6 +1272,29 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(Bots));
+    }
+
+    private BotProfile SanitizePersistedBotProfile(BotProfile profile)
+    {
+        var metadata = new Dictionary<string, string>(profile.Metadata, StringComparer.OrdinalIgnoreCase);
+        var removedOwnerToken = metadata.Remove(ServerAccessOwnerTokenMetadataKey);
+        var removedSessionId = metadata.Remove(ServerAccessSessionIdMetadataKey);
+        if (!removedOwnerToken && !removedSessionId)
+        {
+            return profile;
+        }
+
+        var sanitized = BotProfile.Create(
+            botId: profile.BotId,
+            name: profile.Name,
+            launchPath: profile.LaunchPath,
+            launchArgs: profile.LaunchArgs,
+            metadata: metadata,
+            createdAtUtc: profile.CreatedAtUtc,
+            updatedAtUtc: DateTimeOffset.UtcNow);
+
+        _storage.UpsertBotProfileAsync(sanitized).GetAwaiter().GetResult();
+        return sanitized;
     }
 
     private void LoadServersFromStorage()
@@ -2008,6 +2029,18 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private ServerAccessMetadata ResolveServerAccessMetadata(string? selectedServerId, string? selectedBotId)
     {
+        if (!string.IsNullOrWhiteSpace(selectedBotId) &&
+            TryGetActiveServerAccess(selectedBotId, out var activeServerId, out var activeAccess) &&
+            (string.IsNullOrWhiteSpace(selectedServerId) || string.Equals(selectedServerId, activeServerId, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (string.IsNullOrWhiteSpace(activeAccess.OwnerToken))
+            {
+                return ServerAccessMetadata.Invalid("Owner token pending from active bot session.");
+            }
+
+            return activeAccess;
+        }
+
         BotProfile? profile = null;
         AgentRuntimeState? runtimeState = null;
 
@@ -2036,6 +2069,48 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         return ServerAccessMetadataResolver.Resolve(profile, runtimeState, selectedServerId);
+    }
+
+    private void SetActiveServerAccess(string botId, string serverId, string ownerToken, string dashboardEndpoint)
+    {
+        var access = string.IsNullOrWhiteSpace(ownerToken)
+            ? ServerAccessMetadata.Invalid("Owner token pending from active bot session.")
+            : new ServerAccessMetadata(
+                IsValid: true,
+                OwnerToken: ownerToken,
+                DashboardEndpoint: dashboardEndpoint,
+                StatusMessage: "Server access metadata loaded from active bot session.",
+                Source: "active-session-cache");
+
+        lock (_activeAccessCacheLock)
+        {
+            _activeServerAccessByBotId[botId] = (serverId, access);
+        }
+    }
+
+    private void ClearActiveServerAccess(string botId)
+    {
+        lock (_activeAccessCacheLock)
+        {
+            _activeServerAccessByBotId.Remove(botId);
+        }
+    }
+
+    private bool TryGetActiveServerAccess(string botId, out string serverId, out ServerAccessMetadata access)
+    {
+        lock (_activeAccessCacheLock)
+        {
+            if (_activeServerAccessByBotId.TryGetValue(botId, out var value))
+            {
+                serverId = value.ServerId;
+                access = value.Access;
+                return true;
+            }
+        }
+
+        serverId = string.Empty;
+        access = ServerAccessMetadata.Invalid("No active session metadata cached.");
+        return false;
     }
 
     private static string MaskToken(string token)
