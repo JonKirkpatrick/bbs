@@ -23,7 +23,7 @@ help:
 	@echo "Packaging:"
 	@echo "  make deb                Build .deb package (usage: make deb [VERSION=0.3.0])"
 	@echo "  make deb VERSION=v0.3.0 Build .deb package with specific version"
-	@echo "  make deb-client         Build bbs-client .deb (usage: make deb-client [VERSION=0.1.0-alpha])"
+	@echo "  make deb-client         Build bbs-client .deb (usage: make deb-client [VERSION=0.1.0])"
 	@echo ""
 	@echo "Release Management:"
 	@echo "  make version            Show current version info"

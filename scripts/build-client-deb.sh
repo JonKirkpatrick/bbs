@@ -3,14 +3,14 @@ set -e
 
 # Build script for creating a .deb package for bbs-client
 # Usage: ./scripts/build-client-deb.sh [VERSION]
-# Example: ./scripts/build-client-deb.sh 0.1.0-alpha
+# Example: ./scripts/build-client-deb.sh 0.1.0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CLIENT_ROOT="$REPO_ROOT/bbs-client"
 
 # Determine version
-VERSION="${1:-0.1.0-alpha}"
+VERSION="${1:-0.1.0}"
 VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
 DEB_VERSION="$VERSION_CLEAN"
 

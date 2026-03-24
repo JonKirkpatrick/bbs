@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added (Server)
 (new server changes will be captured here)
 
-### Added (Client - bbs-client v0.1.0-alpha)
+### Added (Client - bbs-client v0.1.0)
 - **Local Bot Orchestration**: Complete arm/disarm/deploy lifecycle for bot profiles with Unix socket IPC
 - **Bot Name Sanitization**: Client profiles control bot identity; names with spaces are automatically sanitized (spaces → underscores) when passed to agent
 - **Dynamic Server Registration**: `server_connect` control command allows client to register with a server without agent restart, with automatic retry on endpoint failure

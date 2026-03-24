@@ -1,5 +1,5 @@
 Package: bbs-client
-Version: 0.1.0-alpha
+Version: 0.1.0
 Architecture: amd64
 Maintainer: Jon Kirkpatrick <jon@example.com>
 Homepage: https://github.com/JonKirkpatrick/bbs
