@@ -738,12 +738,28 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        var selectedBotId = SelectedBot.BotId;
         var profile = SelectedBot.ToProfile();
-        var result = _orchestration.ArmBotAsync(profile).GetAwaiter().GetResult();
-        LoadBotsFromStorage();
-        SelectedBot = FindBotById(profile.BotId);
-        TriggerServerAccessRefresh();
-        BotEditorMessage = result.Message;
+        try
+        {
+            var result = _orchestration.ArmBotAsync(profile).GetAwaiter().GetResult();
+            LoadBotsFromStorage();
+            SelectedBot = FindBotById(profile.BotId);
+            TriggerServerAccessRefresh();
+            BotEditorMessage = result.Message;
+        }
+        catch (SocketException socketException)
+        {
+            HandleOrchestrationException("arm", selectedBotId, $"socket_{socketException.SocketErrorCode}".ToLowerInvariant(), socketException);
+        }
+        catch (InvalidOperationException invalidOperationException)
+        {
+            HandleOrchestrationException("arm", selectedBotId, "stale_process_handle", invalidOperationException);
+        }
+        catch (Exception ex)
+        {
+            HandleOrchestrationException("arm", selectedBotId, "orchestration_failure", ex);
+        }
     }
 
     private void DisarmSelectedBot()
@@ -753,12 +769,45 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        var selectedBotId = SelectedBot.BotId;
         var profile = SelectedBot.ToProfile();
-        var result = _orchestration.DisarmBotAsync(profile).GetAwaiter().GetResult();
+        try
+        {
+            var result = _orchestration.DisarmBotAsync(profile).GetAwaiter().GetResult();
+            LoadBotsFromStorage();
+            SelectedBot = FindBotById(profile.BotId);
+            TriggerServerAccessRefresh();
+            BotEditorMessage = result.Message;
+        }
+        catch (SocketException socketException)
+        {
+            HandleOrchestrationException("disarm", selectedBotId, $"socket_{socketException.SocketErrorCode}".ToLowerInvariant(), socketException);
+        }
+        catch (InvalidOperationException invalidOperationException)
+        {
+            HandleOrchestrationException("disarm", selectedBotId, "stale_process_handle", invalidOperationException);
+        }
+        catch (Exception ex)
+        {
+            HandleOrchestrationException("disarm", selectedBotId, "orchestration_failure", ex);
+        }
+    }
+
+    private void HandleOrchestrationException(string action, string botId, string errorCode, Exception ex)
+    {
+        BotEditorMessage = $"Unable to {action} bot ({errorCode}). You can retry without restarting the app.";
+        _logger.Log(LogLevel.Warning, "bot_orchestration_exception", "Bot orchestration command failed.",
+            new Dictionary<string, string>
+            {
+                ["action"] = action,
+                ["bot_id"] = botId,
+                ["error_code"] = errorCode,
+                ["exception_type"] = ex.GetType().Name
+            });
+
         LoadBotsFromStorage();
-        SelectedBot = FindBotById(profile.BotId);
+        SelectedBot = FindBotById(botId);
         TriggerServerAccessRefresh();
-        BotEditorMessage = result.Message;
     }
 
     private void LoadBotsFromStorage()

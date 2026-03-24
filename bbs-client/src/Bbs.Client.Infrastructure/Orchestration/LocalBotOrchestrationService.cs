@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Bbs.Client.Core.Domain;
@@ -45,37 +46,90 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService
             success = true;
         }
 
-        await _storage.UpsertAgentRuntimeStateAsync(nextState, cancellationToken);
-        _logger?.Log(success ? LogLevel.Information : LogLevel.Warning,
-            "bot_arm_result",
-            message,
-            new System.Collections.Generic.Dictionary<string, string>
-            {
-                ["bot_id"] = profile.BotId,
-                ["state"] = nextState.LifecycleState.ToString(),
-                ["armed"] = nextState.IsArmed.ToString()
-            });
+        try
+        {
+            await _storage.UpsertAgentRuntimeStateAsync(nextState, cancellationToken);
+            _logger?.Log(success ? LogLevel.Information : LogLevel.Warning,
+                "bot_arm_result",
+                message,
+                new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["bot_id"] = profile.BotId,
+                    ["state"] = nextState.LifecycleState.ToString(),
+                    ["armed"] = nextState.IsArmed.ToString()
+                });
 
-        return new BotOrchestrationResult(success, nextState, message);
+            return new BotOrchestrationResult(success, nextState, message);
+        }
+        catch (Exception ex)
+        {
+            var errorCode = MapExceptionToErrorCode(ex);
+            var failureState = BuildState(profile.BotId, AgentLifecycleState.Error, isArmed: false, errorCode);
+            var failureMessage = $"Bot arm failed due to runtime error ({errorCode}). You can retry without restarting the app.";
+
+            _logger?.Log(LogLevel.Warning,
+                "bot_arm_runtime_error",
+                failureMessage,
+                new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["bot_id"] = profile.BotId,
+                    ["error_code"] = errorCode,
+                    ["exception_type"] = ex.GetType().Name
+                });
+
+            return new BotOrchestrationResult(false, failureState, failureMessage);
+        }
     }
 
     public async Task<BotOrchestrationResult> DisarmBotAsync(BotProfile profile, CancellationToken cancellationToken = default)
     {
         var nextState = BuildState(profile.BotId, AgentLifecycleState.Stopped, isArmed: false, null);
-        await _storage.UpsertAgentRuntimeStateAsync(nextState, cancellationToken);
+        try
+        {
+            await _storage.UpsertAgentRuntimeStateAsync(nextState, cancellationToken);
 
-        const string message = "Bot disarmed successfully.";
-        _logger?.Log(LogLevel.Information,
-            "bot_disarm_result",
-            message,
-            new System.Collections.Generic.Dictionary<string, string>
-            {
-                ["bot_id"] = profile.BotId,
-                ["state"] = nextState.LifecycleState.ToString(),
-                ["armed"] = nextState.IsArmed.ToString()
-            });
+            const string message = "Bot disarmed successfully.";
+            _logger?.Log(LogLevel.Information,
+                "bot_disarm_result",
+                message,
+                new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["bot_id"] = profile.BotId,
+                    ["state"] = nextState.LifecycleState.ToString(),
+                    ["armed"] = nextState.IsArmed.ToString()
+                });
 
-        return new BotOrchestrationResult(true, nextState, message);
+            return new BotOrchestrationResult(true, nextState, message);
+        }
+        catch (Exception ex)
+        {
+            var errorCode = MapExceptionToErrorCode(ex);
+            var failureState = BuildState(profile.BotId, AgentLifecycleState.Error, isArmed: false, errorCode);
+            var failureMessage = $"Bot disarm failed due to runtime error ({errorCode}). You can retry without restarting the app.";
+
+            _logger?.Log(LogLevel.Warning,
+                "bot_disarm_runtime_error",
+                failureMessage,
+                new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["bot_id"] = profile.BotId,
+                    ["error_code"] = errorCode,
+                    ["exception_type"] = ex.GetType().Name
+                });
+
+            return new BotOrchestrationResult(false, failureState, failureMessage);
+        }
+    }
+
+    private static string MapExceptionToErrorCode(Exception ex)
+    {
+        return ex switch
+        {
+            InvalidOperationException => "stale_process_handle",
+            SocketException socketException => $"socket_{socketException.SocketErrorCode}".ToLowerInvariant(),
+            OperationCanceledException => "operation_canceled",
+            _ => "runtime_state_persist_failed"
+        };
     }
 
     private static AgentRuntimeState BuildState(string botId, AgentLifecycleState lifecycle, bool isArmed, string? lastErrorCode)
