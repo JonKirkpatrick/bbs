@@ -23,11 +23,24 @@ public sealed class MainWindowViewModel : ViewModelBase
     private const int ServerProbeTimeoutMs = 1200;
     private const int ServerCatalogFetchTimeoutMs = 2000;
     private const int ServerCatalogSelectionRefreshCooldownMs = 5000;
+    private const int DashboardPortFallback = 3000;
     private const int ServerProbeMaxAttempts = 2;
     private const int ServerProbeRetryDelayMs = 200;
     private const string ProbeStatusMetadataKey = "probe_status";
     private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
     private const string ProbeLastErrorMetadataKey = "probe_last_error";
+    private static readonly string[] DashboardEndpointMetadataKeys =
+    {
+        "dashboard_endpoint",
+        "server.dashboard_endpoint",
+        "server_access.dashboard_endpoint"
+    };
+
+    private static readonly string[] DashboardPortMetadataKeys =
+    {
+        "dashboard_port",
+        "server.dashboard_port"
+    };
 
     private readonly IClientLogger _logger;
     private readonly IClientStorage _storage;
@@ -1353,12 +1366,63 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         var preferredScheme = knownServer.UseTls ? "https" : "http";
         var alternateScheme = knownServer.UseTls ? "http" : "https";
+        var endpoints = new List<string>();
 
-        return new[]
+        var metadataDashboardEndpoint = FirstNonEmptyMetadataValue(knownServer.Metadata, DashboardEndpointMetadataKeys);
+        if (Uri.TryCreate(metadataDashboardEndpoint, UriKind.Absolute, out var dashboardUri))
         {
-            $"{preferredScheme}://{knownServer.Host}:{knownServer.Port}",
-            $"{alternateScheme}://{knownServer.Host}:{knownServer.Port}"
-        };
+            endpoints.Add(BuildBaseEndpoint(dashboardUri.Scheme, dashboardUri.Host, dashboardUri.Port));
+        }
+
+        var metadataDashboardPort = ParseDashboardPort(knownServer.Metadata);
+        if (metadataDashboardPort is not null)
+        {
+            endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, metadataDashboardPort.Value));
+            endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, metadataDashboardPort.Value));
+        }
+
+        endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, knownServer.Port));
+        endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, knownServer.Port));
+
+        if (knownServer.Port != DashboardPortFallback)
+        {
+            endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, DashboardPortFallback));
+            endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, DashboardPortFallback));
+        }
+
+        return endpoints
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static int? ParseDashboardPort(IReadOnlyDictionary<string, string> metadata)
+    {
+        var raw = FirstNonEmptyMetadataValue(metadata, DashboardPortMetadataKeys);
+        if (!int.TryParse(raw, out var port) || port is < 1 or > 65535)
+        {
+            return null;
+        }
+
+        return port;
+    }
+
+    private static string? FirstNonEmptyMetadataValue(IReadOnlyDictionary<string, string> metadata, IEnumerable<string> keys)
+    {
+        foreach (var key in keys)
+        {
+            if (metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static string BuildBaseEndpoint(string scheme, string host, int port)
+    {
+        return $"{scheme}://{host}:{port}";
     }
 
     private void TriggerServerAccessRefresh()
