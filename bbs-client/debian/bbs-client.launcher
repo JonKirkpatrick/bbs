@@ -4,6 +4,7 @@
 
 INSTALL_DIR="/opt/bbs-client"
 APP_DLL="$INSTALL_DIR/Bbs.Client.App.dll"
+AGENT_BIN_DIR="$INSTALL_DIR/bin"
 
 if [ ! -f "$APP_DLL" ]; then
     echo "Error: bbs-client installation not found at $INSTALL_DIR" >&2
@@ -14,6 +15,11 @@ fi
 if ! command -v dotnet >/dev/null 2>&1; then
     echo "Error: dotnet runtime not found. Please install dotnet-runtime-8.0 or later." >&2
     exit 1
+fi
+
+# Ensure packaged bbs-agent is discoverable when client launches child processes.
+if [ -d "$AGENT_BIN_DIR" ]; then
+    export PATH="$AGENT_BIN_DIR:$PATH"
 fi
 
 # Run the application, passing along any command line arguments

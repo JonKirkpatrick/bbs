@@ -20,6 +20,12 @@ if ! command -v dotnet >/dev/null 2>&1; then
     exit 1
 fi
 
+# Check for Go toolchain (needed to package bbs-agent for local orchestration)
+if ! command -v go >/dev/null 2>&1; then
+    echo "Error: go CLI not found. Please install Go to package bbs-agent with bbs-client."
+    exit 1
+fi
+
 echo "Building deb package for bbs-client v$DEB_VERSION..."
 
 # Clean previous builds
@@ -32,6 +38,12 @@ echo "Creating package structure..."
 PKGDIR="$REPO_ROOT/build/deb-client/bbs-client-$DEB_VERSION"
 mkdir -p "$PKGDIR"/{DEBIAN,opt/bbs-client,usr/bin,usr/share/applications,usr/share/icons/hicolor/256x256/apps}
 
+# Build bundled bbs-agent for packaged client orchestration
+echo "Building bundled bbs-agent..."
+mkdir -p "$PKGDIR/opt/bbs-client/bin"
+cd "$REPO_ROOT"
+go build -trimpath -ldflags "-s -w -X main.buildVersion=v$DEB_VERSION" -o "$PKGDIR/opt/bbs-client/bin/bbs-agent" ./cmd/bbs-agent
+
 # Build and publish client
 echo "Building bbs-client application..."
 cd "$CLIENT_ROOT"
@@ -40,6 +52,7 @@ dotnet publish -c Release -o "$PKGDIR/opt/bbs-client" src/Bbs.Client.App/Bbs.Cli
 
 # Make the main DLL executable
 chmod +x "$PKGDIR/opt/bbs-client/Bbs.Client.App.dll" || true
+chmod 0755 "$PKGDIR/opt/bbs-client/bin/bbs-agent"
 
 # Install launcher script
 echo "Installing launcher script..."
@@ -73,6 +86,7 @@ chmod 0755 "$PKGDIR/DEBIAN/postrm"
 # Set permissions
 echo "Setting file permissions..."
 chmod 0755 "$PKGDIR/opt/bbs-client"
+chmod 0755 "$PKGDIR/opt/bbs-client/bin"
 chmod 0755 "$PKGDIR/usr/bin"
 chmod 0755 "$PKGDIR/usr/share/applications"
 
