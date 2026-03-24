@@ -23,7 +23,7 @@ public sealed class SqliteClientStorageTests
         var schemaVersion = await storage.GetSchemaVersionAsync();
 
         Assert.True(File.Exists(dbPath));
-        Assert.Equal(2, schemaVersion);
+        Assert.Equal(3, schemaVersion);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class SqliteClientStorageTests
                 );
 
                 INSERT INTO schema_version(id, version, updated_at_utc)
-                VALUES (1, 1, '2026-03-23T00:00:00+00:00');
+                VALUES (1, 2, '2026-03-23T00:00:00+00:00');
                 """;
             await command.ExecuteNonQueryAsync();
         }
@@ -78,6 +78,7 @@ public sealed class SqliteClientStorageTests
             botId: "bot-1",
             name: "Counter Bot",
             launchPath: "/opt/bots/counter.py",
+            avatarImagePath: "/opt/bots/avatars/counter.png",
             launchArgs: new[] { "--ranked" },
             metadata: new Dictionary<string, string> { ["lang"] = "python" },
             createdAtUtc: DateTimeOffset.Parse("2026-03-23T00:00:00+00:00"),
@@ -123,6 +124,7 @@ public sealed class SqliteClientStorageTests
         Assert.Equal(bot.BotId, loadedBot.BotId);
         Assert.Equal(bot.Name, loadedBot.Name);
         Assert.Equal(bot.LaunchPath, loadedBot.LaunchPath);
+        Assert.Equal(bot.AvatarImagePath, loadedBot.AvatarImagePath);
         Assert.Equal(bot.LaunchArgs, loadedBot.LaunchArgs);
 
         Assert.Single(loadedServers);
@@ -176,6 +178,7 @@ public sealed class SqliteClientStorageTests
             botId: "bot-persist-1",
             name: "Persistent Bot",
             launchPath: "/opt/bots/persistent.py",
+            avatarImagePath: "/opt/bots/avatars/default-01.png",
             launchArgs: new[] { "--ranked" },
             metadata: new Dictionary<string, string> { ["lang"] = "python" });
         await storage1.UpsertBotProfileAsync(bot);
@@ -184,7 +187,10 @@ public sealed class SqliteClientStorageTests
         await storage2.InitializeAsync();
         var loaded = await storage2.ListBotProfilesAsync();
 
-        Assert.Contains(loaded, b => b.BotId == "bot-persist-1" && b.Name == "Persistent Bot");
+        Assert.Contains(loaded, b =>
+            b.BotId == "bot-persist-1" &&
+            b.Name == "Persistent Bot" &&
+            b.AvatarImagePath == "/opt/bots/avatars/default-01.png");
     }
 
     [Fact]

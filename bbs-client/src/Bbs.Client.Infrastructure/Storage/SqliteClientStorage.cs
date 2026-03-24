@@ -14,7 +14,7 @@ namespace Bbs.Client.Infrastructure.Storage;
 public sealed class SqliteClientStorage : IClientStorage
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private readonly string _dbPath;
 
     public SqliteClientStorage(string? dbPath = null)
@@ -105,22 +105,24 @@ public sealed class SqliteClientStorage : IClientStorage
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT bot_id, name, launch_path, launch_args_json, metadata_json, created_at_utc, updated_at_utc FROM bot_profiles ORDER BY created_at_utc";
+        command.CommandText = "SELECT bot_id, name, launch_path, avatar_image_path, launch_args_json, metadata_json, created_at_utc, updated_at_utc FROM bot_profiles ORDER BY created_at_utc";
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var results = new List<BotProfile>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            var args = JsonSerializer.Deserialize<List<string>>(reader.GetString(3), JsonOptions) ?? new List<string>();
-            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(4), JsonOptions) ?? new Dictionary<string, string>();
+            var avatarImagePath = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var args = JsonSerializer.Deserialize<List<string>>(reader.GetString(4), JsonOptions) ?? new List<string>();
+            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(5), JsonOptions) ?? new Dictionary<string, string>();
             results.Add(BotProfile.Create(
                 botId: reader.GetString(0),
                 name: reader.GetString(1),
                 launchPath: reader.GetString(2),
+                avatarImagePath: avatarImagePath,
                 launchArgs: args,
                 metadata: metadata,
-                createdAtUtc: DateTimeOffset.Parse(reader.GetString(5)),
-                updatedAtUtc: DateTimeOffset.Parse(reader.GetString(6))));
+                createdAtUtc: DateTimeOffset.Parse(reader.GetString(6)),
+                updatedAtUtc: DateTimeOffset.Parse(reader.GetString(7))));
         }
 
         return results;
@@ -131,12 +133,13 @@ public sealed class SqliteClientStorage : IClientStorage
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO bot_profiles(bot_id, name, launch_path, launch_args_json, metadata_json, created_at_utc, updated_at_utc)
-            VALUES ($id, $name, $launch_path, $launch_args_json, $metadata_json, $created_at_utc, $updated_at_utc)
+            INSERT INTO bot_profiles(bot_id, name, launch_path, avatar_image_path, launch_args_json, metadata_json, created_at_utc, updated_at_utc)
+            VALUES ($id, $name, $launch_path, $avatar_image_path, $launch_args_json, $metadata_json, $created_at_utc, $updated_at_utc)
             ON CONFLICT(bot_id)
             DO UPDATE SET
                 name = excluded.name,
                 launch_path = excluded.launch_path,
+                avatar_image_path = excluded.avatar_image_path,
                 launch_args_json = excluded.launch_args_json,
                 metadata_json = excluded.metadata_json,
                 created_at_utc = excluded.created_at_utc,
@@ -145,6 +148,7 @@ public sealed class SqliteClientStorage : IClientStorage
         command.Parameters.AddWithValue("$id", profile.BotId);
         command.Parameters.AddWithValue("$name", profile.Name);
         command.Parameters.AddWithValue("$launch_path", profile.LaunchPath);
+        command.Parameters.AddWithValue("$avatar_image_path", (object?)profile.AvatarImagePath ?? DBNull.Value);
         command.Parameters.AddWithValue("$launch_args_json", JsonSerializer.Serialize(profile.LaunchArgs, JsonOptions));
         command.Parameters.AddWithValue("$metadata_json", JsonSerializer.Serialize(profile.Metadata, JsonOptions));
         command.Parameters.AddWithValue("$created_at_utc", profile.CreatedAtUtc.ToString("O"));
@@ -443,6 +447,7 @@ public sealed class SqliteClientStorage : IClientStorage
                     bot_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     launch_path TEXT NOT NULL,
+                    avatar_image_path TEXT,
                     launch_args_json TEXT NOT NULL,
                     metadata_json TEXT NOT NULL,
                     created_at_utc TEXT NOT NULL,
@@ -524,6 +529,7 @@ public sealed class SqliteClientStorage : IClientStorage
                 bot_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 launch_path TEXT NOT NULL,
+                avatar_image_path TEXT,
                 launch_args_json TEXT NOT NULL,
                 metadata_json TEXT NOT NULL,
                 created_at_utc TEXT NOT NULL,

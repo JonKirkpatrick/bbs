@@ -750,6 +750,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             botId: botId,
             name: BotEditorName.Trim(),
             launchPath: BotEditorLaunchPath.Trim(),
+            avatarImagePath: SelectedBot?.AvatarImagePath,
             launchArgs: ParseArgs(BotEditorArgs),
             metadata: ParseMetadata(BotEditorMetadata),
             createdAtUtc: createdAt,
@@ -903,6 +904,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                 botId: sourceProfile.BotId,
                 name: sourceProfile.Name,
                 launchPath: sourceProfile.LaunchPath,
+                avatarImagePath: sourceProfile.AvatarImagePath,
                 launchArgs: sourceProfile.LaunchArgs,
                 metadata: attachedMetadata,
                 createdAtUtc: sourceProfile.CreatedAtUtc,
@@ -2181,6 +2183,7 @@ public sealed class BotSummaryItem
     public required IBrush AccentBrush { get; init; }
     public required IBrush BackgroundBrush { get; init; }
     public required string LaunchPath { get; init; }
+    public string? AvatarImagePath { get; init; }
     public required IReadOnlyList<string> LaunchArgs { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
     public required DateTimeOffset CreatedAtUtc { get; init; }
@@ -2214,6 +2217,7 @@ public sealed class BotSummaryItem
             AccentBrush = accentBrush,
             BackgroundBrush = backgroundBrush,
             LaunchPath = profile.LaunchPath,
+            AvatarImagePath = profile.AvatarImagePath,
             LaunchArgs = profile.LaunchArgs,
             Metadata = profile.Metadata,
             CreatedAtUtc = profile.CreatedAtUtc,
@@ -2262,6 +2266,7 @@ public sealed class BotSummaryItem
             botId: BotId,
             name: Name,
             launchPath: LaunchPath,
+            avatarImagePath: AvatarImagePath,
             launchArgs: LaunchArgs,
             metadata: new Dictionary<string, string>(Metadata),
             createdAtUtc: CreatedAtUtc,

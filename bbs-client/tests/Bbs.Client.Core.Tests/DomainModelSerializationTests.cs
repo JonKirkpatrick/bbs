@@ -23,6 +23,7 @@ public sealed class DomainModelSerializationTests
             botId: "bot-1",
             name: "Counter Bot",
             launchPath: "/tmp/bot.py",
+            avatarImagePath: "/tmp/avatars/counter.png",
             launchArgs: new[] { "--level", "2" },
             metadata: new Dictionary<string, string> { ["lang"] = "python" },
             createdAtUtc: createdAt,
@@ -35,6 +36,7 @@ public sealed class DomainModelSerializationTests
         Assert.Equal(original.BotId, roundTrip!.BotId);
         Assert.Equal(original.Name, roundTrip.Name);
         Assert.Equal(original.LaunchPath, roundTrip.LaunchPath);
+        Assert.Equal(original.AvatarImagePath, roundTrip.AvatarImagePath);
         Assert.Equal(original.LaunchArgs, roundTrip.LaunchArgs);
         Assert.Equal(original.Metadata, roundTrip.Metadata);
         Assert.Equal(original.CreatedAtUtc, roundTrip.CreatedAtUtc);

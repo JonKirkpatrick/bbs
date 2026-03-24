@@ -9,6 +9,7 @@ public sealed record BotProfile(
     string BotId,
     string Name,
     string LaunchPath,
+    string? AvatarImagePath,
     IReadOnlyList<string> LaunchArgs,
     IReadOnlyDictionary<string, string> Metadata,
     DateTimeOffset CreatedAtUtc,
@@ -18,16 +19,22 @@ public sealed record BotProfile(
         string botId,
         string name,
         string launchPath,
+        string? avatarImagePath = null,
         IEnumerable<string>? launchArgs = null,
         IDictionary<string, string>? metadata = null,
         DateTimeOffset? createdAtUtc = null,
         DateTimeOffset? updatedAtUtc = null)
     {
         var now = DateTimeOffset.UtcNow;
+        var normalizedAvatarImagePath = string.IsNullOrWhiteSpace(avatarImagePath)
+            ? null
+            : avatarImagePath.Trim();
+
         return new BotProfile(
             botId,
             name,
             launchPath,
+            normalizedAvatarImagePath,
             new ReadOnlyCollection<string>((launchArgs ?? Array.Empty<string>()).ToList()),
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(metadata ?? new Dictionary<string, string>())),
             createdAtUtc ?? now,
