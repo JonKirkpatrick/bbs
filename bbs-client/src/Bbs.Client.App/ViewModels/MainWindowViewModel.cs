@@ -46,6 +46,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _serverEditorPlugins = string.Empty;
     private string _serverEditorMessage = "Fill out the server form and save.";
     private bool _isServerProbeInProgress;
+    private bool _isServerDetailLoading;
+    private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
     private readonly object _serverProbeLock = new();
 
     public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
@@ -55,6 +57,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         _orchestration = orchestration;
         Bots = new ObservableCollection<BotSummaryItem>();
         Servers = new ObservableCollection<ServerSummaryItem>();
+        ServerMetadataEntries = new ObservableCollection<ServerMetadataEntryItem>();
+        ServerPluginCatalogEntries = new ObservableCollection<ServerPluginCatalogItem>();
 
         EmitSampleLogCommand = new RelayCommand(EmitSampleLog);
         ToggleLeftPanelCommand = new RelayCommand(ToggleLeftPanel);
@@ -85,6 +89,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             PopulateServerEditor(_selectedServer);
         }
 
+        RefreshSelectedServerDetail();
+
         RefreshContextProjection();
         StartStartupServerProbe();
     }
@@ -96,6 +102,44 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string CurrentContextLabel => $"Context: {_currentContext}";
     public bool ShowBotEditor => _currentContext != WorkspaceContext.ServerDetails;
     public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerDetails;
+    public bool IsServerDetailLoading
+    {
+        get => _isServerDetailLoading;
+        private set
+        {
+            if (_isServerDetailLoading == value)
+            {
+                return;
+            }
+
+            _isServerDetailLoading = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool HasSelectedServer => SelectedServer is not null;
+    public bool HasServerMetadata => ServerMetadataEntries.Count > 0;
+    public bool HasServerPluginCatalog => ServerPluginCatalogEntries.Count > 0;
+    public bool ShowServerMetadataEmpty => !IsServerDetailLoading && !HasServerMetadata;
+    public bool ShowServerPluginCatalogEmpty => !IsServerDetailLoading && !HasServerPluginCatalog;
+    public string ServerDetailEndpoint => SelectedServer?.Endpoint ?? "-";
+    public string ServerDetailProbeStatus => SelectedServer?.Status ?? "Status: not available";
+    public string ServerCatalogStatus
+    {
+        get => _serverCatalogStatus;
+        private set
+        {
+            if (_serverCatalogStatus == value)
+            {
+                return;
+            }
+
+            _serverCatalogStatus = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowServerMetadataEmpty));
+            OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
+        }
+    }
     public bool IsServerProbeInProgress
     {
         get => _isServerProbeInProgress;
@@ -158,6 +202,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     public ObservableCollection<BotSummaryItem> Bots { get; }
     public ObservableCollection<ServerSummaryItem> Servers { get; }
+    public ObservableCollection<ServerMetadataEntryItem> ServerMetadataEntries { get; }
+    public ObservableCollection<ServerPluginCatalogItem> ServerPluginCatalogEntries { get; }
 
     public string BotEditorName
     {
@@ -375,6 +421,10 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             _selectedServer = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSelectedServer));
+            OnPropertyChanged(nameof(ShowServerMetadataEmpty));
+            OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
+            RefreshSelectedServerDetail();
             ((RelayCommand)SetServerContextCommand).RaiseCanExecuteChanged();
             if (value is not null)
             {
@@ -591,6 +641,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(Servers));
         ((RelayCommand)ReprobeServersCommand).RaiseCanExecuteChanged();
+        RefreshSelectedServerDetail();
     }
 
     private BotSummaryItem? FindBotById(string botId)
@@ -637,6 +688,49 @@ public sealed class MainWindowViewModel : ViewModelBase
         ServerEditorMetadata = FormatMetadata(server.Metadata);
         ServerEditorPlugins = FormatPluginCatalog(server.CachedPlugins);
         ServerEditorMessage = $"Editing known server: {server.Name}";
+    }
+
+    private void RefreshSelectedServerDetail()
+    {
+        IsServerDetailLoading = true;
+        ServerMetadataEntries.Clear();
+        ServerPluginCatalogEntries.Clear();
+
+        var server = SelectedServer;
+        if (server is null)
+        {
+            ServerCatalogStatus = "Select a server to view cached plugin catalog.";
+            IsServerDetailLoading = false;
+            OnPropertyChanged(nameof(HasServerMetadata));
+            OnPropertyChanged(nameof(HasServerPluginCatalog));
+            OnPropertyChanged(nameof(ShowServerMetadataEmpty));
+            OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
+            OnPropertyChanged(nameof(ServerDetailEndpoint));
+            OnPropertyChanged(nameof(ServerDetailProbeStatus));
+            return;
+        }
+
+        foreach (var metadata in server.Metadata)
+        {
+            ServerMetadataEntries.Add(new ServerMetadataEntryItem(metadata.Key, metadata.Value));
+        }
+
+        foreach (var plugin in server.CachedPlugins)
+        {
+            ServerPluginCatalogEntries.Add(new ServerPluginCatalogItem(plugin.Name, plugin.DisplayName, plugin.Version));
+        }
+
+        ServerCatalogStatus = server.CachedPlugins.Count == 0
+            ? "No cached plugins available."
+            : $"Cached plugins: {server.CachedPlugins.Count}";
+
+        IsServerDetailLoading = false;
+        OnPropertyChanged(nameof(HasServerMetadata));
+        OnPropertyChanged(nameof(HasServerPluginCatalog));
+        OnPropertyChanged(nameof(ShowServerMetadataEmpty));
+        OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
+        OnPropertyChanged(nameof(ServerDetailEndpoint));
+        OnPropertyChanged(nameof(ServerDetailProbeStatus));
     }
 
     private void SaveServerProfile()
@@ -1165,6 +1259,10 @@ public sealed class ServerSummaryItem
             : "Status: pending startup probe";
     }
 }
+
+public sealed record ServerMetadataEntryItem(string Key, string Value);
+
+public sealed record ServerPluginCatalogItem(string Name, string DisplayName, string Version);
 
 
 public enum WorkspaceContext
