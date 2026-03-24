@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -20,15 +23,33 @@ namespace Bbs.Client.App.ViewModels;
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private const int ServerProbeTimeoutMs = 1200;
+    private const int BotWelcomeReadTimeoutMs = 500;
+    private const int ServerCatalogFetchTimeoutMs = 2000;
+    private const int ServerCatalogSelectionRefreshCooldownMs = 5000;
+    private const int DashboardPortFallback = 3000;
+    private const int BotTcpDefaultPort = 8080;
     private const int ServerProbeMaxAttempts = 2;
     private const int ServerProbeRetryDelayMs = 200;
     private const string ProbeStatusMetadataKey = "probe_status";
     private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
     private const string ProbeLastErrorMetadataKey = "probe_last_error";
+    private static readonly string[] DashboardEndpointMetadataKeys =
+    {
+        "dashboard_endpoint",
+        "server.dashboard_endpoint",
+        "server_access.dashboard_endpoint"
+    };
+
+    private static readonly string[] DashboardPortMetadataKeys =
+    {
+        "dashboard_port",
+        "server.dashboard_port"
+    };
 
     private readonly IClientLogger _logger;
     private readonly IClientStorage _storage;
     private readonly IBotOrchestrationService _orchestration;
+    private readonly HttpClient _serverCatalogHttpClient;
     private WorkspaceContext _currentContext;
     private BotSummaryItem? _selectedBot;
     private ServerSummaryItem? _selectedServer;
@@ -41,10 +62,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _botEditorMessage = "Fill out the bot form and save.";
     private string _serverEditorName = string.Empty;
     private string _serverEditorHost = string.Empty;
-    private string _serverEditorPort = "8080";
+    private string _serverEditorPort = "3000";
     private bool _serverEditorUseTls;
     private string _serverEditorMetadata = string.Empty;
-    private string _serverEditorPlugins = string.Empty;
     private string _serverEditorMessage = "Fill out the server form and save.";
     private bool _isServerProbeInProgress;
     private bool _isServerDetailLoading;
@@ -55,13 +75,20 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _serverAccessOwnerToken = "-";
     private string _serverAccessDashboardEndpoint = "-";
     private int _serverAccessRefreshVersion;
+    private readonly Dictionary<string, DateTimeOffset> _serverCatalogLastRefreshUtc = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _serverCatalogRefreshInFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _serverProbeLock = new();
+    private readonly object _serverCatalogRefreshLock = new();
 
     public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
     {
         _logger = logger;
         _storage = storage;
         _orchestration = orchestration;
+        _serverCatalogHttpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromMilliseconds(ServerCatalogFetchTimeoutMs)
+        };
         Bots = new ObservableCollection<BotSummaryItem>();
         Servers = new ObservableCollection<ServerSummaryItem>();
         ServerMetadataEntries = new ObservableCollection<ServerMetadataEntryItem>();
@@ -447,21 +474,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public string ServerEditorPlugins
-    {
-        get => _serverEditorPlugins;
-        set
-        {
-            if (_serverEditorPlugins == value)
-            {
-                return;
-            }
-
-            _serverEditorPlugins = value;
-            OnPropertyChanged();
-        }
-    }
-
     public string ServerEditorMessage
     {
         get => _serverEditorMessage;
@@ -684,10 +696,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         _currentContext = WorkspaceContext.ServerDetails;
         ServerEditorName = string.Empty;
         ServerEditorHost = string.Empty;
-        ServerEditorPort = "8080";
+        ServerEditorPort = "3000";
         ServerEditorUseTls = false;
         ServerEditorMetadata = string.Empty;
-        ServerEditorPlugins = string.Empty;
         ServerEditorMessage = "Creating a new known server.";
         RefreshContextProjection();
     }
@@ -882,7 +893,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         ServerEditorPort = server.Port.ToString();
         ServerEditorUseTls = server.UseTls;
         ServerEditorMetadata = FormatMetadata(server.Metadata);
-        ServerEditorPlugins = FormatPluginCatalog(server.CachedPlugins);
         ServerEditorMessage = $"Editing known server: {server.Name}";
     }
 
@@ -927,6 +937,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
         OnPropertyChanged(nameof(ServerDetailEndpoint));
         OnPropertyChanged(nameof(ServerDetailProbeStatus));
+
+        TriggerSelectedServerCatalogRefresh(server);
     }
 
     private void SaveServerProfile()
@@ -958,27 +970,20 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var plugins = ParsePluginCatalog(ServerEditorPlugins, out var pluginErrors);
-        if (pluginErrors.Count > 0)
-        {
-            ServerEditorMessage = $"Cannot save plugin cache: {string.Join(", ", pluginErrors)}";
-            return;
-        }
-
-        var cache = ServerPluginCache.Create(serverId, plugins, DateTimeOffset.UtcNow);
-
         _storage.UpsertKnownServerAsync(server).GetAwaiter().GetResult();
-        _storage.UpsertServerPluginCacheAsync(cache).GetAwaiter().GetResult();
         LoadServersFromStorage();
         SelectedServer = FindServerById(serverId);
         TriggerServerAccessRefresh();
-        ServerEditorMessage = $"Saved known server: {server.Name}";
+        var dashboardPortHint = server.Port == BotTcpDefaultPort
+            ? " Saved, but 8080 is commonly the bot TCP port; dashboard is often 3000."
+            : string.Empty;
+        ServerEditorMessage = $"Saved known server: {server.Name}.{dashboardPortHint}";
         _logger.Log(LogLevel.Information, "known_server_saved", "Known server and plugin cache persisted.",
             new Dictionary<string, string>
             {
                 ["server_id"] = server.ServerId,
                 ["name"] = server.Name,
-                ["plugin_count"] = plugins.Count.ToString()
+                ["dashboard_port_hint"] = dashboardPortHint.Length == 0 ? "none" : "bot_port_likely"
             });
     }
 
@@ -1066,10 +1071,25 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 metadata.Remove(ProbeLastErrorMetadataKey);
                 reachableCount++;
+
+                var pluginCatalogResult = await RefreshServerPluginCatalogCacheAsync(knownServer, cancellationToken);
+                if (pluginCatalogResult.Updated)
+                {
+                    metadata["probe_plugin_count"] = pluginCatalogResult.PluginCount.ToString();
+                    metadata["probe_plugin_sync_utc"] = DateTimeOffset.UtcNow.ToString("O");
+                }
+                else if (!string.IsNullOrWhiteSpace(pluginCatalogResult.ErrorCode))
+                {
+                    metadata["probe_plugin_error"] = pluginCatalogResult.ErrorCode;
+                }
             }
             else
             {
                 metadata[ProbeLastErrorMetadataKey] = probeResult.ErrorCode;
+                if (TryParseDashboardPortFromProbeError(probeResult.ErrorCode, out var dashboardPort))
+                {
+                    metadata["probe_suggested_dashboard_port"] = dashboardPort.ToString();
+                }
                 unreachableCount++;
             }
 
@@ -1163,6 +1183,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             using var socket = new TcpClient();
             await socket.ConnectAsync(knownServer.Host, knownServer.Port, probeCts.Token);
+
+            var dashboardPortHint = await TryReadBotPortDashboardHintAsync(socket, cancellationToken);
+            if (dashboardPortHint is not null)
+            {
+                return (false, 1, $"bot_port_dashboard_{dashboardPortHint.Value}");
+            }
+
             return (true, 1, string.Empty);
         }
         catch (OperationCanceledException)
@@ -1177,6 +1204,299 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             return (false, 1, "connect_failed");
         }
+    }
+
+    private static bool TryParseDashboardPortFromProbeError(string? errorCode, out int dashboardPort)
+    {
+        dashboardPort = 0;
+        if (string.IsNullOrWhiteSpace(errorCode))
+        {
+            return false;
+        }
+
+        const string prefix = "bot_port_dashboard_";
+        if (!errorCode.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var rawPort = errorCode[prefix.Length..];
+        return int.TryParse(rawPort, out dashboardPort) && dashboardPort is >= 1 and <= 65535;
+    }
+
+    private static async Task<int?> TryReadBotPortDashboardHintAsync(TcpClient socket, CancellationToken cancellationToken)
+    {
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        readCts.CancelAfter(BotWelcomeReadTimeoutMs);
+
+        try
+        {
+            var stream = socket.GetStream();
+            var buffer = new byte[2048];
+            var bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), readCts.Token);
+            if (bytesRead <= 0)
+            {
+                return null;
+            }
+
+            var line = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+            var firstLine = line.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+            if (string.IsNullOrWhiteSpace(firstLine))
+            {
+                return null;
+            }
+
+            return BotPortWelcomeHintParser.TryExtractDashboardPort(firstLine, out var dashboardPort)
+                ? dashboardPort
+                : null;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+
+    private void TriggerSelectedServerCatalogRefresh(ServerSummaryItem server)
+    {
+        if (!ShouldRefreshServerCatalog(server.ServerId))
+        {
+            return;
+        }
+
+        _ = RefreshSelectedServerCatalogAsync(server.ServerId);
+    }
+
+    private bool ShouldRefreshServerCatalog(string serverId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        lock (_serverCatalogRefreshLock)
+        {
+            if (_serverCatalogRefreshInFlight.Contains(serverId))
+            {
+                return false;
+            }
+
+            if (_serverCatalogLastRefreshUtc.TryGetValue(serverId, out var lastRefresh) &&
+                now - lastRefresh < TimeSpan.FromMilliseconds(ServerCatalogSelectionRefreshCooldownMs))
+            {
+                return false;
+            }
+
+            _serverCatalogRefreshInFlight.Add(serverId);
+            return true;
+        }
+    }
+
+    private void MarkServerCatalogRefreshComplete(string serverId)
+    {
+        lock (_serverCatalogRefreshLock)
+        {
+            _serverCatalogRefreshInFlight.Remove(serverId);
+            _serverCatalogLastRefreshUtc[serverId] = DateTimeOffset.UtcNow;
+        }
+    }
+
+    private async Task RefreshSelectedServerCatalogAsync(string serverId)
+    {
+        try
+        {
+            var knownServer = (await _storage.ListKnownServersAsync()).FirstOrDefault(s => s.ServerId == serverId);
+            if (knownServer is null)
+            {
+                return;
+            }
+
+            var result = await RefreshServerPluginCatalogCacheAsync(knownServer, CancellationToken.None);
+            if (!result.Updated)
+            {
+                return;
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                var selectedServerId = SelectedServer?.ServerId;
+                LoadServersFromStorage();
+                if (!string.IsNullOrWhiteSpace(selectedServerId))
+                {
+                    SelectedServer = FindServerById(selectedServerId);
+                }
+            });
+        }
+        finally
+        {
+            MarkServerCatalogRefreshComplete(serverId);
+        }
+    }
+
+    private async Task<(bool Updated, int PluginCount, string ErrorCode)> RefreshServerPluginCatalogCacheAsync(KnownServer knownServer, CancellationToken cancellationToken)
+    {
+        var fetchResult = await FetchServerPluginCatalogAsync(knownServer, cancellationToken);
+        if (!fetchResult.Succeeded)
+        {
+            _logger.Log(LogLevel.Warning, "server_plugin_catalog_fetch_failed", "Failed to fetch server plugin catalog.",
+                new Dictionary<string, string>
+                {
+                    ["server_id"] = knownServer.ServerId,
+                    ["reason"] = fetchResult.ErrorCode
+                });
+
+            return (false, 0, fetchResult.ErrorCode);
+        }
+
+        var cache = ServerPluginCache.Create(knownServer.ServerId, fetchResult.Plugins, DateTimeOffset.UtcNow);
+        await _storage.UpsertServerPluginCacheAsync(cache, cancellationToken);
+
+        _logger.Log(LogLevel.Information, "server_plugin_catalog_cached", "Server plugin catalog refreshed from probe.",
+            new Dictionary<string, string>
+            {
+                ["server_id"] = knownServer.ServerId,
+                ["plugin_count"] = cache.Plugins.Count.ToString(),
+                ["source"] = fetchResult.Source
+            });
+
+        return (true, cache.Plugins.Count, string.Empty);
+    }
+
+    private async Task<(bool Succeeded, IReadOnlyList<PluginDescriptor> Plugins, string ErrorCode, string Source)> FetchServerPluginCatalogAsync(KnownServer knownServer, CancellationToken cancellationToken)
+    {
+        var endpointCandidates = BuildServerBaseEndpointCandidates(knownServer);
+        var observedErrors = new List<string>();
+
+        foreach (var endpoint in endpointCandidates)
+        {
+            try
+            {
+                var apiCatalogUri = new Uri(endpoint + "/api/game-catalog");
+                using var apiResponse = await _serverCatalogHttpClient.GetAsync(apiCatalogUri, cancellationToken);
+                if (apiResponse.IsSuccessStatusCode)
+                {
+                    var jsonPayload = await apiResponse.Content.ReadAsStringAsync(cancellationToken);
+                    if (ServerPluginCatalogParser.TryParseFromJsonCatalog(jsonPayload, out var plugins, out _))
+                    {
+                        return (true, plugins, string.Empty, "api_game_catalog");
+                    }
+
+                    observedErrors.Add($"api_parse_failed_{endpoint}");
+                }
+                else
+                {
+                    observedErrors.Add($"api_http_{(int)apiResponse.StatusCode}_{endpoint}");
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                observedErrors.Add($"api_timeout_{endpoint}");
+            }
+            catch (HttpRequestException)
+            {
+                observedErrors.Add($"api_http_error_{endpoint}");
+            }
+
+            try
+            {
+                using var dashboardResponse = await _serverCatalogHttpClient.GetAsync(new Uri(endpoint + "/"), cancellationToken);
+                if (!dashboardResponse.IsSuccessStatusCode)
+                {
+                    observedErrors.Add($"dashboard_http_{(int)dashboardResponse.StatusCode}_{endpoint}");
+                    continue;
+                }
+
+                var html = await dashboardResponse.Content.ReadAsStringAsync(cancellationToken);
+                if (!ServerPluginCatalogParser.TryParseFromDashboardHtml(html, out var plugins, out _))
+                {
+                    observedErrors.Add($"dashboard_parse_failed_{endpoint}");
+                    continue;
+                }
+
+                return (true, plugins, string.Empty, "dashboard_html");
+            }
+            catch (TaskCanceledException)
+            {
+                observedErrors.Add($"dashboard_timeout_{endpoint}");
+            }
+            catch (HttpRequestException)
+            {
+                observedErrors.Add($"dashboard_http_error_{endpoint}");
+            }
+            catch
+            {
+                observedErrors.Add($"dashboard_fetch_failed_{endpoint}");
+            }
+        }
+
+        var errorCode = observedErrors.Count == 0
+            ? "plugin_catalog_fetch_failed"
+            : $"plugin_catalog_fetch_failed:{string.Join(',', observedErrors)}";
+
+        return (false, Array.Empty<PluginDescriptor>(), errorCode, "dashboard_html");
+    }
+
+    private static IReadOnlyList<string> BuildServerBaseEndpointCandidates(KnownServer knownServer)
+    {
+        var preferredScheme = knownServer.UseTls ? "https" : "http";
+        var alternateScheme = knownServer.UseTls ? "http" : "https";
+        var endpoints = new List<string>();
+
+        var metadataDashboardEndpoint = FirstNonEmptyMetadataValue(knownServer.Metadata, DashboardEndpointMetadataKeys);
+        if (Uri.TryCreate(metadataDashboardEndpoint, UriKind.Absolute, out var dashboardUri))
+        {
+            endpoints.Add(BuildBaseEndpoint(dashboardUri.Scheme, dashboardUri.Host, dashboardUri.Port));
+        }
+
+        var metadataDashboardPort = ParseDashboardPort(knownServer.Metadata);
+        if (metadataDashboardPort is not null)
+        {
+            endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, metadataDashboardPort.Value));
+            endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, metadataDashboardPort.Value));
+        }
+
+        endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, knownServer.Port));
+        endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, knownServer.Port));
+
+        if (knownServer.Port != DashboardPortFallback)
+        {
+            endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, DashboardPortFallback));
+            endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, DashboardPortFallback));
+        }
+
+        return endpoints
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static int? ParseDashboardPort(IReadOnlyDictionary<string, string> metadata)
+    {
+        var raw = FirstNonEmptyMetadataValue(metadata, DashboardPortMetadataKeys);
+        if (!int.TryParse(raw, out var port) || port is < 1 or > 65535)
+        {
+            return null;
+        }
+
+        return port;
+    }
+
+    private static string? FirstNonEmptyMetadataValue(IReadOnlyDictionary<string, string> metadata, IEnumerable<string> keys)
+    {
+        foreach (var key in keys)
+        {
+            if (metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static string BuildBaseEndpoint(string scheme, string host, int port)
+    {
+        return $"{scheme}://{host}:{port}";
     }
 
     private void TriggerServerAccessRefresh()
@@ -1334,65 +1654,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         return string.Join(';', parts);
     }
 
-    private static string FormatPluginCatalog(IReadOnlyList<PluginDescriptor> plugins)
-    {
-        if (plugins.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        var lines = new List<string>(plugins.Count);
-        foreach (var plugin in plugins)
-        {
-            lines.Add($"{plugin.Name}|{plugin.DisplayName}|{plugin.Version}");
-        }
-
-        return string.Join(Environment.NewLine, lines);
-    }
-
-    private static IReadOnlyList<PluginDescriptor> ParsePluginCatalog(string raw, out IReadOnlyList<string> errors)
-    {
-        var plugins = new List<PluginDescriptor>();
-        var parseErrors = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            errors = parseErrors;
-            return plugins;
-        }
-
-        var lines = raw.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i].Trim();
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            var parts = line.Split('|', 3, StringSplitOptions.TrimEntries);
-            if (parts.Length != 3)
-            {
-                parseErrors.Add($"plugin_line_{i + 1}_format_invalid");
-                continue;
-            }
-
-            var descriptor = new PluginDescriptor(parts[0], parts[1], parts[2]);
-            var descriptorErrors = descriptor.Validate();
-            foreach (var descriptorError in descriptorErrors)
-            {
-                parseErrors.Add($"plugin_line_{i + 1}_{descriptorError}");
-            }
-
-            if (descriptorErrors.Count == 0)
-            {
-                plugins.Add(descriptor);
-            }
-        }
-
-        errors = parseErrors;
-        return plugins;
-    }
 }
 
 public sealed class BotSummaryItem
@@ -1553,6 +1814,17 @@ public sealed class ServerSummaryItem
             if (string.Equals(probeStatus, "reachable", StringComparison.OrdinalIgnoreCase))
             {
                 return "Status: reachable";
+            }
+
+            if (metadata.TryGetValue("probe_last_error", out var probeError) &&
+                !string.IsNullOrWhiteSpace(probeError) &&
+                probeError.StartsWith("bot_port_dashboard_", StringComparison.OrdinalIgnoreCase))
+            {
+                var suggestedPort = probeError["bot_port_dashboard_".Length..];
+                if (!string.IsNullOrWhiteSpace(suggestedPort))
+                {
+                    return $"Status: wrong endpoint (bot port). Use dashboard port {suggestedPort}";
+                }
             }
 
             var errorSuffix = metadata.TryGetValue("probe_last_error", out var errorValue) && !string.IsNullOrWhiteSpace(errorValue)
