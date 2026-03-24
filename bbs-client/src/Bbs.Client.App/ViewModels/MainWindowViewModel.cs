@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
@@ -32,7 +33,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     private const int ServerProbeMaxAttempts = 2;
     private const int ServerProbeRetryDelayMs = 200;
     private const int DeployHandshakeTimeoutMs = 3000;
-    private const string RegisterEmptyToken = "\"\"";
     private const string ProbeStatusMetadataKey = "probe_status";
     private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
     private const string ProbeLastErrorMetadataKey = "probe_last_error";
@@ -100,7 +100,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly object _serverProbeLock = new();
     private readonly object _serverCatalogRefreshLock = new();
     private readonly object _deployConnectionLock = new();
-    private readonly Dictionary<string, TcpClient> _activeDeployConnections = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _activeDeployConnections = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _activeAccessCacheLock = new();
     private readonly Dictionary<string, (string ServerId, ServerAccessMetadata Access)> _activeServerAccessByBotId = new(StringComparer.OrdinalIgnoreCase);
 
@@ -1099,7 +1099,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         try
         {
             var sourceProfile = bot.ToProfile();
-            var registerResponse = RegisterBotSessionWithServer(server, sourceProfile);
+            var registerResponse = RegisterBotSessionViaAgentControl(server, sourceProfile);
             var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
             {
                 [ServerAccessServerIdMetadataKey] = server.ServerId
@@ -1137,6 +1137,15 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             _storage.UpsertBotProfileAsync(attachedProfile).GetAwaiter().GetResult();
             _storage.UpsertAgentRuntimeStateAsync(activeSessionState).GetAwaiter().GetResult();
+
+            lock (_deployConnectionLock)
+            {
+                if (!_activeDeployConnections.Contains(sourceProfile.BotId))
+                {
+                    _activeDeployConnections.Add(sourceProfile.BotId);
+                }
+            }
+
             SetActiveServerAccess(sourceProfile.BotId, server.ServerId, registerResponse.OwnerToken, registerResponse.DashboardEndpoint);
 
             LoadBotsFromStorage();
@@ -1159,220 +1168,298 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private RegisterHandshakeResult RegisterBotSessionWithServer(ServerSummaryItem server, BotProfile profile)
+    private RegisterHandshakeResult RegisterBotSessionViaAgentControl(ServerSummaryItem server, BotProfile profile)
     {
-        var serverGlobalId = ResolveServerGlobalId(server);
-        var storedCredential = _storage
-            .GetBotServerCredentialAsync(profile.BotId, server.ServerId, serverGlobalId)
-            .GetAwaiter()
-            .GetResult();
-        var hasServerCredential = storedCredential is not null;
-        var botIdentity = storedCredential?.ServerBotId ?? string.Empty;
-        var botSecret = storedCredential?.ServerBotSecret ?? string.Empty;
+        var controlSocketPath = BuildAgentControlSocketPath(profile.BotId);
+        var agentTargets = BuildAgentServerTargetEndpointCandidates(server);
+        AgentControlResponse? connectReply = null;
+        string? lastConnectError = null;
 
-        var registerName = SanitizeRegisterName(profile.Name);
-        var registerCommand = BuildRegisterCommand(registerName, botIdentity, botSecret, string.Empty);
-        var fallbackCommand = BuildRegisterCommand(registerName, string.Empty, string.Empty, string.Empty);
-
-        if (hasServerCredential && !string.IsNullOrWhiteSpace(botIdentity) && !string.IsNullOrWhiteSpace(botSecret))
+        foreach (var agentTarget in agentTargets)
         {
-            try
+            var candidateReply = SendAgentControlRequest(
+                controlSocketPath,
+                "server_connect",
+                new Dictionary<string, object>
+                {
+                    ["server"] = agentTarget
+                });
+
+            if (string.Equals(candidateReply.Type, "server_connect", StringComparison.OrdinalIgnoreCase))
             {
-                return ExecuteRegisterHandshake(server, profile.BotId, registerCommand, botSecret);
+                connectReply = candidateReply;
+                break;
             }
-            catch (InvalidOperationException ex) when (IsIdentityCredentialFailure(ex.Message))
+
+            if (string.Equals(candidateReply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.Log(LogLevel.Warning, "bot_deploy_identity_reissue", "Stored bot credentials were rejected; requesting fresh server identity.",
-                    new Dictionary<string, string>
-                    {
-                        ["bot_id"] = profile.BotId,
-                        ["server_id"] = server.ServerId,
-                        ["reason"] = ex.Message
-                    });
+                lastConnectError = candidateReply.Message;
+                continue;
+            }
+
+            lastConnectError = $"Unexpected control reply type {candidateReply.Type} from agent.";
+        }
+
+        if (connectReply is null)
+        {
+            throw new InvalidOperationException($"Failed server_connect via agent. {lastConnectError ?? "No response"}");
+        }
+
+        var accessReply = SendAgentControlRequest(controlSocketPath, "server_access", new Dictionary<string, object>());
+        if (string.Equals(accessReply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(accessReply.Message);
+        }
+
+        if (!string.Equals(accessReply.Type, "server_access", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Unexpected server_access reply type {accessReply.Type}.");
+        }
+
+        var sessionId = accessReply.SessionId;
+        var serverBotId = accessReply.BotId;
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(serverBotId))
+        {
+            throw new InvalidOperationException("Agent did not return a valid session_id/bot_id after server_connect.");
+        }
+
+        return new RegisterHandshakeResult(
+            SessionId: sessionId,
+            ServerBotId: serverBotId,
+            ServerBotSecret: string.IsNullOrWhiteSpace(connectReply.BotSecret)
+                ? accessReply.BotSecret
+                : connectReply.BotSecret,
+            OwnerToken: accessReply.OwnerToken,
+            DashboardEndpoint: NormalizeDashboardEndpoint(accessReply.DashboardEndpoint, accessReply.DashboardHost, accessReply.DashboardPort, server.UseTls));
+    }
+
+    private static IReadOnlyList<string> BuildAgentServerTargetEndpointCandidates(ServerSummaryItem server)
+    {
+        var botPort = BotTcpDefaultPort;
+        if (server.Metadata.TryGetValue("bot_port", out var rawBotPort) && int.TryParse(rawBotPort, out var parsedPort) && parsedPort is > 0 and <= 65535)
+        {
+            botPort = parsedPort;
+        }
+
+        var candidates = new List<string>();
+        var hostCandidates = BuildHostCandidates(server.Host);
+
+        if (hostCandidates.Count == 0)
+        {
+            hostCandidates.Add(server.Host.Trim());
+        }
+
+        foreach (var host in hostCandidates)
+        {
+            if (!string.IsNullOrWhiteSpace(host))
+            {
+                candidates.Add($"{host}:{botPort}");
             }
         }
 
-        return ExecuteRegisterHandshake(server, profile.BotId, fallbackCommand, string.Empty);
+        return candidates
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static List<string> BuildHostCandidates(string rawHost)
+    {
+        var candidates = new List<string>();
+        var trimmed = rawHost.Trim();
+        if (trimmed.Length == 0)
+        {
+            return candidates;
+        }
+
+        candidates.Add(trimmed);
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute) && !string.IsNullOrWhiteSpace(absolute.Host))
+        {
+            candidates.Add(absolute.Host);
+        }
+
+        if (!trimmed.Contains("://", StringComparison.Ordinal) &&
+            Uri.TryCreate($"tcp://{trimmed}", UriKind.Absolute, out var implicitUri) &&
+            !string.IsNullOrWhiteSpace(implicitUri.Host))
+        {
+            candidates.Add(implicitUri.Host);
+        }
+
+        if (trimmed.StartsWith("[", StringComparison.Ordinal) && trimmed.EndsWith("]", StringComparison.Ordinal))
+        {
+            candidates.Add(trimmed[1..^1]);
+        }
+
+        if (IPAddress.TryParse(trimmed, out var parsedIp))
+        {
+            candidates.Add(parsedIp.ToString());
+        }
+
+        if (TryNormalizeThreePartLoopback(trimmed, out var normalizedLoopback))
+        {
+            candidates.Add(normalizedLoopback);
+        }
+
+        if (IsLikelyLoopback(trimmed))
+        {
+            candidates.Add("127.0.0.1");
+            candidates.Add("localhost");
+        }
+
+        return candidates
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool TryNormalizeThreePartLoopback(string value, out string normalized)
+    {
+        normalized = string.Empty;
+        var parts = value.Split('.', StringSplitOptions.TrimEntries);
+        if (parts.Length != 3)
+        {
+            return false;
+        }
+
+        if (!string.Equals(parts[0], "127", StringComparison.Ordinal) || !string.Equals(parts[1], "0", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!int.TryParse(parts[2], out var finalOctet) || finalOctet is < 0 or > 255)
+        {
+            return false;
+        }
+
+        normalized = $"127.0.0.{finalOctet}";
+        return true;
+    }
+
+    private static bool IsLikelyLoopback(string host)
+    {
+        var value = host.Trim();
+        return value.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("127.", StringComparison.Ordinal);
+    }
+
+    private static AgentControlResponse SendAgentControlRequest(string controlSocketPath, string messageType, IReadOnlyDictionary<string, object> payload)
+    {
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        socket.ReceiveTimeout = DeployHandshakeTimeoutMs;
+        socket.SendTimeout = DeployHandshakeTimeoutMs;
+        socket.Connect(new UnixDomainSocketEndPoint(controlSocketPath));
+
+        using var stream = new NetworkStream(socket, ownsSocket: true);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true)
+        {
+            AutoFlush = true,
+            NewLine = "\n"
+        };
+
+        // The first control line is a greeting and may arrive before request/response exchange.
+        _ = TryReadControlEnvelope(reader);
+
+        var requestId = Guid.NewGuid().ToString("N");
+        var request = new Dictionary<string, object?>
+        {
+            ["v"] = "0.2",
+            ["id"] = requestId,
+            ["type"] = messageType,
+            ["payload"] = payload
+        };
+
+        writer.WriteLine(JsonSerializer.Serialize(request));
+
+        while (true)
+        {
+            var line = reader.ReadLine();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                throw new InvalidOperationException($"Agent control socket returned empty response for {messageType}.");
+            }
+
+            var envelope = ParseControlEnvelope(line);
+            if (!string.Equals(envelope.Id, requestId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return envelope;
+        }
+    }
+
+    private static AgentControlResponse? TryReadControlEnvelope(StreamReader reader)
+    {
+        try
+        {
+            var line = reader.ReadLine();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return null;
+            }
+
+            return ParseControlEnvelope(line);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static AgentControlResponse ParseControlEnvelope(string line)
+    {
+        using var doc = JsonDocument.Parse(line);
+        var root = doc.RootElement;
+        var type = root.TryGetProperty("type", out var typeNode) ? typeNode.GetString() ?? string.Empty : string.Empty;
+        var id = root.TryGetProperty("id", out var idNode) ? idNode.GetString() ?? string.Empty : string.Empty;
+
+        if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
+        {
+            return new AgentControlResponse(type, id, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+        }
+
+        var message = payload.TryGetProperty("message", out var messageNode) ? messageNode.ToString() : string.Empty;
+        var sessionId = payload.TryGetProperty("session_id", out var sessionIdNode) ? sessionIdNode.ToString() : string.Empty;
+        var botId = payload.TryGetProperty("bot_id", out var botIdNode) ? botIdNode.ToString() : string.Empty;
+        var botSecret = payload.TryGetProperty("bot_secret", out var botSecretNode) ? botSecretNode.ToString() : string.Empty;
+        var ownerToken = payload.TryGetProperty("owner_token", out var ownerTokenNode) ? ownerTokenNode.ToString() : string.Empty;
+        var dashboardEndpoint = payload.TryGetProperty("dashboard_endpoint", out var endpointNode) ? endpointNode.ToString() : string.Empty;
+        var dashboardHost = payload.TryGetProperty("dashboard_host", out var hostNode) ? hostNode.ToString() : string.Empty;
+        var dashboardPort = payload.TryGetProperty("dashboard_port", out var portNode) ? portNode.ToString() : string.Empty;
+
+        return new AgentControlResponse(type, id, message, sessionId, botId, botSecret, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort);
+    }
+
+    private static string BuildAgentControlSocketPath(string botId)
+    {
+        var safe = new StringBuilder(botId.Length);
+        foreach (var ch in botId)
+        {
+            if (char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.')
+            {
+                safe.Append(ch);
+            }
+            else
+            {
+                safe.Append('_');
+            }
+        }
+
+        if (safe.Length == 0)
+        {
+            safe.Append("bot");
+        }
+
+        var socketPath = Path.Combine(Path.GetTempPath(), $"bbs-agent-{safe}.sock");
+        return socketPath + ".control";
     }
 
     private static string? ResolveServerGlobalId(ServerSummaryItem server)
     {
         var raw = FirstNonEmptyMetadataValue(server.Metadata, ServerGlobalIdMetadataKeys);
         return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
-    }
-
-    private RegisterHandshakeResult ExecuteRegisterHandshake(ServerSummaryItem server, string profileBotId, string registerCommand, string fallbackBotSecret)
-    {
-        var endpointCandidates = BuildBotRegisterEndpointCandidates(server);
-        Exception? lastError = null;
-
-        foreach (var endpoint in endpointCandidates)
-        {
-            TcpClient? client = null;
-            try
-            {
-                client = new TcpClient();
-                var connectTask = client.ConnectAsync(endpoint.Host, endpoint.Port);
-                if (!connectTask.Wait(DeployHandshakeTimeoutMs))
-                {
-                    throw new TimeoutException($"Timeout connecting to {endpoint.Host}:{endpoint.Port}.");
-                }
-
-                var stream = client.GetStream();
-                stream.ReadTimeout = DeployHandshakeTimeoutMs;
-                stream.WriteTimeout = DeployHandshakeTimeoutMs;
-
-                using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true))
-                {
-                    _ = reader.ReadLine();
-
-                    using (var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true)
-                    {
-                        AutoFlush = true,
-                        NewLine = "\n"
-                    })
-                    {
-                        writer.WriteLine(registerCommand);
-                    }
-
-                    var responseLine = reader.ReadLine();
-                    if (string.IsNullOrWhiteSpace(responseLine))
-                    {
-                        throw new InvalidOperationException($"Server {endpoint.Host}:{endpoint.Port} returned an empty register response.");
-                    }
-
-                    var registerPayload = ParseRegisterResponse(responseLine);
-                    if (!registerPayload.Success)
-                    {
-                        throw new InvalidOperationException(registerPayload.ErrorMessage);
-                    }
-
-                    lock (_deployConnectionLock)
-                    {
-                        if (_activeDeployConnections.TryGetValue(profileBotId, out var existing))
-                        {
-                            try { existing.Close(); } catch { }
-                        }
-
-                        _activeDeployConnections[profileBotId] = client;
-                    }
-
-                    var dashboardEndpoint = NormalizeDashboardEndpoint(registerPayload.DashboardEndpoint, registerPayload.DashboardHost, registerPayload.DashboardPort, server.UseTls);
-                    return new RegisterHandshakeResult(
-                        SessionId: registerPayload.SessionId,
-                        ServerBotId: registerPayload.ServerBotId,
-                        ServerBotSecret: string.IsNullOrWhiteSpace(registerPayload.ServerBotSecret)
-                            ? fallbackBotSecret
-                            : registerPayload.ServerBotSecret,
-                        OwnerToken: registerPayload.OwnerToken,
-                        DashboardEndpoint: dashboardEndpoint);
-                }
-            }
-            catch (Exception ex)
-            {
-                lastError = ex;
-                if (client is not null)
-                {
-                    try { client.Close(); } catch { }
-                }
-            }
-        }
-
-        throw new InvalidOperationException("Failed to register bot session with server.", lastError);
-    }
-
-    private static bool IsIdentityCredentialFailure(string message)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return false;
-        }
-
-        return message.Contains("unknown bot_id", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("bot_secret required", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("invalid bot_secret", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("owner token is invalid", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string SanitizeRegisterName(string name)
-    {
-        var normalized = string.Join("_", name.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
-        return string.IsNullOrWhiteSpace(normalized) ? "bot" : normalized;
-    }
-
-    private static string BuildRegisterCommand(string name, string serverBotId, string serverBotSecret, string ownerToken)
-    {
-        var parts = new List<string>
-        {
-            "REGISTER",
-            name,
-            string.IsNullOrWhiteSpace(serverBotId) ? RegisterEmptyToken : serverBotId,
-            string.IsNullOrWhiteSpace(serverBotSecret) ? RegisterEmptyToken : serverBotSecret
-        };
-
-        if (!string.IsNullOrWhiteSpace(ownerToken))
-        {
-            parts.Add($"owner_token={ownerToken}");
-        }
-
-        return string.Join(' ', parts);
-    }
-
-    private static IReadOnlyList<(string Host, int Port)> BuildBotRegisterEndpointCandidates(ServerSummaryItem server)
-    {
-        var ports = new List<int>();
-        if (server.Metadata.TryGetValue("bot_port", out var rawBotPort) && int.TryParse(rawBotPort, out var metadataBotPort) && metadataBotPort is > 0 and <= 65535)
-        {
-            ports.Add(metadataBotPort);
-        }
-
-        ports.Add(server.Port);
-        if (server.Port != BotTcpDefaultPort)
-        {
-            ports.Add(BotTcpDefaultPort);
-        }
-
-        return ports
-            .Where(p => p is > 0 and <= 65535)
-            .Distinct()
-            .Select(p => (server.Host, p))
-            .ToArray();
-    }
-
-    private static RegisterEnvelopePayload ParseRegisterResponse(string responseLine)
-    {
-        using var doc = JsonDocument.Parse(responseLine);
-        var root = doc.RootElement;
-
-        var status = root.TryGetProperty("status", out var statusValue) ? statusValue.GetString() ?? string.Empty : string.Empty;
-        var type = root.TryGetProperty("type", out var typeValue) ? typeValue.GetString() ?? string.Empty : string.Empty;
-        if (!string.Equals(status, "ok", StringComparison.OrdinalIgnoreCase) || !string.Equals(type, "register", StringComparison.OrdinalIgnoreCase))
-        {
-            var payloadText = root.TryGetProperty("payload", out var rawPayload)
-                ? rawPayload.ToString()
-                : "unknown_error";
-            return new RegisterEnvelopePayload(false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, payloadText);
-        }
-
-        if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
-        {
-            return new RegisterEnvelopePayload(false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, "register payload missing or invalid");
-        }
-
-        var sessionId = payload.TryGetProperty("session_id", out var sessionValue) ? sessionValue.ToString() : string.Empty;
-        var botId = payload.TryGetProperty("bot_id", out var botIdValue) ? botIdValue.GetString() ?? string.Empty : string.Empty;
-        var botSecret = payload.TryGetProperty("bot_secret", out var botSecretValue) ? botSecretValue.GetString() ?? string.Empty : string.Empty;
-        var ownerToken = payload.TryGetProperty("owner_token", out var ownerTokenValue) ? ownerTokenValue.GetString() ?? string.Empty : string.Empty;
-        var dashboardEndpoint = payload.TryGetProperty("dashboard_endpoint", out var dashboardEndpointValue) ? dashboardEndpointValue.GetString() ?? string.Empty : string.Empty;
-        var dashboardHost = payload.TryGetProperty("dashboard_host", out var dashboardHostValue) ? dashboardHostValue.GetString() ?? string.Empty : string.Empty;
-        var dashboardPort = payload.TryGetProperty("dashboard_port", out var dashboardPortValue) ? dashboardPortValue.GetString() ?? string.Empty : string.Empty;
-
-        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(botId))
-        {
-            return new RegisterEnvelopePayload(false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, "register payload missing session_id or bot_id");
-        }
-
-        return new RegisterEnvelopePayload(true, sessionId, botId, botSecret, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort, string.Empty);
     }
 
     private static string NormalizeDashboardEndpoint(string rawEndpoint, string rawHost, string rawPort, bool useTls)
@@ -1408,40 +1495,15 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         lock (_deployConnectionLock)
         {
-            return _activeDeployConnections.ContainsKey(botId);
+            return _activeDeployConnections.Contains(botId);
         }
     }
 
     private void DisconnectActiveDeploymentConnection(string botId, bool sendQuit)
     {
-        TcpClient? client = null;
         lock (_deployConnectionLock)
         {
-            if (_activeDeployConnections.TryGetValue(botId, out client))
-            {
-                _activeDeployConnections.Remove(botId);
-            }
-        }
-
-        if (client is null)
-        {
-            return;
-        }
-
-        try
-        {
-            if (sendQuit && client.Connected)
-            {
-                var bytes = Encoding.UTF8.GetBytes("QUIT\n");
-                client.GetStream().Write(bytes, 0, bytes.Length);
-            }
-        }
-        catch
-        {
-        }
-        finally
-        {
-            try { client.Close(); } catch { }
+            _activeDeployConnections.Remove(botId);
         }
     }
 
@@ -2684,16 +2746,17 @@ public sealed record RegisterHandshakeResult(
     string OwnerToken,
     string DashboardEndpoint);
 
-public sealed record RegisterEnvelopePayload(
-    bool Success,
+public sealed record AgentControlResponse(
+    string Type,
+    string Id,
+    string Message,
     string SessionId,
-    string ServerBotId,
-    string ServerBotSecret,
+    string BotId,
+    string BotSecret,
     string OwnerToken,
     string DashboardEndpoint,
     string DashboardHost,
-    string DashboardPort,
-    string ErrorMessage);
+    string DashboardPort);
 
 
 public enum WorkspaceContext

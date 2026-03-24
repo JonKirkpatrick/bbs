@@ -266,34 +266,35 @@
 
                                                                   <StackPanel IsVisible="{Binding ShowOwnerTokenActions}" Spacing="6">
                                                                         <TextBlock FontSize="12" FontWeight="SemiBold" Text="Create Arena" />
-                                                                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                                                                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
                                                                               <TextBlock Grid.Row="0" Grid.Column="0" FontSize="12" VerticalAlignment="Center" Text="Plugin" />
                                                                               <ComboBox Grid.Row="0"
                                                                                         Grid.Column="1"
+                                                                                        Margin="8,0,0,0"
                                                                                         ItemsSource="{Binding ServerPluginCatalogEntries}"
                                                                                         SelectedValueBinding="{Binding Name}"
                                                                                         SelectedValue="{Binding OwnerArenaSelectedPlugin}"
                                                                                         DisplayMemberBinding="{Binding DisplayName}" />
 
-                                                                              <TextBlock Grid.Row="1" Grid.Column="0" FontSize="12" VerticalAlignment="Center" Text="Args" />
-                                                                              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding OwnerArenaArgs}" Watermark="key=value key2=value2" />
+                                                                              <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,0,0" FontSize="12" VerticalAlignment="Center" Text="Args" />
+                                                                              <TextBox Grid.Row="1" Grid.Column="1" Margin="8,6,0,0" Text="{Binding OwnerArenaArgs}" Watermark="key=value key2=value2" />
 
-                                                                              <TextBlock Grid.Row="2" Grid.Column="0" FontSize="12" VerticalAlignment="Center" Text="Time ms" />
-                                                                              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding OwnerArenaTimeMs}" Watermark="default game value" />
+                                                                              <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,6,0,0" FontSize="12" VerticalAlignment="Center" Text="Time ms" />
+                                                                              <TextBox Grid.Row="2" Grid.Column="1" Margin="8,6,0,0" Text="{Binding OwnerArenaTimeMs}" Watermark="default game value" />
 
-                                                                              <TextBlock Grid.Row="3" Grid.Column="0" FontSize="12" VerticalAlignment="Center" Text="Allow handicap" />
-                                                                              <CheckBox Grid.Row="3" Grid.Column="1" IsChecked="{Binding OwnerArenaAllowHandicap}" />
+                                                                              <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,6,0,0" FontSize="12" VerticalAlignment="Center" Text="Allow handicap" />
+                                                                              <CheckBox Grid.Row="3" Grid.Column="1" Margin="8,6,0,0" IsChecked="{Binding OwnerArenaAllowHandicap}" />
                                                                         </Grid>
 
                                                                         <Button Command="{Binding CreateArenaStubCommand}" Content="Create Arena" />
 
                                                                         <TextBlock Margin="0,4,0,0" FontSize="12" FontWeight="SemiBold" Text="Join Arena" />
-                                                                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                                                                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
                                                                               <TextBlock Grid.Row="0" Grid.Column="0" FontSize="12" VerticalAlignment="Center" Text="Arena ID" />
-                                                                              <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding OwnerJoinArenaId}" Watermark="1" />
+                                                                              <TextBox Grid.Row="0" Grid.Column="1" Margin="8,0,0,0" Text="{Binding OwnerJoinArenaId}" Watermark="1" />
 
-                                                                              <TextBlock Grid.Row="1" Grid.Column="0" FontSize="12" VerticalAlignment="Center" Text="Handicap %" />
-                                                                              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding OwnerJoinHandicapPercent}" Watermark="0" />
+                                                                              <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,0,0" FontSize="12" VerticalAlignment="Center" Text="Handicap %" />
+                                                                              <TextBox Grid.Row="1" Grid.Column="1" Margin="8,6,0,0" Text="{Binding OwnerJoinHandicapPercent}" Watermark="0" />
                                                                         </Grid>
 
                                                                         <Button Command="{Binding JoinArenaStubCommand}" Content="Join Arena" />

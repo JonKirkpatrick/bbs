@@ -15,6 +15,7 @@ public partial class App : Application
 {
     private IClientLogger? _logger;
     private SqliteClientStorage? _storage;
+    private LocalBotOrchestrationService? _orchestration;
 
     public override void Initialize()
     {
@@ -26,7 +27,7 @@ public partial class App : Application
         _logger = new FileClientLogger();
         _storage = new SqliteClientStorage();
         _storage.InitializeAsync().GetAwaiter().GetResult();
-        var orchestration = new LocalBotOrchestrationService(_storage, _logger);
+        _orchestration = new LocalBotOrchestrationService(_storage, _logger);
         var schemaVersion = _storage.GetSchemaVersionAsync().GetAwaiter().GetResult();
         var identityBootstrap = new ClientIdentityBootstrapper(_storage);
         var identity = identityBootstrap.EnsureClientIdentityAsync().GetAwaiter().GetResult();
@@ -49,7 +50,7 @@ public partial class App : Application
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(_logger, _storage, orchestration)
+                DataContext = new MainWindowViewModel(_logger, _storage, _orchestration)
             };
 
             desktop.Exit += OnDesktopExit;
@@ -60,6 +61,7 @@ public partial class App : Application
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        _orchestration?.Dispose();
         _logger?.Log(LogLevel.Information, "app_exit", "BBS client shutting down.",
             new System.Collections.Generic.Dictionary<string, string>
             {

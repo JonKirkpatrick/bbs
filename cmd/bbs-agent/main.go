@@ -67,6 +67,9 @@ type agent struct {
 	server       string
 	ownerToken   string
 	capabilities string
+	credentials  credentials
+	credsPath    string
+	registerWait time.Duration
 
 	botConn net.Conn
 	botMu   sync.Mutex
@@ -165,45 +168,17 @@ func run() int {
 	ag.name = cfg.name
 	ag.ownerToken = strings.TrimSpace(cfg.ownerToken)
 	ag.capabilities = strings.TrimSpace(cfg.capabilities)
+	ag.credentials = creds
+	ag.credsPath = cfg.credentialsFile
+	ag.registerWait = cfg.registerTimeout
 	ag.botConn = conn
 	go ag.readBotScanner(scanner)
 
 	if strings.TrimSpace(cfg.server) != "" {
-		if err := ag.connectServer(); err != nil {
-			fmt.Fprintf(os.Stderr, "[agent] server connect failed: %v\n", err)
-			return 1
-		}
-
-		registerCommand := buildRegisterCommand(cfg.name, creds, cfg.capabilities, cfg.ownerToken)
-		fmt.Fprintf(os.Stderr, "[agent] sending REGISTER to %s\n", cfg.server)
-		if err := ag.sendServerCommand(registerCommand); err != nil {
-			fmt.Fprintf(os.Stderr, "[agent] failed to send register command: %v\n", err)
-			return 1
-		}
-
-		registerMsg, err := waitForRegister(ag.registerCh, cfg.registerTimeout)
-		if err != nil {
+		if _, err := ag.connectAndRegister(cfg.server); err != nil {
 			fmt.Fprintf(os.Stderr, "[agent] register failed: %v\n", err)
 			return 1
 		}
-
-		if strings.ToLower(strings.TrimSpace(registerMsg.Status)) != "ok" {
-			fmt.Fprintf(os.Stderr, "[agent] register rejected: %v\n", registerMsg.Payload)
-			return 1
-		}
-
-		registerPayload, _ := registerMsg.Payload.(map[string]interface{})
-		botID, botSecret := ag.applyRegisterPayload(registerPayload)
-		if registerPayload != nil {
-			if botID != "" && botSecret != "" {
-				if err := saveCredentials(cfg.credentialsFile, credentials{BotID: botID, BotSecret: botSecret}); err != nil {
-					fmt.Fprintf(os.Stderr, "[agent] warning: failed to save credentials: %v\n", err)
-				} else {
-					fmt.Fprintf(os.Stderr, "[agent] saved credentials to %s\n", cfg.credentialsFile)
-				}
-			}
-		}
-
 		fmt.Fprintln(os.Stderr, "[agent] registered; waiting for JOIN to send bot welcome")
 	} else {
 		fmt.Fprintln(os.Stderr, "[agent] server endpoint not provided; running in local-only mode")
@@ -448,11 +423,48 @@ func (a *agent) handleControlLine(line string) {
 			"server_connected":   a.conn != nil,
 			"session_id":         a.sessionID,
 			"bot_id":             a.registeredBotID,
+			"bot_secret":         a.credentials.BotSecret,
 			"owner_token":        a.issuedOwnerToken,
 			"dashboard_host":     a.dashboardHost,
 			"dashboard_port":     a.dashboardPort,
 			"dashboard_endpoint": a.dashboardEndpoint,
 		})
+	case "server_connect", "connect_server":
+		requestedServer := ""
+		if len(env.Payload) > 0 {
+			var payload map[string]interface{}
+			if err := json.Unmarshal(env.Payload, &payload); err == nil {
+				requestedServer = strings.TrimSpace(asString(payload["server"]))
+				if requestedServer == "" {
+					host := strings.TrimSpace(asString(payload["host"]))
+					port := asInt(payload["port"])
+					if host != "" && port > 0 {
+						requestedServer = fmt.Sprintf("%s:%d", host, port)
+					}
+				}
+			}
+		}
+
+		if requestedServer == "" {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "invalid_payload",
+				"type":    env.Type,
+				"message": "server endpoint is required (payload.server=host:port)",
+			})
+			return
+		}
+
+		result, err := a.connectAndRegister(requestedServer)
+		if err != nil {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "server_connect_failed",
+				"type":    env.Type,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		a.sendControlReply(env.ID, "server_connect", result)
 	case "arm":
 		reason := "client_requested"
 		if len(env.Payload) > 0 {
@@ -650,9 +662,10 @@ func parseLocalHello(line string) (localHello, error) {
 }
 
 func applyLocalHello(cfg *runtimeConfig, creds *credentials, hello localHello) {
-	if hello.Name != "" {
-		cfg.name = hello.Name
-	}
+	// NOTE: cfg.name comes from --name CLI flag (set by client from profile).
+	// Do NOT override it from bot's hello message. The client controls the bot name,
+	// not the bot itself. The bot author should not need to manage bot naming.
+
 	if hello.OwnerToken != "" {
 		cfg.ownerToken = hello.OwnerToken
 	}
@@ -698,6 +711,65 @@ func (a *agent) connectServer() error {
 
 	go a.readServer()
 	return nil
+}
+
+func (a *agent) connectAndRegister(server string) (map[string]interface{}, error) {
+	if _, _, err := parseServerAddress(server); err != nil {
+		return nil, err
+	}
+
+	a.server = strings.TrimSpace(server)
+	if a.conn != nil {
+		_ = a.conn.Close()
+		a.conn = nil
+	}
+
+	if err := a.connectServer(); err != nil {
+		return nil, fmt.Errorf("server connect failed: %w", err)
+	}
+
+	registerCommand := buildRegisterCommand(a.name, a.credentials, a.capabilities, "")
+	fmt.Fprintf(os.Stderr, "[agent] sending REGISTER to %s\n", a.server)
+	if err := a.sendServerCommand(registerCommand); err != nil {
+		return nil, fmt.Errorf("failed to send register command: %w", err)
+	}
+
+	registerMsg, err := waitForRegister(a.registerCh, a.registerWait)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.ToLower(strings.TrimSpace(registerMsg.Status)) != "ok" {
+		return nil, fmt.Errorf("register rejected: %v", registerMsg.Payload)
+	}
+
+	registerPayload, _ := registerMsg.Payload.(map[string]interface{})
+	botID, botSecret := a.applyRegisterPayload(registerPayload)
+	if botID != "" {
+		a.credentials.BotID = botID
+	}
+	if botSecret != "" {
+		a.credentials.BotSecret = botSecret
+	}
+	if a.credentials.BotID != "" && a.credentials.BotSecret != "" && strings.TrimSpace(a.credsPath) != "" {
+		if err := saveCredentials(a.credsPath, a.credentials); err != nil {
+			fmt.Fprintf(os.Stderr, "[agent] warning: failed to save credentials: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "[agent] saved credentials to %s\n", a.credsPath)
+		}
+	}
+
+	return map[string]interface{}{
+		"server":             a.server,
+		"server_connected":   a.conn != nil,
+		"session_id":         a.sessionID,
+		"bot_id":             a.registeredBotID,
+		"bot_secret":         a.credentials.BotSecret,
+		"owner_token":        a.issuedOwnerToken,
+		"dashboard_host":     a.dashboardHost,
+		"dashboard_port":     a.dashboardPort,
+		"dashboard_endpoint": a.dashboardEndpoint,
+	}, nil
 }
 
 func waitForRegister(ch <-chan serverMessage, timeout time.Duration) (serverMessage, error) {
