@@ -275,8 +275,8 @@
                                                                   <TextBox Text="{Binding ServerEditorHost}" Watermark="127.0.0.1" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="2">
-                                                                  <TextBlock FontSize="12" Opacity="1" Text="Port" />
-                                                                  <TextBox Text="{Binding ServerEditorPort}" Watermark="8080" />
+                                                                  <TextBlock FontSize="12" Opacity="1" Text="Dashboard Port" />
+                                                                  <TextBox Text="{Binding ServerEditorPort}" Watermark="3000" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2" Margin="8,20,0,0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4">
                                                                   <CheckBox IsChecked="{Binding ServerEditorUseTls}" />

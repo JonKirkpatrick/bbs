@@ -24,6 +24,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private const int ServerCatalogFetchTimeoutMs = 2000;
     private const int ServerCatalogSelectionRefreshCooldownMs = 5000;
     private const int DashboardPortFallback = 3000;
+    private const int BotTcpDefaultPort = 8080;
     private const int ServerProbeMaxAttempts = 2;
     private const int ServerProbeRetryDelayMs = 200;
     private const string ProbeStatusMetadataKey = "probe_status";
@@ -58,7 +59,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _botEditorMessage = "Fill out the bot form and save.";
     private string _serverEditorName = string.Empty;
     private string _serverEditorHost = string.Empty;
-    private string _serverEditorPort = "8080";
+    private string _serverEditorPort = "3000";
     private bool _serverEditorUseTls;
     private string _serverEditorMetadata = string.Empty;
     private string _serverEditorMessage = "Fill out the server form and save.";
@@ -692,7 +693,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         _currentContext = WorkspaceContext.ServerDetails;
         ServerEditorName = string.Empty;
         ServerEditorHost = string.Empty;
-        ServerEditorPort = "8080";
+        ServerEditorPort = "3000";
         ServerEditorUseTls = false;
         ServerEditorMetadata = string.Empty;
         ServerEditorMessage = "Creating a new known server.";
@@ -970,12 +971,16 @@ public sealed class MainWindowViewModel : ViewModelBase
         LoadServersFromStorage();
         SelectedServer = FindServerById(serverId);
         TriggerServerAccessRefresh();
-        ServerEditorMessage = $"Saved known server: {server.Name}";
+        var dashboardPortHint = server.Port == BotTcpDefaultPort
+            ? " Saved, but 8080 is commonly the bot TCP port; dashboard is often 3000."
+            : string.Empty;
+        ServerEditorMessage = $"Saved known server: {server.Name}.{dashboardPortHint}";
         _logger.Log(LogLevel.Information, "known_server_saved", "Known server and plugin cache persisted.",
             new Dictionary<string, string>
             {
                 ["server_id"] = server.ServerId,
-                ["name"] = server.Name
+                ["name"] = server.Name,
+                ["dashboard_port_hint"] = dashboardPortHint.Length == 0 ? "none" : "bot_port_likely"
             });
     }
 
