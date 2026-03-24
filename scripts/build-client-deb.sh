@@ -36,7 +36,7 @@ mkdir -p "$PKGDIR"/{DEBIAN,opt/bbs-client,usr/bin,usr/share/applications,usr/sha
 echo "Building bbs-client application..."
 cd "$CLIENT_ROOT"
 dotnet publish -c Release -o "$PKGDIR/opt/bbs-client" src/Bbs.Client.App/Bbs.Client.App.csproj \
-    --self-contained false --no-restore
+    --self-contained false
 
 # Make the main DLL executable
 chmod +x "$PKGDIR/opt/bbs-client/Bbs.Client.App.dll" || true

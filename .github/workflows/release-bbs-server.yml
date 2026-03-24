@@ -1,4 +1,4 @@
-name: Release bbs-server
+name: Release Artifacts
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build_binaries:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -58,15 +58,74 @@ jobs:
           name: bbs-server-linux-${{ matrix.arch }}
           path: dist/bbs-server-linux-${{ matrix.arch }}
 
-  release:
+  build_debs:
     runs-on: ubuntu-latest
-    needs: build
 
     steps:
-      - name: Download build artifacts
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build server .deb package
+        shell: bash
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${TAG_INPUT}"
+          fi
+          version="${tag#v}"
+          ./scripts/build-deb.sh "${version}"
+
+      - name: Build client .deb package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/build-client-deb.sh
+
+      - name: Upload server .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bbs-server-deb-amd64
+          path: build/deb/bbs-server_*_amd64.deb
+
+      - name: Upload client .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bbs-client-deb-amd64
+          path: build/deb-client/bbs-client_*_amd64.deb
+
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - build_binaries
+      - build_debs
+
+    steps:
+      - name: Download binary artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: bbs-server-linux-*
+          merge-multiple: true
+          path: dist
+
+      - name: Download Debian package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bbs-*-deb-amd64
           merge-multiple: true
           path: dist
 
@@ -81,7 +140,7 @@ jobs:
             tag="${{ inputs.tag }}"
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "release_name=bbs-server ${tag}" >> "$GITHUB_OUTPUT"
+          echo "release_name=Build-a-Bot Stadium ${tag}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
@@ -92,4 +151,6 @@ jobs:
           files: |
             dist/bbs-server-linux-amd64
             dist/bbs-server-linux-arm64
+            dist/bbs-server_*_amd64.deb
+            dist/bbs-client_*_amd64.deb
           fail_on_unmatched_files: true
