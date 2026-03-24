@@ -14,7 +14,7 @@ namespace Bbs.Client.Infrastructure.Storage;
 public sealed class SqliteClientStorage : IClientStorage
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private readonly string _dbPath;
 
     public SqliteClientStorage(string? dbPath = null)
@@ -40,6 +40,12 @@ public sealed class SqliteClientStorage : IClientStorage
         {
             await ApplyMigrationV1Async(connection, cancellationToken);
             version = 1;
+        }
+
+        if (version < 2)
+        {
+            await ApplyMigrationV2Async(connection, cancellationToken);
+            version = 2;
         }
 
         if (version < CurrentSchemaVersion)
@@ -139,6 +145,101 @@ public sealed class SqliteClientStorage : IClientStorage
         command.Parameters.AddWithValue("$metadata_json", JsonSerializer.Serialize(profile.Metadata, JsonOptions));
         command.Parameters.AddWithValue("$created_at_utc", profile.CreatedAtUtc.ToString("O"));
         command.Parameters.AddWithValue("$updated_at_utc", profile.UpdatedAtUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<BotServerCredential?> GetBotServerCredentialAsync(string clientBotId, string serverId, string? serverGlobalId = null, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(serverGlobalId))
+        {
+            await using var byGlobal = connection.CreateCommand();
+            byGlobal.CommandText = """
+                SELECT client_bot_id, server_id, server_global_id, server_bot_id, server_bot_secret, created_at_utc, updated_at_utc
+                FROM bot_server_credentials
+                WHERE client_bot_id = $client_bot_id AND server_global_id = $server_global_id
+                LIMIT 1
+                """;
+            byGlobal.Parameters.AddWithValue("$client_bot_id", clientBotId);
+            byGlobal.Parameters.AddWithValue("$server_global_id", serverGlobalId);
+
+            await using var byGlobalReader = await byGlobal.ExecuteReaderAsync(cancellationToken);
+            if (await byGlobalReader.ReadAsync(cancellationToken))
+            {
+                return BotServerCredential.Create(
+                    clientBotId: byGlobalReader.GetString(0),
+                    serverId: byGlobalReader.GetString(1),
+                    serverGlobalId: byGlobalReader.IsDBNull(2) ? null : byGlobalReader.GetString(2),
+                    serverBotId: byGlobalReader.GetString(3),
+                    serverBotSecret: byGlobalReader.GetString(4),
+                    createdAtUtc: DateTimeOffset.Parse(byGlobalReader.GetString(5)),
+                    updatedAtUtc: DateTimeOffset.Parse(byGlobalReader.GetString(6)));
+            }
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT client_bot_id, server_id, server_global_id, server_bot_id, server_bot_secret, created_at_utc, updated_at_utc
+            FROM bot_server_credentials
+            WHERE client_bot_id = $client_bot_id AND server_id = $server_id
+            LIMIT 1
+            """;
+        command.Parameters.AddWithValue("$client_bot_id", clientBotId);
+        command.Parameters.AddWithValue("$server_id", serverId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return BotServerCredential.Create(
+            clientBotId: reader.GetString(0),
+            serverId: reader.GetString(1),
+            serverGlobalId: reader.IsDBNull(2) ? null : reader.GetString(2),
+            serverBotId: reader.GetString(3),
+            serverBotSecret: reader.GetString(4),
+            createdAtUtc: DateTimeOffset.Parse(reader.GetString(5)),
+            updatedAtUtc: DateTimeOffset.Parse(reader.GetString(6)));
+    }
+
+    public async Task UpsertBotServerCredentialAsync(BotServerCredential credential, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO bot_server_credentials(
+                client_bot_id,
+                server_id,
+                server_global_id,
+                server_bot_id,
+                server_bot_secret,
+                created_at_utc,
+                updated_at_utc)
+            VALUES (
+                $client_bot_id,
+                $server_id,
+                $server_global_id,
+                $server_bot_id,
+                $server_bot_secret,
+                $created_at_utc,
+                $updated_at_utc)
+            ON CONFLICT(client_bot_id, server_id)
+            DO UPDATE SET
+                server_global_id = excluded.server_global_id,
+                server_bot_id = excluded.server_bot_id,
+                server_bot_secret = excluded.server_bot_secret,
+                created_at_utc = excluded.created_at_utc,
+                updated_at_utc = excluded.updated_at_utc
+            """;
+        command.Parameters.AddWithValue("$client_bot_id", credential.ClientBotId);
+        command.Parameters.AddWithValue("$server_id", credential.ServerId);
+        command.Parameters.AddWithValue("$server_global_id", (object?)credential.ServerGlobalId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$server_bot_id", credential.ServerBotId);
+        command.Parameters.AddWithValue("$server_bot_secret", credential.ServerBotSecret);
+        command.Parameters.AddWithValue("$created_at_utc", credential.CreatedAtUtc.ToString("O"));
+        command.Parameters.AddWithValue("$updated_at_utc", credential.UpdatedAtUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -372,6 +473,47 @@ public sealed class SqliteClientStorage : IClientStorage
             updateVersion.CommandText = """
                 UPDATE schema_version
                 SET version = 1,
+                    updated_at_utc = $updated_at_utc
+                WHERE id = 1
+                """;
+            updateVersion.Parameters.AddWithValue("$updated_at_utc", DateTimeOffset.UtcNow.ToString("O"));
+            await updateVersion.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        transaction.Commit();
+    }
+
+    private static async Task ApplyMigrationV2Async(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var transaction = connection.BeginTransaction();
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                CREATE TABLE IF NOT EXISTS bot_server_credentials (
+                    client_bot_id TEXT NOT NULL,
+                    server_id TEXT NOT NULL,
+                    server_global_id TEXT,
+                    server_bot_id TEXT NOT NULL,
+                    server_bot_secret TEXT NOT NULL,
+                    created_at_utc TEXT NOT NULL,
+                    updated_at_utc TEXT NOT NULL,
+                    PRIMARY KEY (client_bot_id, server_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_bot_server_credentials_global
+                ON bot_server_credentials(client_bot_id, server_global_id);
+                """;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var updateVersion = connection.CreateCommand())
+        {
+            updateVersion.Transaction = transaction;
+            updateVersion.CommandText = """
+                UPDATE schema_version
+                SET version = 2,
                     updated_at_utc = $updated_at_utc
                 WHERE id = 1
                 """;

@@ -23,7 +23,7 @@ public sealed class SqliteClientStorageTests
         var schemaVersion = await storage.GetSchemaVersionAsync();
 
         Assert.True(File.Exists(dbPath));
-        Assert.Equal(1, schemaVersion);
+        Assert.Equal(2, schemaVersion);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class SqliteClientStorageTests
         await storage.InitializeAsync();
         var schemaVersion = await storage.GetSchemaVersionAsync();
 
-        Assert.Equal(1, schemaVersion);
+        Assert.Equal(2, schemaVersion);
     }
 
     [Fact]
@@ -250,6 +250,35 @@ public sealed class SqliteClientStorageTests
         Assert.Equal("unreachable", loadedServer.Metadata["probe_status"]);
         Assert.Equal("timeout", loadedServer.Metadata["probe_last_error"]);
         Assert.True(loadedServer.Metadata.ContainsKey("probe_last_checked_utc"));
+    }
+
+    [Fact]
+    public async Task BotServerCredential_RoundTripByServerIdAndGlobalId()
+    {
+        var dbPath = NewTempDatabasePath();
+        var storage = new SqliteClientStorage(dbPath);
+        await storage.InitializeAsync();
+
+        var credential = BotServerCredential.Create(
+            clientBotId: "client-bot-1",
+            serverId: "srv-local-1",
+            serverGlobalId: "gsrv-1001",
+            serverBotId: "server-bot-77",
+            serverBotSecret: "secret-xyz");
+
+        await storage.UpsertBotServerCredentialAsync(credential);
+
+        var byServer = await storage.GetBotServerCredentialAsync("client-bot-1", "srv-local-1");
+        var byGlobal = await storage.GetBotServerCredentialAsync("client-bot-1", "srv-other", "gsrv-1001");
+
+        Assert.NotNull(byServer);
+        Assert.Equal("server-bot-77", byServer!.ServerBotId);
+        Assert.Equal("secret-xyz", byServer.ServerBotSecret);
+        Assert.Equal("gsrv-1001", byServer.ServerGlobalId);
+
+        Assert.NotNull(byGlobal);
+        Assert.Equal("srv-local-1", byGlobal!.ServerId);
+        Assert.Equal("server-bot-77", byGlobal.ServerBotId);
     }
 
     private static async Task CreateLegacyDatabaseAsync(string dbPath)
