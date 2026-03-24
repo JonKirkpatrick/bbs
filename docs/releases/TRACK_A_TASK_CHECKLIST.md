@@ -232,3 +232,167 @@ Sprint 2 exit criteria:
 - PR1 through PR4 merged.
 - Tasks `A2-01` to `A2-04`, `A3-01`, and `A3-02` marked `done`.
 - `A3-03` and `A3-04` baseline implementation merged and validated.
+
+## Sprint 3 Cut (Finish A3 + A4)
+
+Objective:
+- Complete bot glow semantics and deliver known-server management with probing, cache persistence, and reprobe UX in small, reviewable PRs.
+
+Execution order:
+1. PR1 Bot runtime glow-state completion
+2. PR2 Known server CRUD + persistence cache
+3. PR3 Startup probing pipeline
+4. PR4 Server visual status + manual reprobe
+
+### PR1 Bot runtime glow-state completion
+
+- Suggested branch: `track-a/s3-pr1-bot-glow-states`
+- Suggested PR title: `Track A S3/PR1: Complete bot glow-state semantics`
+- Task mapping:
+	- `A3-05`
+- Completion checks:
+	- Bot cards show amber while armed/idle, green during active session, and red on error conditions.
+	- Glow transitions follow runtime state updates without requiring app restart.
+	- Visual rules are covered by view model/state mapping tests where feasible.
+- Evidence to attach:
+	- Short screen capture or screenshot sequence showing state transitions.
+	- Test output for glow-state mapping or relevant runtime-state tests.
+
+### PR2 Known server CRUD + persistence cache
+
+- Suggested branch: `track-a/s3-pr2-known-server-persistence`
+- Suggested PR title: `Track A S3/PR2: Known server registration and durable cache`
+- Task mapping:
+	- `A4-01`
+	- `A4-02`
+- Completion checks:
+	- User can add/edit known servers in the center activity flow.
+	- Known server records persist across app restart.
+	- Plugin snapshot/cache model persists and reloads correctly.
+- Evidence to attach:
+	- Test output for server persistence and cache reload behavior.
+	- Before/after restart screenshot confirming retained server entries.
+
+### PR3 Startup probing pipeline
+
+- Suggested branch: `track-a/s3-pr3-startup-server-probe`
+- Suggested PR title: `Track A S3/PR3: Startup probe loop for known servers`
+- Task mapping:
+	- `A4-03`
+- Completion checks:
+	- Startup probe executes for known endpoints with timeout/backoff policy.
+	- Reachable/unreachable status updates are stored in runtime/persistent state as designed.
+	- Probe failures do not block app startup or crash UI.
+- Evidence to attach:
+	- Probe log excerpt with at least one success and one timeout/failure path.
+	- Integration or component test output for probing behavior.
+
+### PR4 Server visual status + manual reprobe
+
+- Suggested branch: `track-a/s3-pr4-server-status-and-reprobe`
+- Suggested PR title: `Track A S3/PR4: Server card status rendering and manual reprobe`
+- Task mapping:
+	- `A4-04`
+	- `A4-05`
+- Completion checks:
+	- Server cards render green for live and grey for inactive/offline states.
+	- User can trigger manual refresh/reprobe and observe status update.
+	- Reprobe action is safe against concurrent triggers and stale status display.
+- Evidence to attach:
+	- UI screenshot showing live/offline card state variants.
+	- Test or manual validation notes demonstrating reprobe updates.
+
+Sprint 3 exit criteria:
+- PR1 through PR4 merged.
+- Tasks `A3-05` and `A4-01` through `A4-05` marked `done`.
+- Known-server state and probing workflow validated on a clean restart.
+
+## Sprint 4 Cut (A5 + A6 Hardening)
+
+Objective:
+- Deliver server-context actions and harden the alpha path with integration coverage, lifecycle resiliency, and packaging/readiness documentation.
+
+Execution order:
+1. PR1 Server detail context and plugin catalog view
+2. PR2 Session access metadata in server context
+3. PR3 Owner-token-gated action stubs
+4. PR4 Orchestration hardening and integration coverage
+5. PR5 Packaging docs and alpha readiness pass
+
+### PR1 Server detail context and plugin catalog view
+
+- Suggested branch: `track-a/s4-pr1-server-detail-catalog`
+- Suggested PR title: `Track A S4/PR1: Server detail context and plugin catalog viewer`
+- Task mapping:
+	- `A5-01`
+	- `A5-04`
+- Completion checks:
+	- Selecting a server opens a detail view in center context with cached metadata.
+	- Plugin catalog pane renders cached plugin data with stable empty/loading states.
+	- View model contracts are test-covered for selection-to-context behavior.
+- Evidence to attach:
+	- Screenshot of server detail view and plugin catalog pane.
+	- Test output for context selection/view model behavior.
+
+### PR2 Session access metadata in server context
+
+- Suggested branch: `track-a/s4-pr2-server-access-metadata`
+- Suggested PR title: `Track A S4/PR2: Surface server access metadata from armed sessions`
+- Task mapping:
+	- `A5-02`
+- Completion checks:
+	- Active armed sessions can retrieve and display `server_access` metadata.
+	- Owner token and dashboard endpoint fields are surfaced with clear validity states.
+	- Metadata refresh path is non-blocking and error-tolerant.
+- Evidence to attach:
+	- Runtime log excerpt of control-channel metadata fetch.
+	- UI screenshot showing populated server access metadata.
+
+### PR3 Owner-token-gated action stubs
+
+- Suggested branch: `track-a/s4-pr3-owner-token-gated-actions`
+- Suggested PR title: `Track A S4/PR3: Owner-token-gated action stubs in server context`
+- Task mapping:
+	- `A5-03`
+- Completion checks:
+	- Owner-token-gated action placeholders appear only when metadata/token is valid.
+	- Action trigger path validates preconditions and reports friendly failure states.
+	- Command wiring is structured for future create/join arena implementation.
+- Evidence to attach:
+	- Screenshot of gated action visibility on/off conditions.
+	- Test output for gating logic and precondition checks.
+
+### PR4 Orchestration hardening and integration coverage
+
+- Suggested branch: `track-a/s4-pr4-hardening-and-integration`
+- Suggested PR title: `Track A S4/PR4: Orchestration resiliency and integration test completion`
+- Task mapping:
+	- `A6-02`
+	- `A6-03`
+- Completion checks:
+	- Integration tests cover arm/disarm/lifecycle/quit transitions including failure paths.
+	- Stale process handles and socket failures are surfaced with recoverable UX behavior.
+	- Failure handling does not require app restart to continue normal operation.
+- Evidence to attach:
+	- Integration test output showing transition matrix coverage.
+	- Log excerpt of handled stale-process or socket-failure recovery path.
+
+### PR5 Packaging docs and alpha readiness pass
+
+- Suggested branch: `track-a/s4-pr5-packaging-and-alpha-readiness`
+- Suggested PR title: `Track A S4/PR5: Linux packaging docs and alpha readiness checklist`
+- Task mapping:
+	- `A6-04`
+	- `A6-05`
+- Completion checks:
+	- Linux build/run/developer workflow docs are complete and reproducible on clean setup.
+	- Alpha sanity checklist (UX, persistence durability, smoke checks) is completed.
+	- Remaining launch blockers are documented with owners and severity.
+- Evidence to attach:
+	- Fresh-environment setup notes and command transcript.
+	- Completed alpha checklist artifact in PR description.
+
+Sprint 4 exit criteria:
+- PR1 through PR5 merged.
+- Tasks `A5-01` through `A5-04` and `A6-02` through `A6-05` marked `done`.
+- Alpha release candidate passes documented smoke and durability checks.
