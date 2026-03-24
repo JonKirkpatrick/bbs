@@ -1,4 +1,4 @@
-.PHONY: help build build-server build-agent build-plugins lint test test-race test-cover clean release-tag help deb dev
+.PHONY: help build build-server build-agent build-plugins lint test test-race test-cover clean release-tag help deb deb-client dev
 
 # Default target
 help:
@@ -23,6 +23,7 @@ help:
 	@echo "Packaging:"
 	@echo "  make deb                Build .deb package (usage: make deb [VERSION=0.3.0])"
 	@echo "  make deb VERSION=v0.3.0 Build .deb package with specific version"
+	@echo "  make deb-client         Build bbs-client .deb (usage: make deb-client [VERSION=0.1.0-alpha])"
 	@echo ""
 	@echo "Release Management:"
 	@echo "  make version            Show current version info"
@@ -143,6 +144,11 @@ deb:
 	@echo "Building Debian package..."
 	@scripts/build-deb.sh $(VERSION_CLEAN)
 	@echo "✓ Debian package complete"
+
+deb-client:
+	@echo "Building bbs-client Debian package ($(VERSION))..."
+	@scripts/build-client-deb.sh $(VERSION)
+	@echo "✓ bbs-client Debian package complete"
 
 # Development build (for local testing)
 .PHONY: dev
