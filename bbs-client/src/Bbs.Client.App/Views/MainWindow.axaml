@@ -99,8 +99,8 @@
                                                                                                                   IsActive="{Binding $parent[ListBoxItem].IsSelected}"
                                                                                                                   Subtitle="{Binding Summary}"
                                                                                                                   StatusText="{Binding Status}"
-                                                                                                                  AccentBrush="{DynamicResource Palette.AccentBrush}"
-                                                                                                                  BackgroundBrush="{DynamicResource Palette.SummaryCardBackgroundBrush}" />
+                                                                                                                  AccentBrush="{Binding AccentBrush}"
+                                                                                                                  BackgroundBrush="{Binding BackgroundBrush}" />
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
