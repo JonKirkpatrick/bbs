@@ -40,6 +40,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private const string ServerAccessSessionIdMetadataKey = "server_access.session_id";
     private const string ServerAccessOwnerTokenMetadataKey = "server_access.owner_token";
     private const string ServerAccessDashboardEndpointMetadataKey = "server_access.dashboard_endpoint";
+    private const string ServerAccessCredentialMapMetadataKey = "server_access.credentials_by_server";
     private const string ServerAccessBotIdMetadataKey = "server_access.bot_id";
     private const string ServerAccessBotSecretMetadataKey = "server_access.bot_secret";
     private static readonly string[] DashboardEndpointMetadataKeys =
@@ -892,6 +893,8 @@ public sealed class MainWindowViewModel : ViewModelBase
                 attachedMetadata[ServerAccessDashboardEndpointMetadataKey] = registerResponse.DashboardEndpoint;
             }
 
+            PersistServerCredential(attachedMetadata, server.ServerId, registerResponse.ServerBotId, registerResponse.ServerBotSecret);
+
             var attachedProfile = BotProfile.Create(
                 botId: sourceProfile.BotId,
                 name: sourceProfile.Name,
@@ -935,24 +938,17 @@ public sealed class MainWindowViewModel : ViewModelBase
     private RegisterHandshakeResult RegisterBotSessionWithServer(ServerSummaryItem server, BotProfile profile)
     {
         var metadata = new Dictionary<string, string>(profile.Metadata, StringComparer.OrdinalIgnoreCase);
-        var existingServerId = metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var value) ? value : string.Empty;
-        var canReuseIdentity = string.Equals(existingServerId, server.ServerId, StringComparison.OrdinalIgnoreCase);
-        var botIdentity = canReuseIdentity && metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botIdValue)
-            ? botIdValue.Trim()
-            : string.Empty;
-        var botSecret = canReuseIdentity && metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecretValue)
-            ? botSecretValue.Trim()
-            : string.Empty;
+        var hasServerCredential = TryGetServerCredential(metadata, server.ServerId, out var botIdentity, out var botSecret);
 
         var registerName = SanitizeRegisterName(profile.Name);
         var registerCommand = BuildRegisterCommand(registerName, botIdentity, botSecret, string.Empty);
         var fallbackCommand = BuildRegisterCommand(registerName, string.Empty, string.Empty, string.Empty);
 
-        if (!string.IsNullOrWhiteSpace(botIdentity) && !string.IsNullOrWhiteSpace(botSecret))
+        if (hasServerCredential && !string.IsNullOrWhiteSpace(botIdentity) && !string.IsNullOrWhiteSpace(botSecret))
         {
             try
             {
-                return ExecuteRegisterHandshake(server, profile.BotId, registerCommand);
+                return ExecuteRegisterHandshake(server, profile.BotId, registerCommand, botSecret);
             }
             catch (InvalidOperationException ex) when (IsIdentityCredentialFailure(ex.Message))
             {
@@ -966,10 +962,10 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
         }
 
-        return ExecuteRegisterHandshake(server, profile.BotId, fallbackCommand);
+        return ExecuteRegisterHandshake(server, profile.BotId, fallbackCommand, string.Empty);
     }
 
-    private RegisterHandshakeResult ExecuteRegisterHandshake(ServerSummaryItem server, string profileBotId, string registerCommand)
+    private RegisterHandshakeResult ExecuteRegisterHandshake(ServerSummaryItem server, string profileBotId, string registerCommand, string fallbackBotSecret)
     {
         var endpointCandidates = BuildBotRegisterEndpointCandidates(server);
         Exception? lastError = null;
@@ -1029,7 +1025,9 @@ public sealed class MainWindowViewModel : ViewModelBase
                     return new RegisterHandshakeResult(
                         SessionId: registerPayload.SessionId,
                         ServerBotId: registerPayload.ServerBotId,
-                        ServerBotSecret: registerPayload.ServerBotSecret,
+                        ServerBotSecret: string.IsNullOrWhiteSpace(registerPayload.ServerBotSecret)
+                            ? fallbackBotSecret
+                            : registerPayload.ServerBotSecret,
                         OwnerToken: registerPayload.OwnerToken,
                         DashboardEndpoint: dashboardEndpoint);
                 }
@@ -1058,6 +1056,71 @@ public sealed class MainWindowViewModel : ViewModelBase
                message.Contains("bot_secret required", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("invalid bot_secret", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("owner token is invalid", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetServerCredential(
+        IReadOnlyDictionary<string, string> metadata,
+        string serverId,
+        out string botId,
+        out string botSecret)
+    {
+        var map = ParseServerCredentialMap(metadata);
+        if (map.TryGetValue(serverId, out var stored) &&
+            !string.IsNullOrWhiteSpace(stored.BotId) &&
+            !string.IsNullOrWhiteSpace(stored.BotSecret))
+        {
+            botId = stored.BotId;
+            botSecret = stored.BotSecret;
+            return true;
+        }
+
+        var existingServerId = metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var value) ? value : string.Empty;
+        if (string.Equals(existingServerId, serverId, StringComparison.OrdinalIgnoreCase) &&
+            metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var legacyBotId) &&
+            metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var legacyBotSecret) &&
+            !string.IsNullOrWhiteSpace(legacyBotId) &&
+            !string.IsNullOrWhiteSpace(legacyBotSecret))
+        {
+            botId = legacyBotId.Trim();
+            botSecret = legacyBotSecret.Trim();
+            return true;
+        }
+
+        botId = string.Empty;
+        botSecret = string.Empty;
+        return false;
+    }
+
+    private static Dictionary<string, StoredServerCredential> ParseServerCredentialMap(IReadOnlyDictionary<string, string> metadata)
+    {
+        if (!metadata.TryGetValue(ServerAccessCredentialMapMetadataKey, out var raw) || string.IsNullOrWhiteSpace(raw))
+        {
+            return new Dictionary<string, StoredServerCredential>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, StoredServerCredential>>(raw);
+            return parsed is null
+                ? new Dictionary<string, StoredServerCredential>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, StoredServerCredential>(parsed, StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, StoredServerCredential>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void PersistServerCredential(Dictionary<string, string> metadata, string serverId, string botId, string botSecret)
+    {
+        if (string.IsNullOrWhiteSpace(serverId) || string.IsNullOrWhiteSpace(botId) || string.IsNullOrWhiteSpace(botSecret))
+        {
+            return;
+        }
+
+        var map = ParseServerCredentialMap(metadata);
+        map[serverId] = new StoredServerCredential(botId.Trim(), botSecret.Trim());
+        metadata[ServerAccessCredentialMapMetadataKey] = JsonSerializer.Serialize(map);
     }
 
     private static string SanitizeRegisterName(string name)
@@ -1277,9 +1340,21 @@ public sealed class MainWindowViewModel : ViewModelBase
     private BotProfile SanitizePersistedBotProfile(BotProfile profile)
     {
         var metadata = new Dictionary<string, string>(profile.Metadata, StringComparer.OrdinalIgnoreCase);
+        if (metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var serverId) &&
+            !string.IsNullOrWhiteSpace(serverId) &&
+            metadata.TryGetValue(ServerAccessBotIdMetadataKey, out var botId) &&
+            metadata.TryGetValue(ServerAccessBotSecretMetadataKey, out var botSecret) &&
+            !string.IsNullOrWhiteSpace(botId) &&
+            !string.IsNullOrWhiteSpace(botSecret))
+        {
+            PersistServerCredential(metadata, serverId.Trim(), botId.Trim(), botSecret.Trim());
+        }
+
         var removedOwnerToken = metadata.Remove(ServerAccessOwnerTokenMetadataKey);
         var removedSessionId = metadata.Remove(ServerAccessSessionIdMetadataKey);
-        if (!removedOwnerToken && !removedSessionId)
+        var removedLegacyBotId = metadata.Remove(ServerAccessBotIdMetadataKey);
+        var removedLegacyBotSecret = metadata.Remove(ServerAccessBotSecretMetadataKey);
+        if (!removedOwnerToken && !removedSessionId && !removedLegacyBotId && !removedLegacyBotSecret)
         {
             return profile;
         }
@@ -2390,6 +2465,8 @@ public sealed record RegisterEnvelopePayload(
     string DashboardHost,
     string DashboardPort,
     string ErrorMessage);
+
+public sealed record StoredServerCredential(string BotId, string BotSecret);
 
 
 public enum WorkspaceContext
