@@ -263,19 +263,29 @@
                                                                                                                   IsActive="{Binding $parent[ListBoxItem].IsSelected}"
                                                                                                                   Subtitle="{Binding Endpoint}"
                                                                                                                   StatusText="{Binding Status}"
-                                                                                                                  AccentBrush="{DynamicResource Palette.AccentBrush}"
-                                                                                                                  BackgroundBrush="{DynamicResource Palette.SummaryCardBackgroundBrush}" />
+                                                                                                                  AccentBrush="{Binding AccentBrush}"
+                                                                                                                  BackgroundBrush="{Binding BackgroundBrush}" />
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
 
-                              <Button Grid.Row="3"
-                                      IsVisible="{Binding IsRightPanelExpanded}"
-                                      Margin="0,8,0,0"
-                                      HorizontalAlignment="Stretch"
-                                      HorizontalContentAlignment="Center"
-                                          Command="{Binding StartNewServerCommand}"
-                                          Content="New Server" />
+                              <Grid Grid.Row="3"
+                                    IsVisible="{Binding IsRightPanelExpanded}"
+                                    Margin="0,8,0,0"
+                                    ColumnDefinitions="*,*">
+                                    <Button Grid.Column="0"
+                                            Margin="0,0,4,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Center"
+                                            Command="{Binding StartNewServerCommand}"
+                                            Content="New Server" />
+                                    <Button Grid.Column="1"
+                                            Margin="4,0,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Center"
+                                            Command="{Binding ReprobeServersCommand}"
+                                            Content="Reprobe" />
+                              </Grid>
 
                         </Grid>
                   </Grid>
