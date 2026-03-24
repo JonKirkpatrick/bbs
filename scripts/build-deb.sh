@@ -35,10 +35,16 @@ echo "Copying templates..."
 mkdir -p "$PKGDIR/opt/bbs/templates"
 cp -r "$REPO_ROOT/cmd/bbs-server/templates"/* "$PKGDIR/opt/bbs/templates/"
 
-# Copy plugin counter example
-echo "Copying plugin examples..."
+# Copy runtime plugin assets and optional counter example binary
+echo "Copying plugin assets..."
+if compgen -G "$REPO_ROOT/cmd/bbs-server/plugins/games/*" > /dev/null; then
+	cp -r "$REPO_ROOT/cmd/bbs-server/plugins/games/"* "$PKGDIR/var/lib/bbs/plugins/games/"
+else
+	echo "Warning: no plugin assets found under cmd/bbs-server/plugins/games"
+fi
+
+echo "Building optional counter plugin example..."
 go build -o "$PKGDIR/var/lib/bbs/plugins/games/counter-plugin" ./cmd/bbs-game-counter-plugin
-cp "$REPO_ROOT/cmd/bbs-server/plugins/games/counter.json" "$PKGDIR/var/lib/bbs/plugins/games/"
 
 # Copy documentation
 echo "Copying documentation..."
