@@ -1099,6 +1099,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         try
         {
             var sourceProfile = bot.ToProfile();
+            var serverGlobalId = ResolveServerGlobalId(server);
+            var previousCredential = _storage.GetBotServerCredentialAsync(sourceProfile.BotId, server.ServerId, serverGlobalId).GetAwaiter().GetResult();
             var registerResponse = RegisterBotSessionViaAgentControl(server, sourceProfile);
             var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
             {
@@ -1109,7 +1111,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 attachedMetadata[ServerAccessDashboardEndpointMetadataKey] = registerResponse.DashboardEndpoint;
             }
-            var serverGlobalId = ResolveServerGlobalId(server);
             var credential = BotServerCredential.Create(
                 clientBotId: sourceProfile.BotId,
                 serverId: server.ServerId,
@@ -1161,6 +1162,22 @@ public sealed class MainWindowViewModel : ViewModelBase
                     ["session_id"] = registerResponse.SessionId,
                     ["dashboard_endpoint"] = registerResponse.DashboardEndpoint
                 });
+
+            if (previousCredential is { } existingCredential &&
+                (!string.Equals(existingCredential.ServerBotId, registerResponse.ServerBotId, StringComparison.Ordinal) ||
+                 !string.Equals(existingCredential.ServerBotSecret, registerResponse.ServerBotSecret, StringComparison.Ordinal)))
+            {
+                _logger.Log(LogLevel.Information, "credentials_refreshed_after_auth_reset", "Server credentials were refreshed during deploy after authentication mismatch.",
+                    new Dictionary<string, string>
+                    {
+                        ["bot_id"] = sourceProfile.BotId,
+                        ["server_id"] = server.ServerId,
+                        ["previous_server_bot_id"] = existingCredential.ServerBotId ?? string.Empty,
+                        ["new_server_bot_id"] = registerResponse.ServerBotId ?? string.Empty,
+                        ["server_global_id"] = serverGlobalId ?? string.Empty,
+                        ["secret_rotated"] = (!string.Equals(existingCredential.ServerBotSecret, registerResponse.ServerBotSecret, StringComparison.Ordinal)).ToString()
+                    });
+            }
         }
         catch (Exception ex)
         {
