@@ -45,12 +45,17 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _serverEditorMetadata = string.Empty;
     private string _serverEditorPlugins = string.Empty;
     private string _serverEditorMessage = "Fill out the server form and save.";
+    private bool _isServerProbeInProgress;
+    private readonly object _serverProbeLock = new();
 
     public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
     {
         _logger = logger;
         _storage = storage;
         _orchestration = orchestration;
+        Bots = new ObservableCollection<BotSummaryItem>();
+        Servers = new ObservableCollection<ServerSummaryItem>();
+
         EmitSampleLogCommand = new RelayCommand(EmitSampleLog);
         ToggleLeftPanelCommand = new RelayCommand(ToggleLeftPanel);
         ToggleRightPanelCommand = new RelayCommand(ToggleRightPanel);
@@ -63,9 +68,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         DisarmSelectedBotCommand = new RelayCommand(DisarmSelectedBot, () => SelectedBot is not null);
         SaveServerProfileCommand = new RelayCommand(SaveServerProfile);
         StartNewServerCommand = new RelayCommand(StartNewServer);
-
-        Bots = new ObservableCollection<BotSummaryItem>();
-        Servers = new ObservableCollection<ServerSummaryItem>();
+        ReprobeServersCommand = new RelayCommand(ReprobeServers, () => !IsServerProbeInProgress && Servers.Count > 0);
 
         _currentContext = WorkspaceContext.Home;
         LoadBotsFromStorage();
@@ -93,6 +96,21 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string CurrentContextLabel => $"Context: {_currentContext}";
     public bool ShowBotEditor => _currentContext != WorkspaceContext.ServerDetails;
     public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerDetails;
+    public bool IsServerProbeInProgress
+    {
+        get => _isServerProbeInProgress;
+        private set
+        {
+            if (_isServerProbeInProgress == value)
+            {
+                return;
+            }
+
+            _isServerProbeInProgress = value;
+            OnPropertyChanged();
+            ((RelayCommand)ReprobeServersCommand).RaiseCanExecuteChanged();
+        }
+    }
 
     public bool IsLeftPanelExpanded
     {
@@ -379,6 +397,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand DisarmSelectedBotCommand { get; }
     public ICommand SaveServerProfileCommand { get; }
     public ICommand StartNewServerCommand { get; }
+    public ICommand ReprobeServersCommand { get; }
 
     private void EmitSampleLog()
     {
@@ -398,6 +417,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void ToggleRightPanel()
     {
         IsRightPanelExpanded = !IsRightPanelExpanded;
+    }
+
+    private void ReprobeServers()
+    {
+        _ = RunServerProbeCycleAsync(trigger: "manual", updateEditorStatus: true);
     }
 
     private void SetHomeContext()
@@ -566,6 +590,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(Servers));
+        ((RelayCommand)ReprobeServersCommand).RaiseCanExecuteChanged();
     }
 
     private BotSummaryItem? FindBotById(string botId)
@@ -668,30 +693,72 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private void StartStartupServerProbe()
     {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await ProbeKnownServersAtStartupAsync(CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.Log(LogLevel.Warning, "startup_server_probe_failed", "Startup server probe failed unexpectedly.",
-                    new Dictionary<string, string>
-                    {
-                        ["error"] = ex.GetType().Name
-                    });
-            }
-        });
+        _ = RunServerProbeCycleAsync(trigger: "startup", updateEditorStatus: false);
     }
 
-    private async Task ProbeKnownServersAtStartupAsync(CancellationToken cancellationToken)
+    private async Task RunServerProbeCycleAsync(string trigger, bool updateEditorStatus)
+    {
+        if (!TryBeginProbeCycle())
+        {
+            if (updateEditorStatus)
+            {
+                ServerEditorMessage = "Probe already in progress.";
+            }
+
+            return;
+        }
+
+        if (updateEditorStatus)
+        {
+            ServerEditorMessage = "Probing known servers...";
+        }
+
+        try
+        {
+            var result = await ProbeKnownServersAsync(CancellationToken.None);
+            if (updateEditorStatus)
+            {
+                ServerEditorMessage = $"Probe complete: {result.ReachableCount} reachable, {result.UnreachableCount} unreachable.";
+            }
+
+            _logger.Log(LogLevel.Information, "server_probe_cycle_completed", "Known server probe cycle completed.",
+                new Dictionary<string, string>
+                {
+                    ["trigger"] = trigger,
+                    ["reachable"] = result.ReachableCount.ToString(),
+                    ["unreachable"] = result.UnreachableCount.ToString()
+                });
+        }
+        catch (Exception ex)
+        {
+            if (updateEditorStatus)
+            {
+                ServerEditorMessage = "Probe failed. See logs for details.";
+            }
+
+            _logger.Log(LogLevel.Warning, "server_probe_cycle_failed", "Known server probe cycle failed.",
+                new Dictionary<string, string>
+                {
+                    ["trigger"] = trigger,
+                    ["error"] = ex.GetType().Name
+                });
+        }
+        finally
+        {
+            EndProbeCycle();
+        }
+    }
+
+    private async Task<(int ReachableCount, int UnreachableCount)> ProbeKnownServersAsync(CancellationToken cancellationToken)
     {
         var knownServers = await _storage.ListKnownServersAsync(cancellationToken);
         if (knownServers.Count == 0)
         {
-            return;
+            return (0, 0);
         }
+
+        var reachableCount = 0;
+        var unreachableCount = 0;
 
         foreach (var knownServer in knownServers)
         {
@@ -707,10 +774,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (probeResult.IsReachable)
             {
                 metadata.Remove(ProbeLastErrorMetadataKey);
+                reachableCount++;
             }
             else
             {
                 metadata[ProbeLastErrorMetadataKey] = probeResult.ErrorCode;
+                unreachableCount++;
             }
 
             var updatedServer = KnownServer.Create(
@@ -745,6 +814,30 @@ public sealed class MainWindowViewModel : ViewModelBase
                 SelectedServer = FindServerById(selectedServerId);
             }
         });
+
+        return (reachableCount, unreachableCount);
+    }
+
+    private bool TryBeginProbeCycle()
+    {
+        lock (_serverProbeLock)
+        {
+            if (_isServerProbeInProgress)
+            {
+                return false;
+            }
+
+            IsServerProbeInProgress = true;
+            return true;
+        }
+    }
+
+    private void EndProbeCycle()
+    {
+        lock (_serverProbeLock)
+        {
+            IsServerProbeInProgress = false;
+        }
     }
 
     private static async Task<(bool IsReachable, int Attempts, string ErrorCode)> ProbeKnownServerWithRetryAsync(KnownServer knownServer, CancellationToken cancellationToken)
@@ -996,6 +1089,11 @@ public sealed class BotSummaryItem
 
 public sealed class ServerSummaryItem
 {
+    private static readonly IBrush LiveAccentBrush = new SolidColorBrush(Color.Parse("#2b8a3e"));
+    private static readonly IBrush LiveBackgroundBrush = new SolidColorBrush(Color.Parse("#e8f8ec"));
+    private static readonly IBrush InactiveAccentBrush = new SolidColorBrush(Color.Parse("#6c757d"));
+    private static readonly IBrush InactiveBackgroundBrush = new SolidColorBrush(Color.Parse("#f1f3f5"));
+
     public required string ServerId { get; init; }
     public required string Name { get; init; }
     public required string Host { get; init; }
@@ -1006,6 +1104,9 @@ public sealed class ServerSummaryItem
     public required IReadOnlyList<PluginDescriptor> CachedPlugins { get; init; }
     public required string Endpoint { get; init; }
     public required string Status { get; init; }
+    public required IBrush AccentBrush { get; init; }
+    public required IBrush BackgroundBrush { get; init; }
+    public required ServerCardVisualState VisualState { get; init; }
     public int PluginCount => CachedPlugins.Count;
 
     public static ServerSummaryItem FromKnownServer(KnownServer server, ServerPluginCache? cache)
@@ -1013,6 +1114,8 @@ public sealed class ServerSummaryItem
         var scheme = server.UseTls ? "https" : "http";
         var endpoint = $"{scheme}://{server.Host}:{server.Port}";
         var plugins = cache?.Plugins ?? Array.Empty<PluginDescriptor>();
+        var visualState = ServerCardVisualStateRules.Resolve(server.Metadata);
+        var (accentBrush, backgroundBrush) = ResolveBrushes(visualState);
         var status = BuildProbeAwareStatus(server.Metadata, cache);
 
         return new ServerSummaryItem
@@ -1026,7 +1129,19 @@ public sealed class ServerSummaryItem
             Metadata = server.Metadata,
             CachedPlugins = plugins,
             Endpoint = endpoint,
-            Status = status
+            Status = status,
+            AccentBrush = accentBrush,
+            BackgroundBrush = backgroundBrush,
+            VisualState = visualState
+        };
+    }
+
+    private static (IBrush AccentBrush, IBrush BackgroundBrush) ResolveBrushes(ServerCardVisualState visualState)
+    {
+        return visualState switch
+        {
+            ServerCardVisualState.Live => (LiveAccentBrush, LiveBackgroundBrush),
+            _ => (InactiveAccentBrush, InactiveBackgroundBrush)
         };
     }
 
