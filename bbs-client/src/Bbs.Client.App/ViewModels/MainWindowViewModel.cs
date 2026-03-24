@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -47,7 +48,12 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _serverEditorMessage = "Fill out the server form and save.";
     private bool _isServerProbeInProgress;
     private bool _isServerDetailLoading;
+    private bool _isServerAccessLoading;
     private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
+    private string _serverAccessStatus = "Select an armed bot session to load server access metadata.";
+    private string _serverAccessOwnerToken = "-";
+    private string _serverAccessDashboardEndpoint = "-";
+    private int _serverAccessRefreshVersion;
     private readonly object _serverProbeLock = new();
 
     public MainWindowViewModel(IClientLogger logger, IClientStorage storage, IBotOrchestrationService orchestration)
@@ -73,6 +79,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         SaveServerProfileCommand = new RelayCommand(SaveServerProfile);
         StartNewServerCommand = new RelayCommand(StartNewServer);
         ReprobeServersCommand = new RelayCommand(ReprobeServers, () => !IsServerProbeInProgress && Servers.Count > 0);
+        RefreshServerAccessCommand = new RelayCommand(RefreshServerAccessMetadata);
 
         _currentContext = WorkspaceContext.Home;
         LoadBotsFromStorage();
@@ -90,6 +97,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         RefreshSelectedServerDetail();
+        TriggerServerAccessRefresh();
 
         RefreshContextProjection();
         StartStartupServerProbe();
@@ -117,13 +125,75 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
+    public bool IsServerAccessLoading
+    {
+        get => _isServerAccessLoading;
+        private set
+        {
+            if (_isServerAccessLoading == value)
+            {
+                return;
+            }
+
+            _isServerAccessLoading = value;
+            OnPropertyChanged();
+        }
+    }
+
     public bool HasSelectedServer => SelectedServer is not null;
     public bool HasServerMetadata => ServerMetadataEntries.Count > 0;
     public bool HasServerPluginCatalog => ServerPluginCatalogEntries.Count > 0;
     public bool ShowServerMetadataEmpty => !IsServerDetailLoading && !HasServerMetadata;
     public bool ShowServerPluginCatalogEmpty => !IsServerDetailLoading && !HasServerPluginCatalog;
+    public bool HasValidServerAccess => ServerAccessMetadata.IsValid;
     public string ServerDetailEndpoint => SelectedServer?.Endpoint ?? "-";
     public string ServerDetailProbeStatus => SelectedServer?.Status ?? "Status: not available";
+    public string ServerAccessStatus
+    {
+        get => _serverAccessStatus;
+        private set
+        {
+            if (_serverAccessStatus == value)
+            {
+                return;
+            }
+
+            _serverAccessStatus = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ServerAccessOwnerToken
+    {
+        get => _serverAccessOwnerToken;
+        private set
+        {
+            if (_serverAccessOwnerToken == value)
+            {
+                return;
+            }
+
+            _serverAccessOwnerToken = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string ServerAccessDashboardEndpoint
+    {
+        get => _serverAccessDashboardEndpoint;
+        private set
+        {
+            if (_serverAccessDashboardEndpoint == value)
+            {
+                return;
+            }
+
+            _serverAccessDashboardEndpoint = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public ServerAccessMetadata ServerAccessMetadata { get; private set; } = ServerAccessMetadata.Invalid("No metadata loaded.");
     public string ServerCatalogStatus
     {
         get => _serverCatalogStatus;
@@ -406,6 +476,8 @@ public sealed class MainWindowViewModel : ViewModelBase
                 _currentContext = WorkspaceContext.BotDetails;
                 RefreshContextProjection();
             }
+
+            TriggerServerAccessRefresh();
         }
     }
 
@@ -432,6 +504,8 @@ public sealed class MainWindowViewModel : ViewModelBase
                 PopulateServerEditor(value);
                 RefreshContextProjection();
             }
+
+            TriggerServerAccessRefresh();
         }
     }
 
@@ -448,6 +522,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand SaveServerProfileCommand { get; }
     public ICommand StartNewServerCommand { get; }
     public ICommand ReprobeServersCommand { get; }
+    public ICommand RefreshServerAccessCommand { get; }
 
     private void EmitSampleLog()
     {
@@ -472,6 +547,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void ReprobeServers()
     {
         _ = RunServerProbeCycleAsync(trigger: "manual", updateEditorStatus: true);
+    }
+
+    private void RefreshServerAccessMetadata()
+    {
+        TriggerServerAccessRefresh();
     }
 
     private void SetHomeContext()
@@ -597,6 +677,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         var result = _orchestration.ArmBotAsync(profile).GetAwaiter().GetResult();
         LoadBotsFromStorage();
         SelectedBot = FindBotById(profile.BotId);
+        TriggerServerAccessRefresh();
         BotEditorMessage = result.Message;
     }
 
@@ -611,6 +692,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         var result = _orchestration.DisarmBotAsync(profile).GetAwaiter().GetResult();
         LoadBotsFromStorage();
         SelectedBot = FindBotById(profile.BotId);
+        TriggerServerAccessRefresh();
         BotEditorMessage = result.Message;
     }
 
@@ -775,6 +857,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         _storage.UpsertServerPluginCacheAsync(cache).GetAwaiter().GetResult();
         LoadServersFromStorage();
         SelectedServer = FindServerById(serverId);
+        TriggerServerAccessRefresh();
         ServerEditorMessage = $"Saved known server: {server.Name}";
         _logger.Log(LogLevel.Information, "known_server_saved", "Known server and plugin cache persisted.",
             new Dictionary<string, string>
@@ -907,6 +990,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 SelectedServer = FindServerById(selectedServerId);
             }
+
+            TriggerServerAccessRefresh();
         });
 
         return (reachableCount, unreachableCount);
@@ -978,6 +1063,99 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             return (false, 1, "connect_failed");
         }
+    }
+
+    private void TriggerServerAccessRefresh()
+    {
+        _ = RefreshServerAccessMetadataAsync();
+    }
+
+    private async Task RefreshServerAccessMetadataAsync()
+    {
+        var refreshVersion = Interlocked.Increment(ref _serverAccessRefreshVersion);
+        IsServerAccessLoading = true;
+        ServerAccessStatus = "Refreshing server access metadata...";
+
+        var selectedServerId = SelectedServer?.ServerId;
+        var selectedBotId = SelectedBot?.BotId;
+
+        try
+        {
+            var resolved = await Task.Run(() => ResolveServerAccessMetadata(selectedServerId, selectedBotId));
+            if (refreshVersion != Volatile.Read(ref _serverAccessRefreshVersion))
+            {
+                return;
+            }
+
+            ServerAccessMetadata = resolved;
+            ServerAccessOwnerToken = resolved.IsValid ? MaskToken(resolved.OwnerToken) : "-";
+            ServerAccessDashboardEndpoint = resolved.IsValid ? resolved.DashboardEndpoint : "-";
+            ServerAccessStatus = resolved.StatusMessage;
+            OnPropertyChanged(nameof(HasValidServerAccess));
+        }
+        catch
+        {
+            if (refreshVersion != Volatile.Read(ref _serverAccessRefreshVersion))
+            {
+                return;
+            }
+
+            ServerAccessMetadata = ServerAccessMetadata.Invalid("Failed to refresh server access metadata.");
+            ServerAccessOwnerToken = "-";
+            ServerAccessDashboardEndpoint = "-";
+            ServerAccessStatus = "Failed to refresh server access metadata.";
+            OnPropertyChanged(nameof(HasValidServerAccess));
+        }
+        finally
+        {
+            if (refreshVersion == Volatile.Read(ref _serverAccessRefreshVersion))
+            {
+                IsServerAccessLoading = false;
+            }
+        }
+    }
+
+    private ServerAccessMetadata ResolveServerAccessMetadata(string? selectedServerId, string? selectedBotId)
+    {
+        BotProfile? profile = null;
+        AgentRuntimeState? runtimeState = null;
+
+        if (!string.IsNullOrWhiteSpace(selectedBotId))
+        {
+            profile = _storage.ListBotProfilesAsync().GetAwaiter().GetResult().FirstOrDefault(b => b.BotId == selectedBotId);
+            if (profile is not null)
+            {
+                runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
+            }
+        }
+
+        if (profile is null)
+        {
+            var allProfiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
+            foreach (var candidate in allProfiles)
+            {
+                var candidateState = _storage.GetAgentRuntimeStateAsync(candidate.BotId).GetAwaiter().GetResult();
+                if (candidateState?.IsArmed == true)
+                {
+                    profile = candidate;
+                    runtimeState = candidateState;
+                    break;
+                }
+            }
+        }
+
+        return ServerAccessMetadataResolver.Resolve(profile, runtimeState, selectedServerId);
+    }
+
+    private static string MaskToken(string token)
+    {
+        var trimmed = token.Trim();
+        if (trimmed.Length <= 8)
+        {
+            return "********";
+        }
+
+        return $"{trimmed[..4]}...{trimmed[^4..]}";
     }
 
     private static IReadOnlyList<string> ParseArgs(string raw)
