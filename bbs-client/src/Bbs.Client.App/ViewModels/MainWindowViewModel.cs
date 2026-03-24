@@ -51,6 +51,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private bool _isServerAccessLoading;
     private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
     private string _serverAccessStatus = "Select an armed bot session to load server access metadata.";
+    private string _ownerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
     private string _serverAccessOwnerToken = "-";
     private string _serverAccessDashboardEndpoint = "-";
     private int _serverAccessRefreshVersion;
@@ -80,6 +81,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         StartNewServerCommand = new RelayCommand(StartNewServer);
         ReprobeServersCommand = new RelayCommand(ReprobeServers, () => !IsServerProbeInProgress && Servers.Count > 0);
         RefreshServerAccessCommand = new RelayCommand(RefreshServerAccessMetadata);
+        CreateArenaStubCommand = new RelayCommand(ExecuteCreateArenaStub, CanExecuteOwnerTokenActionStubs);
+        JoinArenaStubCommand = new RelayCommand(ExecuteJoinArenaStub, CanExecuteOwnerTokenActionStubs);
 
         _currentContext = WorkspaceContext.Home;
         LoadBotsFromStorage();
@@ -137,6 +140,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             _isServerAccessLoading = value;
             OnPropertyChanged();
+            ((RelayCommand)CreateArenaStubCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)JoinArenaStubCommand).RaiseCanExecuteChanged();
         }
     }
 
@@ -146,6 +151,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public bool ShowServerMetadataEmpty => !IsServerDetailLoading && !HasServerMetadata;
     public bool ShowServerPluginCatalogEmpty => !IsServerDetailLoading && !HasServerPluginCatalog;
     public bool HasValidServerAccess => ServerAccessMetadata.IsValid;
+    public bool ShowOwnerTokenActions => HasValidServerAccess;
+    public bool ShowOwnerTokenActionsUnavailable => !ShowOwnerTokenActions;
     public string ServerDetailEndpoint => SelectedServer?.Endpoint ?? "-";
     public string ServerDetailProbeStatus => SelectedServer?.Status ?? "Status: not available";
     public string ServerAccessStatus
@@ -189,6 +196,21 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             _serverAccessDashboardEndpoint = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string OwnerTokenActionStatus
+    {
+        get => _ownerTokenActionStatus;
+        private set
+        {
+            if (_ownerTokenActionStatus == value)
+            {
+                return;
+            }
+
+            _ownerTokenActionStatus = value;
             OnPropertyChanged();
         }
     }
@@ -523,6 +545,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand StartNewServerCommand { get; }
     public ICommand ReprobeServersCommand { get; }
     public ICommand RefreshServerAccessCommand { get; }
+    public ICommand CreateArenaStubCommand { get; }
+    public ICommand JoinArenaStubCommand { get; }
 
     private void EmitSampleLog()
     {
@@ -552,6 +576,47 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void RefreshServerAccessMetadata()
     {
         TriggerServerAccessRefresh();
+    }
+
+    private bool CanExecuteOwnerTokenActionStubs()
+    {
+        return HasValidServerAccess && !IsServerAccessLoading && SelectedServer is not null;
+    }
+
+    private void ExecuteCreateArenaStub()
+    {
+        ExecuteOwnerTokenActionStub(OwnerTokenActionType.CreateArena);
+    }
+
+    private void ExecuteJoinArenaStub()
+    {
+        ExecuteOwnerTokenActionStub(OwnerTokenActionType.JoinArena);
+    }
+
+    private void ExecuteOwnerTokenActionStub(OwnerTokenActionType actionType)
+    {
+        var selectedServerId = SelectedServer?.ServerId;
+        var guard = OwnerTokenGatedActionRules.Validate(actionType, ServerAccessMetadata, selectedServerId);
+        if (!guard.CanExecute || guard.Plan is null)
+        {
+            OwnerTokenActionStatus = guard.Message;
+            _logger.Log(LogLevel.Warning, "owner_token_action_blocked", "Owner-token action stub blocked by precondition check.",
+                new Dictionary<string, string>
+                {
+                    ["action"] = actionType.ToString(),
+                    ["reason"] = guard.Message
+                });
+            return;
+        }
+
+        OwnerTokenActionStatus = $"{guard.Message} Placeholder only: {guard.Plan.PlaceholderMethod} {guard.Plan.PlaceholderRoute}.";
+        _logger.Log(LogLevel.Information, "owner_token_action_stub_invoked", "Owner-token action stub invoked.",
+            new Dictionary<string, string>
+            {
+                ["action"] = actionType.ToString(),
+                ["server_id"] = selectedServerId ?? "none",
+                ["route"] = guard.Plan.PlaceholderRoute
+            });
     }
 
     private void SetHomeContext()
@@ -1091,7 +1156,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             ServerAccessOwnerToken = resolved.IsValid ? MaskToken(resolved.OwnerToken) : "-";
             ServerAccessDashboardEndpoint = resolved.IsValid ? resolved.DashboardEndpoint : "-";
             ServerAccessStatus = resolved.StatusMessage;
-            OnPropertyChanged(nameof(HasValidServerAccess));
+            if (!resolved.IsValid)
+            {
+                OwnerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
+            }
+
+            RefreshOwnerTokenActionProjection();
         }
         catch
         {
@@ -1104,7 +1174,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             ServerAccessOwnerToken = "-";
             ServerAccessDashboardEndpoint = "-";
             ServerAccessStatus = "Failed to refresh server access metadata.";
-            OnPropertyChanged(nameof(HasValidServerAccess));
+            OwnerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
+            RefreshOwnerTokenActionProjection();
         }
         finally
         {
@@ -1113,6 +1184,15 @@ public sealed class MainWindowViewModel : ViewModelBase
                 IsServerAccessLoading = false;
             }
         }
+    }
+
+    private void RefreshOwnerTokenActionProjection()
+    {
+        OnPropertyChanged(nameof(HasValidServerAccess));
+        OnPropertyChanged(nameof(ShowOwnerTokenActions));
+        OnPropertyChanged(nameof(ShowOwnerTokenActionsUnavailable));
+        ((RelayCommand)CreateArenaStubCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)JoinArenaStubCommand).RaiseCanExecuteChanged();
     }
 
     private ServerAccessMetadata ResolveServerAccessMetadata(string? selectedServerId, string? selectedBotId)
