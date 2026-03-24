@@ -604,7 +604,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         return SelectedBot is { IsArmed: true } &&
                SelectedServer is not null &&
-               HasValidServerAccess &&
                !IsServerAccessLoading;
     }
 
@@ -839,21 +838,19 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (!ServerAccessMetadata.IsValid || string.IsNullOrWhiteSpace(ServerAccessMetadata.OwnerToken))
-        {
-            BotEditorMessage = "Deploy requires valid owner-token metadata from an armed bot session.";
-            return;
-        }
-
         try
         {
             var sourceProfile = bot.ToProfile();
             var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
             {
-                ["server_access.owner_token"] = ServerAccessMetadata.OwnerToken,
-                ["server_access.dashboard_endpoint"] = ServerAccessMetadata.DashboardEndpoint,
                 ["server_access.server_id"] = server.ServerId
             };
+
+            var dashboardEndpoint = ResolveServerDashboardEndpoint(server);
+            if (!string.IsNullOrWhiteSpace(dashboardEndpoint))
+            {
+                attachedMetadata["server_access.dashboard_endpoint"] = dashboardEndpoint;
+            }
 
             var attachedProfile = BotProfile.Create(
                 botId: sourceProfile.BotId,
@@ -877,20 +874,33 @@ public sealed class MainWindowViewModel : ViewModelBase
             LoadBotsFromStorage();
             SelectedBot = FindBotById(sourceProfile.BotId);
             TriggerServerAccessRefresh();
-            BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; active session attached.";
+            BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; waiting for server token via agent metadata.";
 
-            _logger.Log(LogLevel.Information, "bot_deploy_attached", "Bot deploy attached active session with owner token metadata.",
+            _logger.Log(LogLevel.Information, "bot_deploy_attached", "Bot deploy attached active session and server context metadata.",
                 new Dictionary<string, string>
                 {
                     ["bot_id"] = sourceProfile.BotId,
                     ["server_id"] = server.ServerId,
-                    ["dashboard_endpoint"] = ServerAccessMetadata.DashboardEndpoint
+                    ["dashboard_endpoint"] = dashboardEndpoint ?? ""
                 });
         }
         catch (Exception ex)
         {
             HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed", ex);
         }
+    }
+
+    private static string ResolveServerDashboardEndpoint(ServerSummaryItem server)
+    {
+        var value = FirstNonEmptyMetadataValue(server.Metadata, DashboardEndpointMetadataKeys);
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var dashboardPort = ParseDashboardPort(server.Metadata) ?? DashboardPortFallback;
+        var scheme = server.UseTls ? "https" : "http";
+        return BuildBaseEndpoint(scheme, server.Host, dashboardPort);
     }
 
     private void HandleOrchestrationException(string action, string botId, string errorCode, Exception ex)
