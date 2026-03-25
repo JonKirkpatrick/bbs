@@ -42,11 +42,10 @@ func TestResolveDashboardVersion_PrefersBuildVersion(t *testing.T) {
 
 func TestCurrentDashboardVersion_CachesValue(t *testing.T) {
 	oldBuild := buildVersion
-	oldOnce := dashboardVersionOnce
 	oldValue := dashboardVersion
 	defer func() {
 		buildVersion = oldBuild
-		dashboardVersionOnce = oldOnce
+		dashboardVersionOnce = sync.Once{}
 		dashboardVersion = oldValue
 	}()
 

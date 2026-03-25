@@ -2,19 +2,19 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-                        xmlns:vm="using:Bbs.Client.App.ViewModels"
-      xmlns:controls="using:Bbs.Client.App.Controls"
+        xmlns:vm="using:Bbs.Client.App.ViewModels"
+        xmlns:controls="using:Bbs.Client.App.Controls"
         x:Class="Bbs.Client.App.Views.MainWindow"
-                        x:DataType="vm:MainWindowViewModel"
+        x:DataType="vm:MainWindowViewModel"
         Width="1040"
         Height="720"
-                        MinWidth="980"
+        MinWidth="980"
         MinHeight="600"
-        Background="{DynamicResource Palette.WindowBackgroundBrush}"
-        Foreground="{DynamicResource Palette.WindowForegroundBrush}"
-      x:Name="RootWindow"
-        Title="{Binding WindowTitle}"
-        mc:Ignorable="d">
+        x:Name="RootWindow"
+        Title=""
+        mc:Ignorable="d"
+        >
+
       <Window.Resources>
             <ControlTheme x:Key="CardListBoxItemTheme" TargetType="ListBoxItem">
                   <Setter Property="Padding" Value="0" />
@@ -40,20 +40,51 @@
                   </Setter>
             </ControlTheme>
       </Window.Resources>
-      <Grid RowDefinitions="Auto,*" Margin="16">
-            <Border CornerRadius="10" Padding="14" Background="{DynamicResource Palette.HeaderBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1">
-                  <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
-                        <StackPanel Spacing="2">
-                              <TextBlock FontSize="22" FontWeight="Bold" Text="Build-a-Bot Stadium" />
-                              <TextBlock FontSize="12" Opacity="1" Text="Unified workspace shell" />
-                        </StackPanel>
-                        <Button Grid.Column="1"
-                                                HorizontalAlignment="Right"
-                                                VerticalAlignment="Center"
-                                                Command="{Binding EmitSampleLogCommand}"
-                                                Content="Log workspace event" />
-                  </Grid>
+
+      <Panel>
+            <Border IsHitTestVisible="False">
+                  <Border.Background>
+                        <RadialGradientBrush Center="5%,30%" 
+                                          GradientOrigin="5%,30%" 
+                                          RadiusX="50%" RadiusY="50%"
+                                          Opacity="0.08">
+                              <GradientStop Offset="0" Color="#cc5d22" /> 
+                              <GradientStop Offset="1" Color="Transparent" />
+                        </RadialGradientBrush>
+                  </Border.Background>
             </Border>
+
+            <Border IsHitTestVisible="False">
+                  <Border.Background>
+                        <RadialGradientBrush Center="90%,70%" 
+                                          GradientOrigin="90%,70%" 
+                                          RadiusX="50%" RadiusY="50%"
+                                          Opacity="0.03">
+                              <GradientStop Offset="0" Color="#ff00ff" /> 
+                              <GradientStop Offset="1" Color="Transparent" />
+                        </RadialGradientBrush>
+                  </Border.Background>
+            </Border>
+
+      <Grid RowDefinitions="32,*" Margin="0,0,0,16">
+            <Menu Grid.Row="0" 
+                  Height="32" 
+                  ZIndex="10"
+                  VerticalAlignment="Center" 
+                  HorizontalAlignment="Left"
+                  Margin="10,0,0,0"
+                  Background="Transparent">
+                  <MenuItem Header="_File">
+                        <MenuItem Header="_New Persona"/>
+                        <MenuItem Header="_Load Persona"/>
+                        <Separator/>
+                        <MenuItem Header="_Exit" Command="{Binding $parent[Window].Close}"/>
+                  </MenuItem>
+                  <MenuItem Header="_Edit">
+                        <MenuItem Header="_Preferences"/>
+                        <MenuItem Header="_Configuration"/>
+                  </MenuItem>
+            </Menu>
 
             <Grid Grid.Row="1" Margin="0,12,0,0">
                   <Grid.ColumnDefinitions>
@@ -63,7 +94,7 @@
                   </Grid.ColumnDefinitions>
 
                   <Grid Grid.Column="0" Margin="0,0,6,0" ZIndex="0">
-                        <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
+                        <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="0,5,5,0" BoxShadow="5 2 20 0 #40000000" ZIndex="0" />
                         <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ClipToBounds="True" ZIndex="1">
                               <Grid>
                                     <TextBlock IsVisible="{Binding IsLeftPanelExpanded}" HorizontalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="Bots" />
@@ -130,26 +161,25 @@
                   </Grid>
 
                   <Grid Grid.Column="1" Margin="6,0" ZIndex="10">
-                        <Border Background="{DynamicResource Palette.PanelCenterBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
+                        <Border Background="{DynamicResource Palette.PanelCenterBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="0" CornerRadius="10" ZIndex="0" />
                         <Grid Margin="14" RowDefinitions="Auto,Auto,*" ZIndex="1">
                               <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
-                                    <TextBlock FontSize="20" FontWeight="Bold" Text="ActivitySpace" />
+                                    <TextBlock FontSize="20" FontWeight="Bold" Text="{Binding WorkspaceTitle}" />
                                     <Button Grid.Column="1" Classes="panel-icon-toggle" Width="28" Height="28" Padding="4" Command="{Binding SetHomeContextCommand}">
                                           <Path Classes="panel-icon"
                                                 Width="12"
                                                 Height="12"
                                                 Stretch="Uniform"
+                                                StrokeThickness="3"
                                                 Data="M 2,2 L 10,10 M 10,2 L 2,10" />
                                     </Button>
                               </Grid>
-                              <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="1" Text="{Binding CurrentContextLabel}" />
+                              <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="1" TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
 
-                              <Border Grid.Row="2" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
+                              <Border Grid.Row="2" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="0" CornerRadius="8" Padding="16">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <StackPanel Spacing="8">
-                                          <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding WorkspaceTitle}" />
-                                          <TextBlock TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
-
-                                          <Border IsVisible="{Binding ShowBotEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                          <Border IsVisible="{Binding ShowBotEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                                       <TextBlock FontSize="15" FontWeight="SemiBold" Text="Bot Registration / Edit" />
 
@@ -181,37 +211,8 @@
                                                 </Grid>
                                           </Border>
 
-                                          <Border IsVisible="{Binding ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                          <Border IsVisible="{Binding ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-                                                      <TextBlock FontSize="15" FontWeight="SemiBold" Text="Server Detail" />
-
-                                                      <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="Auto,*">
-                                                            <TextBlock FontSize="12" Opacity="1" Text="Endpoint:" />
-                                                            <TextBlock Grid.Column="1" Margin="8,0,0,0" FontSize="12" Text="{Binding ServerDetailEndpoint}" />
-                                                      </Grid>
-
-                                                      <Grid Grid.Row="2" Margin="0,2,0,0" ColumnDefinitions="Auto,*">
-                                                            <TextBlock FontSize="12" Opacity="1" Text="Probe:" />
-                                                            <TextBlock Grid.Column="1" Margin="8,0,0,0" FontSize="12" Text="{Binding ServerDetailProbeStatus}" />
-                                                      </Grid>
-
-                                                      <Border Grid.Row="3" Margin="0,8,0,0" Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
-                                                            <StackPanel Spacing="6">
-                                                                  <TextBlock FontSize="13" FontWeight="SemiBold" Text="Metadata" />
-                                                                  <TextBlock IsVisible="{Binding ShowServerMetadataEmpty}" FontSize="12" Text="No metadata available." />
-                                                                  <ItemsControl IsVisible="{Binding HasServerMetadata}" ItemsSource="{Binding ServerMetadataEntries}">
-                                                                        <ItemsControl.ItemTemplate>
-                                                                              <DataTemplate x:DataType="vm:ServerMetadataEntryItem">
-                                                                                    <Grid ColumnDefinitions="Auto,*">
-                                                                                          <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding Key}" />
-                                                                                          <TextBlock Grid.Column="1" Margin="8,0,0,0" FontSize="12" Text="{Binding Value}" TextWrapping="Wrap" />
-                                                                                    </Grid>
-                                                                              </DataTemplate>
-                                                                        </ItemsControl.ItemTemplate>
-                                                                  </ItemsControl>
-                                                            </StackPanel>
-                                                      </Border>
-
                                                       <Border Grid.Row="4" Margin="0,8,0,0" Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
                                                             <StackPanel Spacing="6">
                                                                   <TextBlock FontSize="13" FontWeight="SemiBold" Text="Plugin Catalog" />
@@ -234,14 +235,7 @@
 
                                                       <Border Grid.Row="5" Margin="0,8,0,0" Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
                                                             <StackPanel Spacing="6">
-                                                                  <Grid ColumnDefinitions="*,Auto">
-                                                                        <TextBlock FontSize="13" FontWeight="SemiBold" Text="Server Access Metadata" />
-                                                                        <Button Grid.Column="1"
-                                                                                Command="{Binding RefreshServerAccessCommand}"
-                                                                                HorizontalAlignment="Right"
-                                                                                Content="Refresh" />
-                                                                  </Grid>
-
+                                                                  <TextBlock FontSize="13" FontWeight="SemiBold" Text="Server Access Metadata" />
                                                                   <TextBlock FontSize="12" Text="{Binding ServerAccessStatus}" TextWrapping="Wrap" />
                                                                   <TextBlock IsVisible="{Binding IsServerAccessLoading}" FontSize="12" Text="Refreshing server access metadata..." />
 
@@ -286,7 +280,7 @@
                                                                               <CheckBox Grid.Row="3" Grid.Column="1" Margin="8,6,0,0" IsChecked="{Binding OwnerArenaAllowHandicap}" />
                                                                         </Grid>
 
-                                                                        <Button Command="{Binding CreateArenaStubCommand}" Content="Create Arena" />
+                                                                        <Button Command="{Binding CreateArenaCommand}" Content="Create Arena" />
 
                                                                         <TextBlock Margin="0,4,0,0" FontSize="12" FontWeight="SemiBold" Text="Join Arena" />
                                                                         <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
@@ -297,7 +291,7 @@
                                                                               <TextBox Grid.Row="1" Grid.Column="1" Margin="8,6,0,0" Text="{Binding OwnerJoinHandicapPercent}" Watermark="0" />
                                                                         </Grid>
 
-                                                                        <Button Command="{Binding JoinArenaStubCommand}" Content="Join Arena" />
+                                                                        <Button Command="{Binding JoinArenaCommand}" Content="Join Arena" />
                                                                   </StackPanel>
 
                                                                   <TextBlock FontSize="12" Text="{Binding OwnerTokenActionStatus}" TextWrapping="Wrap" />
@@ -344,12 +338,13 @@
                                                      Opacity="1"
                                                      Text="{Binding ServerEditorMessage}" />
                                     </StackPanel>
+                                    </ScrollViewer>
                               </Border>
                         </Grid>
                   </Grid>
 
                   <Grid Grid.Column="2" Margin="6,0,0,0" ZIndex="0">
-                        <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="{DynamicResource Palette.BorderBrush}" BorderThickness="1" CornerRadius="10" ZIndex="0" />
+                        <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="5,0,0,5" BoxShadow="4 2 20 0 #40000000" ZIndex="0" />
                         <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ClipToBounds="True" ZIndex="1">
                               <Grid>
                                     <TextBlock IsVisible="{Binding IsRightPanelExpanded}" HorizontalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="Servers" />
@@ -414,4 +409,5 @@
                   </Grid>
             </Grid>
   </Grid>
+  </Panel>
 </Window>

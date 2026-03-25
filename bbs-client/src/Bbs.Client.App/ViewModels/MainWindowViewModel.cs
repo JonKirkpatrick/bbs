@@ -133,8 +133,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         StartNewServerCommand = new RelayCommand(StartNewServer);
         ReprobeServersCommand = new RelayCommand(ReprobeServers, () => !IsServerProbeInProgress && Servers.Count > 0);
         RefreshServerAccessCommand = new RelayCommand(RefreshServerAccessMetadata);
-        CreateArenaStubCommand = new RelayCommand(ExecuteCreateArenaStub, CanExecuteOwnerTokenActionStubs);
-        JoinArenaStubCommand = new RelayCommand(ExecuteJoinArenaStub, CanExecuteOwnerTokenActionStubs);
+        CreateArenaCommand = new RelayCommand(ExecuteCreateArena, CanExecuteOwnerTokenAction);
+        JoinArenaCommand = new RelayCommand(ExecuteJoinArena, CanExecuteOwnerTokenAction);
 
         _currentContext = WorkspaceContext.Home;
         LoadBotsFromStorage();
@@ -163,7 +163,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string WorkspaceDescription { get; private set; } = "Select a bot or server to load activity in this center workspace.";
 
     public string CurrentContextLabel => $"Context: {_currentContext}";
-    public bool ShowBotEditor => _currentContext != WorkspaceContext.ServerDetails;
+    public bool ShowBotEditor => _currentContext == WorkspaceContext.BotDetails;
     public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerDetails;
     public bool IsServerDetailLoading
     {
@@ -192,8 +192,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             _isServerAccessLoading = value;
             OnPropertyChanged();
-            ((RelayCommand)CreateArenaStubCommand).RaiseCanExecuteChanged();
-            ((RelayCommand)JoinArenaStubCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)CreateArenaCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)JoinArenaCommand).RaiseCanExecuteChanged();
             ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
         }
     }
@@ -625,13 +625,10 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (value is not null)
             {
                 PopulateBotEditor(value);
-                if (_currentContext != WorkspaceContext.ServerDetails)
-                {
-                    _currentContext = WorkspaceContext.BotDetails;
-                    RefreshContextProjection();
-                }
+                // Be decisive: If we select a bot, we want to see the bot.
+                _currentContext = WorkspaceContext.BotDetails; 
+                RefreshContextProjection();
             }
-
             TriggerServerAccessRefresh();
         }
     }
@@ -680,8 +677,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand StartNewServerCommand { get; }
     public ICommand ReprobeServersCommand { get; }
     public ICommand RefreshServerAccessCommand { get; }
-    public ICommand CreateArenaStubCommand { get; }
-    public ICommand JoinArenaStubCommand { get; }
+    public ICommand CreateArenaCommand { get; }
+    public ICommand JoinArenaCommand { get; }
 
     private void EmitSampleLog()
     {
@@ -713,7 +710,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         TriggerServerAccessRefresh();
     }
 
-    private bool CanExecuteOwnerTokenActionStubs()
+    private bool CanExecuteOwnerTokenAction()
     {
         return HasValidServerAccess && !IsServerAccessLoading && SelectedServer is not null;
     }
@@ -728,12 +725,12 @@ public sealed class MainWindowViewModel : ViewModelBase
                !IsServerAccessLoading;
     }
 
-    private void ExecuteCreateArenaStub()
+    private void ExecuteCreateArena()
     {
         _ = ExecuteOwnerTokenActionAsync(OwnerTokenActionType.CreateArena);
     }
 
-    private void ExecuteJoinArenaStub()
+    private void ExecuteJoinArena()
     {
         _ = ExecuteOwnerTokenActionAsync(OwnerTokenActionType.JoinArena);
     }
@@ -745,7 +742,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         if (!guard.CanExecute || guard.Plan is null)
         {
             OwnerTokenActionStatus = guard.Message;
-            _logger.Log(LogLevel.Warning, "owner_token_action_blocked", "Owner-token action stub blocked by precondition check.",
+            _logger.Log(LogLevel.Warning, "owner_token_action_blocked", "Owner-token action blocked by precondition check.",
                 new Dictionary<string, string>
                 {
                     ["action"] = actionType.ToString(),
@@ -2394,8 +2391,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasValidServerAccess));
         OnPropertyChanged(nameof(ShowOwnerTokenActions));
         OnPropertyChanged(nameof(ShowOwnerTokenActionsUnavailable));
-        ((RelayCommand)CreateArenaStubCommand).RaiseCanExecuteChanged();
-        ((RelayCommand)JoinArenaStubCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CreateArenaCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)JoinArenaCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
     }
 

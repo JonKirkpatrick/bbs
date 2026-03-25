@@ -3,8 +3,13 @@
              x:Class="Bbs.Client.App.App"
              RequestedThemeVariant="Default">
   <Application.Resources>
+    <ResourceDictionary>
+      <StreamGeometry x:Key="CloseIcon">M 2,2 L 10,10 M 10,2 L 2,10</StreamGeometry>
+      <StreamGeometry x:Key="ToggleTrack">M 10,0 L 10,0 A 10,10 0 0 1 20,10 L 20,30 A 10,10 0 0 1 0,30 L 0,10 A 10,10 0 0 1 10,0 Z</StreamGeometry>
+      <StreamGeometry x:Key="ToggleKnob">M 10,3 A 7,7 0 1 1 10,17 A 7,7 0 1 1 10,3 Z</StreamGeometry>
+    </ResourceDictionary>
     <Color x:Key="Palette.Bg">#f5f1e9</Color>
-    <Color x:Key="Palette.Paper">#fffaf3</Color>
+    <Color x:Key="Palette.Paper">#f5f7fa</Color>
     <Color x:Key="Palette.Ink">#1b1c1f</Color>
     <Color x:Key="Palette.Muted">#5d6068</Color>
     <Color x:Key="Palette.Line">#ddd0b8</Color>
@@ -12,9 +17,17 @@
     <Color x:Key="Palette.BrandSoft">#f5d3c0</Color>
     <Color x:Key="Palette.Accent">#0e7a6d</Color>
     <Color x:Key="Palette.AccentSoft">#c5ece6</Color>
+    <Color x:Key="Palette.OceanSurface">#c8e3e5</Color> 
+    <Color x:Key="Palette.OceanDeep">#a4bbbc</Color>   
+    <LinearGradientBrush x:Key="Palette.OceanDepthBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0.0" Color="{StaticResource Palette.OceanSurface}" />
+        <GradientStop Offset="1.0" Color="{StaticResource Palette.OceanDeep}" />
+    </LinearGradientBrush>
 
     <SolidColorBrush x:Key="Palette.WindowBackgroundBrush" Color="{StaticResource Palette.Bg}" />
     <SolidColorBrush x:Key="Palette.WindowForegroundBrush" Color="{StaticResource Palette.Ink}" />
+    <SolidColorBrush x:Key="Palette.TitleBarBackground" Color="#CCF5F7FA" />
+    <SolidColorBrush x:Key="Palette.TitleBarBorder" Color="#10000000" /> 
 
     <SolidColorBrush x:Key="Palette.PanelBackgroundBrush" Color="{StaticResource Palette.Paper}" />
     <SolidColorBrush x:Key="Palette.HeaderBackgroundBrush" Color="{StaticResource Palette.Line}" />
@@ -47,8 +60,27 @@
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
+    <Style Selector="ScrollBar">
+      <Setter Property="Transitions">
+          <Transitions>
+              <DoubleTransition Property="Opacity" Duration="0:0:0.2" />
+          </Transitions>
+      </Setter>
+  </Style>
+
+  <Style Selector="ScrollBar /template/ Thumb">
+      <Setter Property="Background" Value="#80808080" /> <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <Style Selector="ScrollViewer ScrollBar">
+      <Setter Property="Opacity" Value="0" />
+  </Style>
+
+  <Style Selector="ScrollViewer:pointerover ScrollBar">
+      <Setter Property="Opacity" Value="1" />
+  </Style>
     <Style Selector="Window">
-      <Setter Property="Background" Value="{DynamicResource Palette.WindowBackgroundBrush}" />
+      <Setter Property="Background" Value="{DynamicResource Palette.OceanDepthBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource Palette.WindowForegroundBrush}" />
     </Style>
     <Style Selector="TextBox">
