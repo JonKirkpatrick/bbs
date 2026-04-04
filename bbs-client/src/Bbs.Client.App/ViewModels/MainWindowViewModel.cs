@@ -12,7 +12,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Avalonia.Threading;
 using System.Windows.Input;
 using Bbs.Client.Core.Domain;
@@ -118,7 +117,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         ServerMetadataEntries = new ObservableCollection<ServerMetadataEntryItem>();
         ServerPluginCatalogEntries = new ObservableCollection<ServerPluginCatalogItem>();
 
-        EmitSampleLogCommand = new RelayCommand(EmitSampleLog);
         ToggleLeftPanelCommand = new RelayCommand(ToggleLeftPanel);
         ToggleRightPanelCommand = new RelayCommand(ToggleRightPanel);
         SetHomeContextCommand = new RelayCommand(SetHomeContext);
@@ -158,11 +156,17 @@ public sealed class MainWindowViewModel : ViewModelBase
         StartStartupServerProbe();
     }
 
-    public string WindowTitle => "BBS Client Alpha";
-    public string WorkspaceTitle { get; private set; } = "Context Host Ready";
-    public string WorkspaceDescription { get; private set; } = "Select a bot or server to load activity in this center workspace.";
+    public string WorkspaceTitle { get; private set; } = "";
+    public string WorkspaceDescription { get; private set; } = "";
 
     public string CurrentContextLabel => $"Context: {_currentContext}";
+
+    public string CurrentTitleText => _currentContext switch
+    {
+        WorkspaceContext.BotDetails => SelectedBot is null ? "Bot Context" : $"{SelectedBot.Name}",
+        WorkspaceContext.ServerDetails => SelectedServer is null ? "Server Context" : $"{SelectedServer.Name}",
+        _ => "BBS"
+    };
     public bool ShowBotEditor => _currentContext == WorkspaceContext.BotDetails;
     public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerDetails;
     public bool IsServerDetailLoading
@@ -406,7 +410,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsLeftPanelCollapsed));
             OnPropertyChanged(nameof(LeftPanelWidth));
-            OnPropertyChanged(nameof(LeftPanelToggleText));
         }
     }
 
@@ -424,7 +427,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsRightPanelCollapsed));
             OnPropertyChanged(nameof(RightPanelWidth));
-            OnPropertyChanged(nameof(RightPanelToggleText));
         }
     }
 
@@ -433,8 +435,6 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     public GridLength LeftPanelWidth => IsLeftPanelExpanded ? new GridLength(280) : new GridLength(56);
     public GridLength RightPanelWidth => IsRightPanelExpanded ? new GridLength(280) : new GridLength(56);
-    public string LeftPanelToggleText => IsLeftPanelExpanded ? "Collapse Bots" : "Expand Bots";
-    public string RightPanelToggleText => IsRightPanelExpanded ? "Collapse Servers" : "Expand Servers";
 
     public ObservableCollection<BotSummaryItem> Bots { get; }
     public ObservableCollection<ServerSummaryItem> Servers { get; }
@@ -625,7 +625,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (value is not null)
             {
                 PopulateBotEditor(value);
-                // Be decisive: If we select a bot, we want to see the bot.
                 _currentContext = WorkspaceContext.BotDetails; 
                 RefreshContextProjection();
             }
@@ -662,7 +661,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public ICommand EmitSampleLogCommand { get; }
     public ICommand ToggleLeftPanelCommand { get; }
     public ICommand ToggleRightPanelCommand { get; }
     public ICommand SetHomeContextCommand { get; }
@@ -679,16 +677,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand RefreshServerAccessCommand { get; }
     public ICommand CreateArenaCommand { get; }
     public ICommand JoinArenaCommand { get; }
-
-    private void EmitSampleLog()
-    {
-        _logger.Log(LogLevel.Information, "workspace_event", "Unified workspace shell action invoked.",
-            new Dictionary<string, string>
-            {
-                ["source"] = "main_window",
-                ["feature"] = "unified_workspace_shell"
-            });
-    }
 
     private void ToggleLeftPanel()
     {
@@ -717,12 +705,11 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private bool CanDeploySelectedBot()
     {
-        return SelectedBot is { IsArmed: true } &&
-               SelectedBot.LifecycleState != AgentLifecycleState.ActiveSession &&
-               SelectedServer is not null &&
-               _currentContext == WorkspaceContext.ServerDetails &&
-               !HasActiveDeployConnection(SelectedBot.BotId) &&
-               !IsServerAccessLoading;
+        bool botReady = SelectedBot is { IsArmed: true };
+        bool serverReady = SelectedServer is { VisualState: ServerCardVisualState.Live }; 
+        bool contextReady = _currentContext == WorkspaceContext.ServerDetails;
+
+        return botReady && serverReady && contextReady;
     }
 
     private void ExecuteCreateArena()
@@ -917,8 +904,8 @@ public sealed class MainWindowViewModel : ViewModelBase
                     : $"{SelectedServer.Endpoint} | {SelectedServer.Status} | Plugins: {SelectedServer.PluginCount}";
                 break;
             default:
-                WorkspaceTitle = "Context Host Ready";
-                WorkspaceDescription = "Select a bot or server to load activity in this center workspace.";
+                WorkspaceTitle = "";
+                WorkspaceDescription = "";
                 break;
         }
 
@@ -927,6 +914,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(WorkspaceDescription));
         OnPropertyChanged(nameof(ShowBotEditor));
         OnPropertyChanged(nameof(ShowServerEditor));
+        OnPropertyChanged(nameof(CurrentTitleText));
         ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
     }
 
@@ -966,8 +954,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             name: BotEditorName.Trim(),
             launchPath: BotEditorLaunchPath.Trim(),
             avatarImagePath: SelectedBot?.AvatarImagePath,
-            launchArgs: ParseArgs(BotEditorArgs),
-            metadata: ParseMetadata(BotEditorMetadata),
+            launchArgs: MainWindowViewModelHelpers.ParseArgs(BotEditorArgs),
+            metadata: MainWindowViewModelHelpers.ParseMetadata(BotEditorMetadata),
             createdAtUtc: createdAt,
             updatedAtUtc: updatedAt);
 
@@ -1630,7 +1618,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         BotEditorName = bot.Name;
         BotEditorLaunchPath = bot.LaunchPath;
         BotEditorArgs = string.Join(" ", bot.LaunchArgs);
-        BotEditorMetadata = FormatMetadata(bot.Metadata);
+        BotEditorMetadata = MainWindowViewModelHelpers.FormatMetadata(bot.Metadata);
         BotEditorMessage = $"Editing bot profile: {bot.Name}";
     }
 
@@ -1640,7 +1628,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         ServerEditorHost = server.Host;
         ServerEditorPort = server.Port.ToString();
         ServerEditorUseTls = server.UseTls;
-        ServerEditorMetadata = FormatMetadata(server.Metadata);
+        ServerEditorMetadata = MainWindowViewModelHelpers.FormatMetadata(server.Metadata);
         ServerEditorMessage = $"Editing known server: {server.Name}";
     }
 
@@ -1790,7 +1778,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             host: ServerEditorHost.Trim(),
             port: parsedPort,
             useTls: ServerEditorUseTls,
-            metadata: ParseMetadata(ServerEditorMetadata),
+            metadata: MainWindowViewModelHelpers.ParseMetadata(ServerEditorMetadata),
             createdAtUtc: createdAt,
             updatedAtUtc: updatedAt);
 
@@ -2353,7 +2341,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             ServerAccessMetadata = resolved;
-            ServerAccessOwnerToken = resolved.IsValid ? MaskToken(resolved.OwnerToken) : "-";
+            ServerAccessOwnerToken = resolved.IsValid ? MainWindowViewModelHelpers.MaskToken(resolved.OwnerToken) : "-";
             ServerAccessDashboardEndpoint = resolved.IsValid ? resolved.DashboardEndpoint : "-";
             ServerAccessStatus = resolved.StatusMessage;
             if (!resolved.IsValid)
@@ -2481,301 +2469,4 @@ public sealed class MainWindowViewModel : ViewModelBase
         access = ServerAccessMetadata.Invalid("No active session metadata cached.");
         return false;
     }
-
-    private static string MaskToken(string token)
-    {
-        var trimmed = token.Trim();
-        if (trimmed.Length <= 8)
-        {
-            return "********";
-        }
-
-        return $"{trimmed[..4]}...{trimmed[^4..]}";
-    }
-
-    private static IReadOnlyList<string> ParseArgs(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return Array.Empty<string>();
-        }
-
-        return raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    }
-
-    private static Dictionary<string, string> ParseMetadata(string raw)
-    {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return result;
-        }
-
-        var pairs = raw.Split(';', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var pair in pairs)
-        {
-            var parts = pair.Split('=', 2, StringSplitOptions.TrimEntries);
-            if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
-            {
-                result[parts[0]] = parts[1];
-            }
-        }
-
-        return result;
-    }
-
-    private static string FormatMetadata(IReadOnlyDictionary<string, string> metadata)
-    {
-        if (metadata.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        var parts = new List<string>();
-        foreach (var item in metadata)
-        {
-            parts.Add($"{item.Key}={item.Value}");
-        }
-
-        return string.Join(';', parts);
-    }
-
-}
-
-public sealed class BotSummaryItem
-{
-    private static readonly IBrush DefaultAccentBrush = new SolidColorBrush(Color.Parse("#0e7a6d"));
-    private static readonly IBrush DefaultBackgroundBrush = new SolidColorBrush(Color.Parse("#fffaf3"));
-    private static readonly IBrush ArmedAccentBrush = new SolidColorBrush(Color.Parse("#b7791f"));
-    private static readonly IBrush ArmedBackgroundBrush = new SolidColorBrush(Color.Parse("#fff4df"));
-    private static readonly IBrush ActiveAccentBrush = new SolidColorBrush(Color.Parse("#2b8a3e"));
-    private static readonly IBrush ActiveBackgroundBrush = new SolidColorBrush(Color.Parse("#e8f8ec"));
-    private static readonly IBrush ErrorAccentBrush = new SolidColorBrush(Color.Parse("#c92a2a"));
-    private static readonly IBrush ErrorBackgroundBrush = new SolidColorBrush(Color.Parse("#fdecec"));
-
-    public required string BotId { get; init; }
-    public required string Name { get; init; }
-    public required string Summary { get; init; }
-    public required string Status { get; init; }
-    public required IBrush AccentBrush { get; init; }
-    public required IBrush BackgroundBrush { get; init; }
-    public required string LaunchPath { get; init; }
-    public string? AvatarImagePath { get; init; }
-    public required IReadOnlyList<string> LaunchArgs { get; init; }
-    public required IReadOnlyDictionary<string, string> Metadata { get; init; }
-    public required DateTimeOffset CreatedAtUtc { get; init; }
-    public BotCardVisualState VisualState { get; init; }
-    public AgentLifecycleState LifecycleState { get; init; }
-    public bool IsArmed { get; init; }
-    public string? LastErrorCode { get; init; }
-    public required ICommand ArmCommand { get; init; }
-    public required ICommand DisarmCommand { get; init; }
-    public required ICommand DeployCommand { get; init; }
-    public bool CanArm => !IsArmed;
-    public bool CanDisarm => IsArmed;
-
-    public static BotSummaryItem FromProfile(
-        BotProfile profile,
-        AgentRuntimeState? runtimeState,
-        ICommand armCommand,
-        ICommand disarmCommand,
-        ICommand deployCommand)
-    {
-        var visualState = BotCardVisualStateRules.Resolve(runtimeState);
-        var status = BuildStatusText(runtimeState, visualState);
-        var (accentBrush, backgroundBrush) = ResolveBrushes(visualState);
-
-        return new BotSummaryItem
-        {
-            BotId = profile.BotId,
-            Name = profile.Name,
-            Summary = "Local profile",
-            Status = status,
-            AccentBrush = accentBrush,
-            BackgroundBrush = backgroundBrush,
-            LaunchPath = profile.LaunchPath,
-            AvatarImagePath = profile.AvatarImagePath,
-            LaunchArgs = profile.LaunchArgs,
-            Metadata = profile.Metadata,
-            CreatedAtUtc = profile.CreatedAtUtc,
-            VisualState = visualState,
-            LifecycleState = runtimeState?.LifecycleState ?? AgentLifecycleState.Unknown,
-            IsArmed = runtimeState?.IsArmed ?? false,
-            LastErrorCode = runtimeState?.LastErrorCode,
-            ArmCommand = armCommand,
-            DisarmCommand = disarmCommand,
-            DeployCommand = deployCommand
-        };
-    }
-
-    private static string BuildStatusText(AgentRuntimeState? runtimeState, BotCardVisualState visualState)
-    {
-        if (runtimeState is null)
-        {
-            return "Registered";
-        }
-
-        return visualState switch
-        {
-            BotCardVisualState.Armed => "Armed",
-            BotCardVisualState.ActiveSession => "Active Session",
-            BotCardVisualState.Error => string.IsNullOrWhiteSpace(runtimeState.LastErrorCode)
-                ? "Error"
-                : $"Error: {runtimeState.LastErrorCode}",
-            _ => runtimeState.LifecycleState.ToString()
-        };
-    }
-
-    private static (IBrush AccentBrush, IBrush BackgroundBrush) ResolveBrushes(BotCardVisualState visualState)
-    {
-        return visualState switch
-        {
-            BotCardVisualState.Armed => (ArmedAccentBrush, ArmedBackgroundBrush),
-            BotCardVisualState.ActiveSession => (ActiveAccentBrush, ActiveBackgroundBrush),
-            BotCardVisualState.Error => (ErrorAccentBrush, ErrorBackgroundBrush),
-            _ => (DefaultAccentBrush, DefaultBackgroundBrush)
-        };
-    }
-
-    public BotProfile ToProfile()
-    {
-        return BotProfile.Create(
-            botId: BotId,
-            name: Name,
-            launchPath: LaunchPath,
-            avatarImagePath: AvatarImagePath,
-            launchArgs: LaunchArgs,
-            metadata: new Dictionary<string, string>(Metadata),
-            createdAtUtc: CreatedAtUtc,
-            updatedAtUtc: DateTimeOffset.UtcNow);
-    }
-}
-
-public sealed class ServerSummaryItem
-{
-    private static readonly IBrush LiveAccentBrush = new SolidColorBrush(Color.Parse("#2b8a3e"));
-    private static readonly IBrush LiveBackgroundBrush = new SolidColorBrush(Color.Parse("#e8f8ec"));
-    private static readonly IBrush InactiveAccentBrush = new SolidColorBrush(Color.Parse("#6c757d"));
-    private static readonly IBrush InactiveBackgroundBrush = new SolidColorBrush(Color.Parse("#f1f3f5"));
-
-    public required string ServerId { get; init; }
-    public required string Name { get; init; }
-    public required string Host { get; init; }
-    public required int Port { get; init; }
-    public required bool UseTls { get; init; }
-    public required DateTimeOffset CreatedAtUtc { get; init; }
-    public required IReadOnlyDictionary<string, string> Metadata { get; init; }
-    public required IReadOnlyList<PluginDescriptor> CachedPlugins { get; init; }
-    public required string Endpoint { get; init; }
-    public required string Status { get; init; }
-    public required IBrush AccentBrush { get; init; }
-    public required IBrush BackgroundBrush { get; init; }
-    public required ServerCardVisualState VisualState { get; init; }
-    public int PluginCount => CachedPlugins.Count;
-
-    public static ServerSummaryItem FromKnownServer(KnownServer server, ServerPluginCache? cache)
-    {
-        var scheme = server.UseTls ? "https" : "http";
-        var endpoint = $"{scheme}://{server.Host}:{server.Port}";
-        var plugins = cache?.Plugins ?? Array.Empty<PluginDescriptor>();
-        var visualState = ServerCardVisualStateRules.Resolve(server.Metadata);
-        var (accentBrush, backgroundBrush) = ResolveBrushes(visualState);
-        var status = BuildProbeAwareStatus(server.Metadata, cache);
-
-        return new ServerSummaryItem
-        {
-            ServerId = server.ServerId,
-            Name = server.Name,
-            Host = server.Host,
-            Port = server.Port,
-            UseTls = server.UseTls,
-            CreatedAtUtc = server.CreatedAtUtc,
-            Metadata = server.Metadata,
-            CachedPlugins = plugins,
-            Endpoint = endpoint,
-            Status = status,
-            AccentBrush = accentBrush,
-            BackgroundBrush = backgroundBrush,
-            VisualState = visualState
-        };
-    }
-
-    private static (IBrush AccentBrush, IBrush BackgroundBrush) ResolveBrushes(ServerCardVisualState visualState)
-    {
-        return visualState switch
-        {
-            ServerCardVisualState.Live => (LiveAccentBrush, LiveBackgroundBrush),
-            _ => (InactiveAccentBrush, InactiveBackgroundBrush)
-        };
-    }
-
-    private static string BuildProbeAwareStatus(IReadOnlyDictionary<string, string> metadata, ServerPluginCache? cache)
-    {
-        if (metadata.TryGetValue("probe_status", out var probeStatus))
-        {
-            if (string.Equals(probeStatus, "reachable", StringComparison.OrdinalIgnoreCase))
-            {
-                return "Status: reachable";
-            }
-
-            if (metadata.TryGetValue("probe_last_error", out var probeError) &&
-                !string.IsNullOrWhiteSpace(probeError) &&
-                probeError.StartsWith("bot_port_dashboard_", StringComparison.OrdinalIgnoreCase))
-            {
-                var suggestedPort = probeError["bot_port_dashboard_".Length..];
-                if (!string.IsNullOrWhiteSpace(suggestedPort))
-                {
-                    return $"Status: wrong endpoint (bot port). Use dashboard port {suggestedPort}";
-                }
-            }
-
-            var errorSuffix = metadata.TryGetValue("probe_last_error", out var errorValue) && !string.IsNullOrWhiteSpace(errorValue)
-                ? $" ({errorValue})"
-                : string.Empty;
-            return $"Status: unreachable{errorSuffix}";
-        }
-
-        return cache is null
-            ? "Status: pending probe"
-            : "Status: pending startup probe";
-    }
-}
-
-public sealed record ServerMetadataEntryItem(string Key, string Value);
-
-public sealed record ServerPluginCatalogItem(
-    string Name,
-    string DisplayName,
-    string Version,
-    IReadOnlyDictionary<string, string>? PluginMetadata = null)
-{
-    public IReadOnlyDictionary<string, string> Metadata { get; init; } =
-        PluginMetadata ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-}
-
-public sealed record RegisterHandshakeResult(
-    string SessionId,
-    string ServerBotId,
-    string ServerBotSecret,
-    string OwnerToken,
-    string DashboardEndpoint);
-
-public sealed record AgentControlResponse(
-    string Type,
-    string Id,
-    string Message,
-    string SessionId,
-    string BotId,
-    string BotSecret,
-    string OwnerToken,
-    string DashboardEndpoint,
-    string DashboardHost,
-    string DashboardPort);
-
-
-public enum WorkspaceContext
-{
-    Home = 0,
-    BotDetails = 1,
-    ServerDetails = 2
 }

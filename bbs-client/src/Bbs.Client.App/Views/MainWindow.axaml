@@ -11,8 +11,8 @@
         MinWidth="980"
         MinHeight="600"
         x:Name="RootWindow"
-        Title=""
-        mc:Ignorable="d"
+        Icon ="/Assets/icons/bbs.ico"
+        Title="{Binding CurrentTitleText}"
         >
 
       <Window.Resources>
@@ -42,29 +42,12 @@
       </Window.Resources>
 
       <Panel>
-            <Border IsHitTestVisible="False">
-                  <Border.Background>
-                        <RadialGradientBrush Center="5%,30%" 
-                                          GradientOrigin="5%,30%" 
-                                          RadiusX="50%" RadiusY="50%"
-                                          Opacity="0.08">
-                              <GradientStop Offset="0" Color="#cc5d22" /> 
-                              <GradientStop Offset="1" Color="Transparent" />
-                        </RadialGradientBrush>
-                  </Border.Background>
-            </Border>
-
-            <Border IsHitTestVisible="False">
-                  <Border.Background>
-                        <RadialGradientBrush Center="90%,70%" 
-                                          GradientOrigin="90%,70%" 
-                                          RadiusX="50%" RadiusY="50%"
-                                          Opacity="0.03">
-                              <GradientStop Offset="0" Color="#ff00ff" /> 
-                              <GradientStop Offset="1" Color="Transparent" />
-                        </RadialGradientBrush>
-                  </Border.Background>
-            </Border>
+            <Image Source="/Assets/ui/watermark-emboss-512.png" 
+                  Opacity="0.2" 
+                  Stretch="None"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  IsHitTestVisible="False" />
 
       <Grid RowDefinitions="32,*" Margin="0,0,0,16">
             <Menu Grid.Row="0" 
@@ -96,67 +79,81 @@
                   <Grid Grid.Column="0" Margin="0,0,6,0" ZIndex="0">
                         <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="0,5,5,0" BoxShadow="5 2 20 0 #40000000" ZIndex="0" />
                         <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ClipToBounds="True" ZIndex="1">
-                              <Grid>
-                                    <TextBlock IsVisible="{Binding IsLeftPanelExpanded}" HorizontalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="Bots" />
-                                    <Button Classes="panel-icon-toggle" HorizontalAlignment="Right" Width="28" Height="28" Padding="4" Command="{Binding ToggleLeftPanelCommand}">
-                                          <Grid>
-                                                <Path IsVisible="{Binding IsLeftPanelExpanded}"
-                                                      Classes="panel-icon"
-                                                      Width="10"
-                                                      Height="14"
-                                                      Stretch="Uniform"
-                                                      Data="M 7.238105,0.18057061 C 6.923615,0.18057061 6.450145,0.45014061 6.180565,0.76192061 L 0.180525,7.2619006 C -0.060175,7.5428006 -0.060175,7.9572006 0.180525,8.2381006 L 6.180565,15.238101 C 6.450145,15.552601 6.923615,15.589001 7.238105,15.319501 C 7.552595,15.049901 7.589025,14.576401 7.319455,14.261901 L 1.737825,7.7500006 L 7.319455,1.2381106 C 7.589025,0.92361061 7.552595,0.45014061 7.238105,0.18057061 Z" />
-                                                <Path IsVisible="{Binding IsLeftPanelCollapsed}"
-                                                      Classes="panel-icon"
-                                                      Width="10"
-                                                      Height="14"
-                                                      Stretch="Uniform"
-                                                      Data="M 0.26192061,0.18057061 C 0.57641061,-0.08899939 1.0498906,-0.05256939 1.3194606,0.26192061 L 7.3195006,7.2619006 C 7.5602006,7.5428006 7.5602006,7.9572006 7.3195006,8.2381006 L 1.3194606,15.238101 C 1.0498906,15.552601 0.57641061,15.589001 0.26192061,15.319501 C -0.05256939,15.049901 -0.08899939,14.576401 0.18057061,14.261901 L 5.7622006,7.7500006 L 0.18057061,1.2381106 C -0.08899939,0.92361061 -0.05256939,0.45014061 0.26192061,0.18057061 Z" />
-                                          </Grid>
-                                    </Button>
-                              </Grid>
-                              <TextBlock Grid.Row="1" IsVisible="{Binding IsLeftPanelExpanded}" Margin="0,8,0,8" Opacity="1" Text="Registered and local to this client" />
+                              <Grid Margin="0,0,0,8">
+                              <Button Classes="panel-icon-toggle" 
+                                          HorizontalAlignment="Left" 
+                                          Width="28" Height="28" Padding="6"
+                                          Command="{Binding StartNewBotCommand}"
+                                          ToolTip.Tip="New Bot"
+                                          IsVisible="{Binding IsLeftPanelExpanded}">
+                                    <Path Data="{StaticResource PlusIcon}"
+                                          Classes="panel-icon"
+                                          Width="12" Height="12"
+                                          Stretch="Uniform" />
+                              </Button>
 
+                              <TextBlock Text="Bots" 
+                                          IsVisible="{Binding IsLeftPanelExpanded}" 
+                                          HorizontalAlignment="Center" 
+                                          VerticalAlignment="Center"
+                                          FontSize="18" 
+                                          FontWeight="SemiBold" />
+
+                              <Button Classes="panel-icon-toggle" 
+                                          HorizontalAlignment="Right" 
+                                          Width="28" Height="28" Padding="4" 
+                                          Command="{Binding ToggleLeftPanelCommand}">
+                                    <Grid>
+                                          <Path IsVisible="{Binding IsLeftPanelExpanded}"
+                                                Data="{StaticResource LeftAngleIcon}"
+                                                Classes="panel-icon"
+                                                ToolTip.Tip="Collapse"
+                                                Width="10" Height="14"
+                                                Stretch="Uniform" />
+
+                                          <Path IsVisible="{Binding IsLeftPanelCollapsed}"
+                                                Data="{StaticResource RightAngleIcon}"
+                                                Classes="panel-icon"
+                                                ToolTip.Tip="Expand"
+                                                Width="10" Height="14"
+                                                Stretch="Uniform" />
+                                    </Grid>
+                              </Button>
+                              </Grid>
                               <ListBox Grid.Row="2"
                                                        IsVisible="{Binding IsLeftPanelExpanded}"
                                                        Background="Transparent"
+                                                       Margin="0,10,0,0"
                                                        BorderThickness="0"
                                                        ItemContainerTheme="{StaticResource CardListBoxItemTheme}"
                                                        ItemsSource="{Binding Bots}"
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedBot}">
                                     <ListBox.ItemTemplate>
-                                          <DataTemplate>
-                                                <StackPanel Spacing="0">
-                                                      <controls:SummaryCard Title="{Binding Name}"
-                                                                            IsActive="{Binding $parent[ListBoxItem].IsSelected}"
-                                                                            Subtitle="{Binding Summary}"
-                                                                            StatusText="{Binding Status}"
-                                                                            AccentBrush="{Binding AccentBrush}"
-                                                                            BackgroundBrush="{Binding BackgroundBrush}" />
-                                                      <StackPanel IsVisible="{Binding $parent[ListBoxItem].IsSelected}" Orientation="Horizontal" Spacing="6" Margin="0,-4,0,8">
-                                                                <Button IsVisible="{Binding CanArm}"
-                                                                      Command="{Binding ArmCommand}"
-                                                                    Content="Arm" />
-                                                                <Button IsVisible="{Binding CanDisarm}"
-                                                                      Command="{Binding DisarmCommand}"
-                                                                    Content="Disarm" />
-                                                                <Button Command="{Binding DeployCommand}"
-                                                                    Content="Deploy" />
-                                                      </StackPanel>
-                                                </StackPanel>
-                                          </DataTemplate>
-                                    </ListBox.ItemTemplate>
+      <DataTemplate>
+            <Grid Margin="0,0,0,8">
+                  <controls:SummaryCard Title="{Binding Name}"
+                                        IsActive="{Binding $parent[ListBoxItem].IsSelected}"
+                                        Subtitle="{Binding Summary}"
+                                        StatusText="{Binding Status}"
+                                        AccentBrush="{Binding AccentBrush}"
+                                        BackgroundBrush="{Binding BackgroundBrush}" />
+
+                  <StackPanel IsVisible="{Binding $parent[ListBoxItem].IsSelected}" 
+                              Orientation="Horizontal" 
+                              Spacing="6" 
+                              Margin="0,0,10,10"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Center">
+                  <ToggleButton Classes="panel-toggle-switch"
+                              IsChecked="{Binding IsArmedToggle, Mode=TwoWay}" />
+                  <Button Command="{Binding DeployCommand}"
+                        Content="Deploy" />
+                  </StackPanel>
+            </Grid>
+      </DataTemplate>
+</ListBox.ItemTemplate>
                               </ListBox>
-
-                              <Button Grid.Row="3"
-                                      IsVisible="{Binding IsLeftPanelExpanded}"
-                                      Margin="0,8,0,0"
-                                      HorizontalAlignment="Stretch"
-                                          HorizontalContentAlignment="Center"
-                                      Command="{Binding StartNewBotCommand}"
-                                      Content="New Bot" />
-
                         </Grid>
                   </Grid>
 
@@ -165,13 +162,17 @@
                         <Grid Margin="14" RowDefinitions="Auto,Auto,*" ZIndex="1">
                               <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                                     <TextBlock FontSize="20" FontWeight="Bold" Text="{Binding WorkspaceTitle}" />
-                                    <Button Grid.Column="1" Classes="panel-icon-toggle" Width="28" Height="28" Padding="4" Command="{Binding SetHomeContextCommand}">
+                                    <Button Grid.Column="1" 
+                                          Classes="panel-icon-toggle" 
+                                          Width="28" Height="28" 
+                                          Padding="4" 
+                                          ToolTip.Tip="Back to Home"
+                                          Command="{Binding SetHomeContextCommand}">
                                           <Path Classes="panel-icon"
                                                 Width="12"
                                                 Height="12"
                                                 Stretch="Uniform"
-                                                StrokeThickness="3"
-                                                Data="M 2,2 L 10,10 M 10,2 L 2,10" />
+                                                Data="{StaticResource CloseIcon}" />
                                     </Button>
                               </Grid>
                               <TextBlock Grid.Row="1" Margin="0,10,0,10" Opacity="1" TextWrapping="Wrap" Text="{Binding WorkspaceDescription}" />
@@ -351,24 +352,24 @@
                                     <Button Classes="panel-icon-toggle" HorizontalAlignment="Left" Width="28" Height="28" Padding="4" Command="{Binding ToggleRightPanelCommand}">
                                           <Grid>
                                                 <Path IsVisible="{Binding IsRightPanelExpanded}"
+                                                      Data="{StaticResource RightAngleIcon}"
                                                       Classes="panel-icon"
                                                       Width="10"
                                                       Height="14"
-                                                      Stretch="Uniform"
-                                                      Data="M 0.26192061,0.18057061 C 0.57641061,-0.08899939 1.0498906,-0.05256939 1.3194606,0.26192061 L 7.3195006,7.2619006 C 7.5602006,7.5428006 7.5602006,7.9572006 7.3195006,8.2381006 L 1.3194606,15.238101 C 1.0498906,15.552601 0.57641061,15.589001 0.26192061,15.319501 C -0.05256939,15.049901 -0.08899939,14.576401 0.18057061,14.261901 L 5.7622006,7.7500006 L 0.18057061,1.2381106 C -0.08899939,0.92361061 -0.05256939,0.45014061 0.26192061,0.18057061 Z" />
+                                                      Stretch="Uniform" />
+
                                                 <Path IsVisible="{Binding IsRightPanelCollapsed}"
+                                                      Data="{StaticResource LeftAngleIcon}"
                                                       Classes="panel-icon"
                                                       Width="10"
                                                       Height="14"
-                                                      Stretch="Uniform"
-                                                      Data="M 7.238105,0.18057061 C 6.923615,0.18057061 6.450145,0.45014061 6.180565,0.76192061 L 0.180525,7.2619006 C -0.060175,7.5428006 -0.060175,7.9572006 0.180525,8.2381006 L 6.180565,15.238101 C 6.450145,15.552601 6.923615,15.589001 7.238105,15.319501 C 7.552595,15.049901 7.589025,14.576401 7.319455,14.261901 L 1.737825,7.7500006 L 7.319455,1.2381106 C 7.589025,0.92361061 7.552595,0.45014061 7.238105,0.18057061 Z" />
+                                                      Stretch="Uniform" />
                                           </Grid>
                                     </Button>
                               </Grid>
-                              <TextBlock Grid.Row="1" IsVisible="{Binding IsRightPanelExpanded}" Margin="0,8,0,8" Opacity="1" Text="Known server endpoints and status" />
-
                               <ListBox Grid.Row="2"
                                                        IsVisible="{Binding IsRightPanelExpanded}"
+                                                       Margin="0,10,0,0"
                                                        Background="Transparent"
                                                        BorderThickness="0"
                                                        ItemContainerTheme="{StaticResource CardListBoxItemTheme}"

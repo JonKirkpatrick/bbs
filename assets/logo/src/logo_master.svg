@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="-10 -10 512 512"
+   version="1.1"
+   id="svg6"
+   sodipodi:docname="logo_master.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   width="512"
+   height="512"
+   inkscape:export-filename="BBS_Pin.png"
+   inkscape:export-xdpi="192"
+   inkscape:export-ydpi="192"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title
+     id="title1082">Build-a-Bot Stadium Logo and Icon</title>
+  <defs
+     id="defs10">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient2189">
+      <stop
+         style="stop-color:#556672;stop-opacity:1;"
+         offset="0"
+         id="stop2185" />
+      <stop
+         style="stop-color:#2a3036;stop-opacity:1;"
+         offset="1"
+         id="stop2187" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient1938">
+      <stop
+         style="stop-color:#00add8;stop-opacity:1;"
+         offset="0"
+         id="stop1934" />
+      <stop
+         style="stop-color:#007fa5;stop-opacity:1;"
+         offset="1"
+         id="stop1936" />
+    </linearGradient>
+    <inkscape:perspective
+       sodipodi:type="inkscape:persp3d"
+       inkscape:vp_x="-11400.645 : 6861.3731 : 1"
+       inkscape:vp_y="0 : 1000 : 0"
+       inkscape:vp_z="19611.434 : 11161.693 : 1"
+       inkscape:persp3d-origin="256 : 170.66667 : 1"
+       id="perspective901" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient2189"
+       id="linearGradient2191"
+       x1="245.36421"
+       y1="576.54449"
+       x2="246"
+       y2="28.596632"
+       gradientUnits="userSpaceOnUse" />
+    <clipPath
+       clipPathUnits="userSpaceOnUse"
+       id="clipPath5768">
+      <path
+         id="path5770"
+         style="color:#000000;display:inline;fill:url(#linearGradient5772);stroke-width:10;-inkscape-stroke:none"
+         inkscape:label="Go Inside"
+         d="M 246,463.40336 151.86158,409.05252 V 300.35084 L 246,246 l 94.13842,54.35084 v 108.70168 z m -94.15694,-54.44443 94.15695,54.44444 94.88638,-54.65818 -94.90068,-32.58049 z" />
+    </clipPath>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient1938"
+       id="linearGradient5772"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="translate(-10,229.31181)"
+       x1="214.40248"
+       y1="126.48769"
+       x2="355.13843"
+       y2="125.38987" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="false"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="0.73706117"
+     inkscape:cx="324.93911"
+     inkscape:cy="276.77486"
+     inkscape:window-width="2508"
+     inkscape:window-height="1371"
+     inkscape:window-x="2612"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g1423"
+     showborder="true" />
+  <g
+     id="g1423"
+     transform="rotate(180,246,246)"
+     inkscape:label="BBS Logo">
+    <path
+       style="color:#000000;display:inline;fill:#f7df1e;fill-opacity:1;stroke-width:10;-inkscape-stroke:none"
+       d="M 246.00001,463.40337 57.723165,354.70169 57.723159,137.29832 245.99999,28.596634 434.27683,137.29831 l 10e-6,217.40337 z"
+       id="path2164"
+       inkscape:label="JavaScript Hexagon" />
+    <g
+       id="g1032"
+       inkscape:label="JS Shadow Group"
+       style="display:none">
+      <path
+         id="path1404"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.348651;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="JS Outer Right (C)"
+         d="m 151.81791,82.94742 7e-5,108.70157 -94.13835,54.35073 -7e-5,-108.70157 z" />
+      <path
+         id="path1400"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.1;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="JS Inner Right (B)"
+         d="m 57.67963,246.00063 -7e-5,108.70157 94.13836,54.35073 6e-5,-108.70157 z" />
+      <path
+         id="path1302"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.35;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="JS Inner Left (C)"
+         d="m 434.23317,246.00063 7e-5,108.70157 -94.13835,54.35073 -7e-5,-108.70157 z" />
+      <path
+         id="path1402"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.1;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="JS Outer Left (B)"
+         d="m 340.13846,82.94742 -7e-5,108.70157 94.13835,54.35073 7e-5,-108.70157 z" />
+      <path
+         id="path1022"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="JS Top Right (A)"
+         d="m 57.67969,246.00063 94.13829,54.35084 94.13829,-54.35084 -94.13829,-54.35084 z" />
+      <path
+         id="path1020"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="JS Top Left (A)"
+         d="M 246.00006,246 340.13835,300.35084 434.27664,246 340.13835,191.64915 Z" />
+    </g>
+    <path
+       style="color:#000000;display:inline;fill:#178600;fill-opacity:1;stroke-width:10;-inkscape-stroke:none"
+       d="M 246,246 151.86158,191.64915 V 82.947476 L 246,28.596632 340.13842,82.947471 V 191.64915 Z"
+       id="path2170"
+       inkscape:label="C Sharp Hexagon" />
+    <g
+       id="g1037"
+       inkscape:label="CS Shadow Group"
+       style="display:none">
+      <path
+         id="path1304"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.348651;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="CS Right (C)"
+         d="m 245.99986,28.59686 7e-5,108.70157 -94.13835,54.35073 -7e-5,-108.70157 z" />
+      <path
+         id="path1308"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.1;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="CS Left (B)"
+         d="m 246.0001,28.59669 -7e-5,108.70157 94.13836,54.35073 6e-5,-108.70157 z" />
+      <path
+         id="path1306"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="CS Top (A)"
+         d="m 151.81798,191.64979 94.13829,54.35084 94.13829,-54.35084 -94.13829,-54.35084 z" />
+    </g>
+    <path
+       style="color:#000000;display:inline;fill:#00add8;fill-opacity:1;stroke-width:10;-inkscape-stroke:none"
+       d="M 246,463.40336 151.86158,409.05252 V 300.35084 L 246,246 l 94.13842,54.35084 v 108.70168 z"
+       id="path2176"
+       inkscape:label="Go Hexagon" />
+    <g
+       id="g1042"
+       inkscape:label="Go Shadow Group"
+       style="display:none">
+      <path
+         id="path1398"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.35;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="Go Right (C)"
+         d="m 245.95633,246.00063 7e-5,108.70157 -94.13835,54.35073 -7e-5,-108.70157 z" />
+      <path
+         id="path1298"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0.1;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="Go Left (B)"
+         d="m 245.95647,246.00063 -7e-5,108.70157 94.13836,54.35073 6e-5,-108.70157 z" />
+      <path
+         id="path1046"
+         style="color:#000000;display:inline;fill:#000000;fill-opacity:0;stroke-width:5.77349;-inkscape-stroke:none"
+         inkscape:label="Go Top (A)"
+         d="m 151.86184,409.05252 94.13829,54.35084 94.13829,-54.35084 -94.13829,-54.35084 z" />
+    </g>
+    <path
+       id="path2166"
+       style="color:#000000;display:inline;fill:url(#linearGradient2191);fill-opacity:1;stroke:none;stroke-opacity:1;-inkscape-stroke:none"
+       d="M 246,22.822266 146.86133,80.060547 52.722656,134.41211 V 357.58789 L 146.86133,411.93945 246,469.17773 l 2.5,-1.44335 96.63867,-55.79493 94.13867,-54.35156 V 134.41211 L 345.13867,80.060547 Z m 0,11.548828 89.13867,51.46289 V 188.76172 L 246,240.22656 156.86133,188.76172 V 85.833984 Z M 146.86133,91.60938 V 194.53516 L 236,246 146.86133,297.46484 V 400.39062 L 62.722656,351.81445 v -211.6289 z m 198.27734,0 84.13867,48.57617 v 211.6289 l -84.13867,48.57617 V 297.46484 L 256,246 345.13867,194.53516 Z M 246,251.77344 335.13867,303.23828 V 406.16602 L 246,457.62891 156.86133,406.16602 V 303.23828 Z"
+       inkscape:label="Frame" />
+  </g>
+  <metadata
+     id="metadata1078">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Build-a-Bot Stadium Logo and Icon</dc:title>
+        <dc:date>2026-03-27</dc:date>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>Jon Kirkpatrick</dc:title>
+          </cc:Agent>
+        </dc:creator>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

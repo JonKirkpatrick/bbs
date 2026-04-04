@@ -3,30 +3,81 @@
              x:Class="Bbs.Client.App.App"
              RequestedThemeVariant="Default">
   <Application.Resources>
+
     <ResourceDictionary>
-      <StreamGeometry x:Key="CloseIcon">M 2,2 L 10,10 M 10,2 L 2,10</StreamGeometry>
-      <StreamGeometry x:Key="ToggleTrack">M 10,0 L 10,0 A 10,10 0 0 1 20,10 L 20,30 A 10,10 0 0 1 0,30 L 0,10 A 10,10 0 0 1 10,0 Z</StreamGeometry>
-      <StreamGeometry x:Key="ToggleKnob">M 10,3 A 7,7 0 1 1 10,17 A 7,7 0 1 1 10,3 Z</StreamGeometry>
+        
+      <!-- Close (X) -->
+      <StreamGeometry x:Key="CloseIcon">
+        M 3,3 L 13,13 
+        M 13,3 L 3,13
+      </StreamGeometry>
+
+      <!-- Chevron Left -->
+      <StreamGeometry x:Key="LeftAngleIcon">
+        M 11.5,2 
+        L 5,8 
+        L 11.5,14
+      </StreamGeometry>
+
+      <!-- Chevron Right -->
+      <StreamGeometry x:Key="RightAngleIcon">
+        M 4.5,2 
+        L 11,8 
+        L 4.5,14
+      </StreamGeometry>
+
+      <!-- Toggle Track -->
+      <StreamGeometry x:Key="ToggleTrack">
+        M 10,0 
+        A 10,10 0 0 1 20,10 
+        L 20,30 
+        A 10,10 0 0 1 0,30 
+        L 0,10 
+        A 10,10 0 0 1 10,0 
+        Z
+      </StreamGeometry>
+
+      <!-- Toggle Knob -->
+      <StreamGeometry x:Key="ToggleKnob">
+        M 10,3 
+        A 7,7 0 1 1 10,17 
+        A 7,7 0 1 1 10,3 
+        Z
+      </StreamGeometry>
+
+      <!-- Plus Sign -->
+      <StreamGeometry x:Key="PlusIcon">
+        M 8,3 L 8,13 
+        M 3,8 L 13,8
+      </StreamGeometry>
+
+      <!-- Check Mark -->
+      <StreamGeometry x:Key="CheckIcon">
+        M 3,8 L 7,12 L 13,4
+      </StreamGeometry> 
+
+      <!-- Minus Sign -->
+      <StreamGeometry x:Key="MinusIcon">
+        M 3,8 L 13,8
+      </StreamGeometry>
+      
     </ResourceDictionary>
-    <Color x:Key="Palette.Bg">#f5f1e9</Color>
+
     <Color x:Key="Palette.Paper">#f5f7fa</Color>
     <Color x:Key="Palette.Ink">#1b1c1f</Color>
     <Color x:Key="Palette.Muted">#5d6068</Color>
-    <Color x:Key="Palette.Line">#ddd0b8</Color>
-    <Color x:Key="Palette.Brand">#cc5d22</Color>
+    <Color x:Key="Palette.Line">#000000</Color>
+    <Color x:Key="Palette.Orange">#84581f</Color>
     <Color x:Key="Palette.BrandSoft">#f5d3c0</Color>
-    <Color x:Key="Palette.Accent">#0e7a6d</Color>
-    <Color x:Key="Palette.AccentSoft">#c5ece6</Color>
-    <Color x:Key="Palette.OceanSurface">#c8e3e5</Color> 
-    <Color x:Key="Palette.OceanDeep">#a4bbbc</Color>   
+    <Color x:Key="Palette.FocusHover">#c5ece6</Color>
+    <Color x:Key="Palette.OceanSurface">#f2feff</Color> 
+    <Color x:Key="Palette.OceanDeep">#c9d8d9</Color>   
     <LinearGradientBrush x:Key="Palette.OceanDepthBrush" StartPoint="0%,0%" EndPoint="0%,100%">
         <GradientStop Offset="0.0" Color="{StaticResource Palette.OceanSurface}" />
         <GradientStop Offset="1.0" Color="{StaticResource Palette.OceanDeep}" />
     </LinearGradientBrush>
 
-    <SolidColorBrush x:Key="Palette.WindowBackgroundBrush" Color="{StaticResource Palette.Bg}" />
     <SolidColorBrush x:Key="Palette.WindowForegroundBrush" Color="{StaticResource Palette.Ink}" />
-    <SolidColorBrush x:Key="Palette.TitleBarBackground" Color="#CCF5F7FA" />
     <SolidColorBrush x:Key="Palette.TitleBarBorder" Color="#10000000" /> 
 
     <SolidColorBrush x:Key="Palette.PanelBackgroundBrush" Color="{StaticResource Palette.Paper}" />
@@ -34,10 +85,9 @@
     <SolidColorBrush x:Key="Palette.SummaryCardBackgroundBrush" Color="{StaticResource Palette.Paper}" />
     <SolidColorBrush x:Key="Palette.BorderBrush" Color="{StaticResource Palette.Line}" />
 
-    <SolidColorBrush x:Key="Palette.BrandBrush" Color="{StaticResource Palette.Brand}" />
-    <SolidColorBrush x:Key="Palette.AccentBrush" Color="{StaticResource Palette.Accent}" />
+    <SolidColorBrush x:Key="Palette.BrandBrush" Color="{StaticResource Palette.Orange}" />
       
-    <SolidColorBrush x:Key="Palette.ButtonBackgroundBrush" Color="{StaticResource Palette.Brand}" />
+    <SolidColorBrush x:Key="Palette.ButtonBackgroundBrush" Color="{StaticResource Palette.Orange}" />
     <SolidColorBrush x:Key="Palette.ButtonForegroundBrush" Color="{StaticResource Palette.Paper}" />
     <SolidColorBrush x:Key="Palette.ButtonHoverBackgroundBrush" Color="#b8531d" />
     <SolidColorBrush x:Key="Palette.ButtonPressedBackgroundBrush" Color="#9f4919" />
@@ -48,15 +98,15 @@
         
     <SolidColorBrush x:Key="Palette.InputBackgroundBrush" Color="{StaticResource Palette.Paper}" />
     <SolidColorBrush x:Key="Palette.InputForegroundBrush" Color="{StaticResource Palette.Ink}" />
-    <SolidColorBrush x:Key="Palette.InputFocusBorderBrush" Color="{StaticResource Palette.Brand}" />
+    <SolidColorBrush x:Key="Palette.InputFocusBorderBrush" Color="{StaticResource Palette.Orange}" />
 
     <SolidColorBrush x:Key="Palette.ListItemBackgroundBrush" Color="Transparent" />
     <SolidColorBrush x:Key="Palette.ListItemForegroundBrush" Color="{StaticResource Palette.Ink}" />
     <SolidColorBrush x:Key="Palette.ListItemHoverBackgroundBrush" Color="#f0e7d8" />
     <SolidColorBrush x:Key="Palette.ListItemSelectedBackgroundBrush" Color="Transparent" />
-    <SolidColorBrush x:Key="Palette.ListItemSelectedBorderBrush" Color="{StaticResource Palette.AccentSoft}" />
-    <SolidColorBrush x:Key="Palette.ListItemFocusBorderBrush" Color="{StaticResource Palette.Brand}" />
-    <SolidColorBrush x:Key="Palette.CardHoverBackgroundBrush" Color="{StaticResource Palette.AccentSoft}" />
+    <SolidColorBrush x:Key="Palette.ListItemSelectedBorderBrush" Color="{StaticResource Palette.FocusHover}" />
+    <SolidColorBrush x:Key="Palette.ListItemFocusBorderBrush" Color="{StaticResource Palette.Orange}" />
+    <SolidColorBrush x:Key="Palette.CardHoverBackgroundBrush" Color="{StaticResource Palette.FocusHover}" />
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
@@ -103,6 +153,60 @@
       <Setter Property="Background" Value="{DynamicResource Palette.ButtonPressedBackgroundBrush}" />
     </Style>
 
+    <Style Selector="ToggleButton.panel-toggle-switch">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel Background="Transparent">
+            
+            <Grid>
+              <Grid.Clip>
+                <GeometryGroup>
+                    <StaticResource ResourceKey="ToggleTrack"/>
+                </GeometryGroup>
+              </Grid.Clip>
+
+              <Path Data="{StaticResource ToggleTrack}"
+                    Fill="Transparent"
+                    Stroke="Black"
+                    StrokeThickness="2"
+                    Opacity="0.3"
+                    Margin="1,1,0,0"> <Path.Effect>
+                  <BlurEffect Radius="2" />
+                </Path.Effect>
+              </Path>
+              
+              <Path Data="{StaticResource ToggleTrack}" 
+                    Fill="#10000000" /> <Canvas Width="20" Height="40">
+                <Path Classes="knob"
+                      Data="{StaticResource ToggleKnob}"
+                      Fill="{DynamicResource Palette.BrandBrush}" />
+              </Canvas>
+            </Grid>
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
+    <Style Selector="ToggleButton.panel-toggle-switch:pointerover Path.track">
+      <Setter Property="StrokeThickness" Value="2.1" />
+    </Style>
+
+    <Style Selector="ToggleButton.panel-toggle-switch Path.knob">
+      <Setter Property="Fill" Value="#7f7f7f" /> 
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+      <Setter Property="RenderTransform" Value="translateY(20px)" />
+    </Style>
+
+    <Style Selector="ToggleButton.panel-toggle-switch:checked Path.knob">
+      <Setter Property="Fill" Value="{DynamicResource Palette.BrandBrush}" />
+      <Setter Property="RenderTransform" Value="translateY(0px)" />
+    </Style>
     <Style Selector="Button.panel-icon-toggle">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="Transparent" />
