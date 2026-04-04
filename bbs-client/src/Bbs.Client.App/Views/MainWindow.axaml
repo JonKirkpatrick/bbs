@@ -333,6 +333,100 @@
                                                 </Grid>
                                           </Border>
 
+                                          <Border IsVisible="{Binding ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                                <StackPanel Spacing="6">
+                                                      <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock FontSize="15" FontWeight="SemiBold" Text="Active Arenas" />
+                                                            <Button Grid.Column="1" Command="{Binding RefreshServerArenasCommand}" Content="Refresh" />
+                                                      </Grid>
+
+                                                      <TextBlock FontSize="12" Text="{Binding ServerArenasStatus}" TextWrapping="Wrap" />
+                                                      <TextBlock IsVisible="{Binding IsServerArenasLoading}" FontSize="12" Text="Loading active arenas..." />
+
+                                                      <ItemsControl ItemsSource="{Binding ServerArenaEntries}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                  <DataTemplate x:DataType="vm:ServerArenaItem">
+                                                                        <Border Margin="0,4,0,0" Padding="8" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
+                                                                              <Grid ColumnDefinitions="*,Auto">
+                                                                                    <StackPanel Spacing="2">
+                                                                                          <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ArenaId, StringFormat=Arena #{0}}" />
+                                                                                          <TextBlock FontSize="12" Text="{Binding Game}" />
+                                                                                          <TextBlock FontSize="11" Text="{Binding Players}" />
+                                                                                          <TextBlock FontSize="11" Text="{Binding Status, StringFormat=Status: {0}}" />
+                                                                                          <TextBlock FontSize="11" Text="{Binding MoveCount, StringFormat=Moves: {0}}" />
+                                                                                    </StackPanel>
+
+                                                                                    <Button Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Command="{Binding WatchCommand}" Content="Watch" />
+                                                                              </Grid>
+                                                                        </Border>
+                                                                  </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                      </ItemsControl>
+                                                </StackPanel>
+                                          </Border>
+
+                                          <Border IsVisible="{Binding ShowArenaViewer}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                                <StackPanel Spacing="8">
+                                                      <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock FontSize="15" FontWeight="SemiBold" Text="Live Arena Watch" />
+                                                            <Button Grid.Column="1"
+                                                                    IsVisible="{Binding ShowOpenArenaViewerButton}"
+                                                                    Command="{Binding OpenArenaViewerInBrowserCommand}"
+                                                                    Content="Open JS Viewer" />
+                                                      </Grid>
+
+                                                      <TextBlock FontSize="12" Text="{Binding ArenaViewerStatus}" TextWrapping="Wrap" />
+                                                      <TextBlock FontSize="11" Text="{Binding ArenaViewerUrl}" TextWrapping="Wrap" />
+                                                      <TextBlock FontSize="11" Text="{Binding ArenaViewerPluginEntryUrl}" TextWrapping="Wrap" />
+
+                                                      <Border x:Name="ArenaViewerViewport"
+                                                              BorderThickness="0"
+                                                              BorderBrush="Transparent"
+                                                              CornerRadius="0"
+                                                              Background="Transparent"
+                                                              MinHeight="360"
+                                                              ClipToBounds="True">
+                                                            <Grid ClipToBounds="True">
+                                                                  <Border x:Name="ArenaEmbeddedViewerSurface"
+                                                                          IsVisible="{Binding IsEmbeddedViewerSupported}"
+                                                                          Background="#F6F7F8"
+                                                                          CornerRadius="8"
+                                                                          Padding="6"
+                                                                          HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Top"
+                                                                          BoxShadow="0 2 8 0 #22000000">
+                                                                        <ContentControl x:Name="ArenaEmbeddedViewerHost"
+                                                                                        HorizontalAlignment="Center"
+                                                                                        VerticalAlignment="Center" />
+                                                                  </Border>
+                                                                  <Border IsVisible="{Binding ShowEmbeddedViewerFallback}" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}" Padding="10">
+                                                                        <TextBlock FontSize="12"
+                                                                                   TextWrapping="Wrap"
+                                                                                   Text="Embedded viewer is unavailable. Use the fallback raw-state panel or open the external JS viewer link." />
+                                                                  </Border>
+                                                            </Grid>
+                                                      </Border>
+
+                                                      <Expander Header="Raw Game State" IsExpanded="False">
+                                                            <TextBox AcceptsReturn="True"
+                                                                     IsReadOnly="True"
+                                                                     MinHeight="220"
+                                                                     TextWrapping="Wrap"
+                                                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                                     Text="{Binding ArenaViewerRawState}" />
+                                                      </Expander>
+
+                                                      <Expander Header="Viewer Diagnostics" IsExpanded="False">
+                                                            <TextBox AcceptsReturn="True"
+                                                                     IsReadOnly="True"
+                                                                     MinHeight="120"
+                                                                     TextWrapping="Wrap"
+                                                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                                     Text="{Binding ArenaViewerDiagnostics}" />
+                                                      </Expander>
+                                                </StackPanel>
+                                          </Border>
+
                                           <TextBlock IsVisible="{Binding ShowServerEditor}"
                                                      Margin="0,6,0,0"
                                                      FontSize="12"

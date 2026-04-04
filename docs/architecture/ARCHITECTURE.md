@@ -21,7 +21,11 @@ A single `cmd/bbs-server` process exposes:
 Dashboard surfaces:
 
 - `/` control deck
+- `/api/status` explicit dashboard/server liveness acknowledgment
+- `/api/game-catalog` explicit runtime game catalog for clients
+- `/api/arenas` active arena snapshot for client-side watch workflows
 - `/viewer?arena_id=<id>` live arena viewer
+- `/viewer/canvas?arena_id=<id>` canvas-only live arena viewer shell
 - `/viewer?match_id=<id>` replay viewer
 
 ## System Overview
@@ -164,8 +168,15 @@ The viewer uses a client-side rendering model where all game visualization logic
 ### Live Viewing
 
 - `/viewer?arena_id=<id>` serves an HTML shell
+- `/viewer/canvas?arena_id=<id>` serves a minimal canvas-only HTML shell for embedded clients
 - `/viewer/live-sse?arena_id=<id>` (or `/viewer/live-ws`) streams raw game state frames + plugin metadata
 - server emits only the raw state string from `game.GetState()`; structured frame data is built by client JS
+
+Embedded client pattern:
+
+- query `/api/arenas` for active arenas and preferred `viewer_url`
+- use `viewer_width`/`viewer_height` hints to size host surfaces without stretching
+- open `viewer_url` (currently canvas-only shell) in embedded WebView
 
 ### Replay Viewing
 

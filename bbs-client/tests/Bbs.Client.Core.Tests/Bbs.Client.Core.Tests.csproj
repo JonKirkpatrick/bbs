@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Bbs.Client.Core\Bbs.Client.Core.csproj" />
+    <ProjectReference Include="..\..\src\Bbs.Client.App\Bbs.Client.App.csproj" />
   </ItemGroup>
 
 </Project>

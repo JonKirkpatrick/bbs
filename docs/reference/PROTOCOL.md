@@ -115,12 +115,22 @@ The dashboard is served on default port `3000` (override with `--dash`).
 - `GET /` dashboard
 - `GET /dashboard-sse` live state stream
 - `GET /dashboard-ws` live state stream (websocket)
+- `GET /api/status` liveness acknowledgment (`{"status":"ok"}`)
+- `GET /api/game-catalog` runtime game/plugin catalog JSON
+- `GET /api/arenas` active arena list for clients and automation
 - `GET /viewer?arena_id=<id>` live viewer shell
+- `GET /viewer/canvas?arena_id=<id>` canvas-only live viewer shell (used by embedded clients)
 - `GET /viewer/live-sse?arena_id=<id>` live viewer stream
 - `GET /viewer/live-ws?arena_id=<id>` live viewer stream (websocket)
 - `GET /viewer?match_id=<id>` replay shell
 - `GET /viewer/replay-data?match_id=<id>` replay JSON
 - `GET /viewer/plugin-entry?game=<name>` plugin viewer client bundle
+
+`GET /api/arenas` response includes per-arena viewer hints:
+
+- `viewer_url`: preferred live viewer URL (currently `/viewer/canvas?...`)
+- `plugin_entry_url`: resolved plugin JS bundle URL (when available)
+- `viewer_width`, `viewer_height`: native render dimensions for embedded client sizing
 
 Owner actions:
 

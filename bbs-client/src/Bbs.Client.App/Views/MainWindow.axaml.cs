@@ -1,11 +1,171 @@
+using System;
+using System.ComponentModel;
+using System.Reflection;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
+using Bbs.Client.App.ViewModels;
 
 namespace Bbs.Client.App.Views;
 
 public partial class MainWindow : Window
 {
+    private bool _embeddedViewerInitialized;
+    private MainWindowViewModel? _currentVm;
+    private ContentControl? _embeddedViewerHost;
+    private Border? _embeddedViewerSurface;
+    private Border? _embeddedViewerViewport;
+    private const double EmbeddedViewerSurfacePadding = 6;
+
     public MainWindow()
     {
         InitializeComponent();
+
+        Opened += OnOpened;
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    private void OnOpened(object? sender, EventArgs e)
+    {
+        EnsureEmbeddedViewerLayoutHooks();
+        TryInitializeEmbeddedViewer();
+        UpdateEmbeddedViewerLayout();
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        if (_currentVm is not null)
+        {
+            _currentVm.PropertyChanged -= OnViewModelPropertyChanged;
+        }
+
+        _currentVm = DataContext as MainWindowViewModel;
+        if (_currentVm is not null)
+        {
+            _currentVm.PropertyChanged += OnViewModelPropertyChanged;
+        }
+
+        EnsureEmbeddedViewerLayoutHooks();
+        TryInitializeEmbeddedViewer();
+        UpdateEmbeddedViewerLayout();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainWindowViewModel.ShowArenaViewer) ||
+            e.PropertyName == nameof(MainWindowViewModel.IsEmbeddedViewerSupported) ||
+            e.PropertyName == nameof(MainWindowViewModel.ArenaViewerHostWidth) ||
+            e.PropertyName == nameof(MainWindowViewModel.ArenaViewerHostHeight))
+        {
+            TryInitializeEmbeddedViewer();
+            UpdateEmbeddedViewerLayout();
+        }
+    }
+
+    private void EnsureEmbeddedViewerLayoutHooks()
+    {
+        if (_embeddedViewerHost is null)
+        {
+            _embeddedViewerHost = this.FindControl<ContentControl>("ArenaEmbeddedViewerHost");
+        }
+
+        if (_embeddedViewerSurface is null)
+        {
+            _embeddedViewerSurface = this.FindControl<Border>("ArenaEmbeddedViewerSurface");
+        }
+
+        if (_embeddedViewerViewport is null)
+        {
+            _embeddedViewerViewport = this.FindControl<Border>("ArenaViewerViewport");
+            if (_embeddedViewerViewport is not null)
+            {
+                _embeddedViewerViewport.SizeChanged += OnEmbeddedViewerViewportSizeChanged;
+            }
+        }
+    }
+
+    private void OnEmbeddedViewerViewportSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        UpdateEmbeddedViewerLayout();
+    }
+
+    private void UpdateEmbeddedViewerLayout()
+    {
+        if (_currentVm is null || _embeddedViewerHost is null || _embeddedViewerSurface is null || _embeddedViewerViewport is null)
+        {
+            return;
+        }
+
+        var nativeWidth = Math.Max(1, _currentVm.ArenaViewerHostWidth);
+        var nativeHeight = Math.Max(1, _currentVm.ArenaViewerHostHeight);
+
+        var availableWidth = Math.Max(1, _embeddedViewerViewport.Bounds.Width - (EmbeddedViewerSurfacePadding * 2));
+        var availableHeight = Math.Max(1, _embeddedViewerViewport.Bounds.Height - (EmbeddedViewerSurfacePadding * 2));
+        var scale = Math.Min(1, Math.Min(availableWidth / nativeWidth, availableHeight / nativeHeight));
+
+        var displayWidth = Math.Max(1, Math.Floor(nativeWidth * scale));
+        var displayHeight = Math.Max(1, Math.Floor(nativeHeight * scale));
+
+        _embeddedViewerHost.Width = displayWidth;
+        _embeddedViewerHost.Height = displayHeight;
+
+        _embeddedViewerSurface.Width = displayWidth + (EmbeddedViewerSurfacePadding * 2);
+        _embeddedViewerSurface.Height = displayHeight + (EmbeddedViewerSurfacePadding * 2);
+    }
+
+    private void TryInitializeEmbeddedViewer()
+    {
+        if (_embeddedViewerInitialized)
+        {
+            return;
+        }
+
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        if (!vm.IsEmbeddedViewerSupported)
+        {
+            _embeddedViewerInitialized = true;
+            return;
+        }
+
+        if (!vm.ShowArenaViewer)
+        {
+            return;
+        }
+
+        var host = this.FindControl<ContentControl>("ArenaEmbeddedViewerHost");
+        if (host is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var webViewType = Type.GetType("WebViewControl.WebView, WebViewControl.Avalonia", throwOnError: true)!;
+            var webView = Activator.CreateInstance(webViewType) as Control
+                ?? throw new InvalidOperationException("Embedded WebView type could not be created as an Avalonia control.");
+
+            var addressPropertyField = webViewType.GetField("AddressProperty", BindingFlags.Public | BindingFlags.Static)
+                ?? throw new InvalidOperationException("Embedded WebView AddressProperty field is missing.");
+
+            if (addressPropertyField.GetValue(null) is not AvaloniaProperty addressProperty)
+            {
+                throw new InvalidOperationException("Embedded WebView AddressProperty is invalid.");
+            }
+
+            webView.Bind(addressProperty, new Binding("ArenaViewerUrl"));
+            host.Content = webView;
+            _embeddedViewerInitialized = true;
+            vm.ConfigureEmbeddedViewerSupport(true, vm.EmbeddedViewerSupportMessage);
+            UpdateEmbeddedViewerLayout();
+        }
+        catch (Exception ex)
+        {
+            vm.RegisterEmbeddedViewerRuntimeFailure($"Embedded WebView init failed ({ex.GetType().Name}).");
+            _embeddedViewerInitialized = true;
+        }
     }
 }

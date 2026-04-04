@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BBS Arena Canvas</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+        }
+
+        #canvas-shell {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        #canvas-stage {
+            position: relative;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        #viewer-canvas {
+            display: block;
+            width: auto;
+            height: auto;
+            background: transparent;
+            image-rendering: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-shell">
+        <div id="canvas-stage">
+            <canvas id="viewer-canvas" width="960" height="540"></canvas>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        const arenaId = Number({{.ArenaID}} || 0);
+        const adminKey = {{printf "%q" .AdminKey}};
+
+        const canvas = document.getElementById("viewer-canvas");
+        const stage = document.getElementById("canvas-stage");
+        const ctx = canvas.getContext("2d");
+
+        let gameName = "";
+        let players = [];
+        let currentFrame = null;
+
+        let activePluginRenderer = null;
+        let activePluginGame = "";
+        let activePluginEntryURL = "";
+
+        const loadedPluginEntries = new Set();
+        const pluginRenderers = new Map();
+
+        function syncCanvasLayout() {
+            const nativeWidth = Math.max(1, Math.round(canvas.width || 1));
+            const nativeHeight = Math.max(1, Math.round(canvas.height || 1));
+
+            const availableWidth = Math.max(1, Math.floor(window.innerWidth || nativeWidth));
+            const availableHeight = Math.max(1, Math.floor(window.innerHeight || nativeHeight));
+
+            const scale = Math.min(1, availableWidth / nativeWidth, availableHeight / nativeHeight);
+            const displayWidth = Math.max(1, Math.floor(nativeWidth * scale));
+            const displayHeight = Math.max(1, Math.floor(nativeHeight * scale));
+
+            stage.style.width = displayWidth + "px";
+            stage.style.height = displayHeight + "px";
+            canvas.style.width = displayWidth + "px";
+            canvas.style.height = displayHeight + "px";
+        }
+
+        function clearCanvasNotice(message) {
+            syncCanvasLayout();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "rgba(20, 33, 61, 0.85)";
+            ctx.font = "13px monospace";
+            ctx.fillText(message, 16, 24);
+        }
+
+        function buildViewerURL(path, params) {
+            const url = new URL(path, window.location.origin);
+            if (params && typeof params === "object") {
+                for (const key of Object.keys(params)) {
+                    const value = params[key];
+                    if (value === undefined || value === null || value === "") {
+                        continue;
+                    }
+                    url.searchParams.set(key, String(value));
+                }
+            }
+
+            const current = new URL(window.location.href);
+            const streamInterval = current.searchParams.get("stream_interval_ms");
+            const maxHz = current.searchParams.get("max_hz");
+            if (streamInterval) {
+                url.searchParams.set("stream_interval_ms", streamInterval);
+            }
+            if (maxHz) {
+                url.searchParams.set("max_hz", maxHz);
+            }
+            if (adminKey) {
+                url.searchParams.set("admin_key", adminKey);
+            }
+            return url.toString();
+        }
+
+        function activatePluginRenderer(game) {
+            const key = String(game || "").trim().toLowerCase();
+            activePluginGame = key;
+            activePluginRenderer = pluginRenderers.get(key) || null;
+            return activePluginRenderer;
+        }
+
+        function maybeLoadPluginRenderer(meta, game) {
+            const key = String(game || "").trim().toLowerCase();
+            if (!meta || !meta.entry_url) {
+                activePluginRenderer = null;
+                activePluginGame = key;
+                activePluginEntryURL = "";
+                return Promise.resolve(false);
+            }
+
+            const entryURL = meta.entry_url;
+            activePluginEntryURL = entryURL;
+            activatePluginRenderer(key);
+            if (activePluginRenderer) {
+                return Promise.resolve(true);
+            }
+
+            if (loadedPluginEntries.has(entryURL)) {
+                return Promise.resolve(!!activatePluginRenderer(key));
+            }
+
+            return new Promise(function (resolve) {
+                const script = document.createElement("script");
+                script.src = entryURL;
+                script.async = true;
+
+                script.addEventListener("load", function () {
+                    loadedPluginEntries.add(entryURL);
+                    resolve(!!activatePluginRenderer(key));
+                });
+
+                script.addEventListener("error", function () {
+                    clearCanvasNotice("Failed to load viewer plugin bundle.");
+                    resolve(false);
+                });
+
+                document.head.appendChild(script);
+            });
+        }
+
+        function renderCurrentFrame(frame) {
+            syncCanvasLayout();
+            if (!frame) {
+                clearCanvasNotice("Waiting for first arena frame...");
+                return;
+            }
+
+            let rendered = false;
+            if (activePluginRenderer && typeof activePluginRenderer.render === "function") {
+                try {
+                    rendered = activePluginRenderer.render({
+                        canvas: canvas,
+                        ctx: ctx,
+                        spec: null,
+                        frame: frame,
+                        frames: [frame],
+                        frameIndex: Number(frame.move_index || 0),
+                        frameTotal: 1,
+                        players: players,
+                        mode: "live",
+                        pluginEntryURL: activePluginEntryURL,
+                    }) === true;
+                } catch (err) {
+                    rendered = false;
+                }
+            }
+
+            if (!rendered) {
+                clearCanvasNotice("Plugin renderer unavailable for game '" + (gameName || "unknown") + "'.");
+            }
+        }
+
+        function applyLiveEvent(payload) {
+            if (!payload || !payload.frame) {
+                return;
+            }
+
+            if (!gameName && payload.plugin && payload.plugin.entry_url) {
+                try {
+                    const parsed = new URL(payload.plugin.entry_url, window.location.origin);
+                    const g = parsed.searchParams.get("game");
+                    if (g) {
+                        gameName = g.toLowerCase();
+                    }
+                } catch {
+                    // Ignore malformed plugin urls and rely on server-provided values in future events.
+                }
+            }
+
+            players = Array.isArray(payload.players) ? payload.players : players;
+            currentFrame = payload.frame;
+            maybeLoadPluginRenderer(payload.plugin, gameName).then(function () {
+                renderCurrentFrame(currentFrame);
+            });
+        }
+
+        function connectLiveViaSSE() {
+            const source = new EventSource(buildViewerURL("/viewer/live-sse", { arena_id: arenaId }));
+            source.addEventListener("frame", function (event) {
+                try {
+                    applyLiveEvent(JSON.parse(event.data));
+                } catch {
+                    clearCanvasNotice("Invalid live frame payload.");
+                }
+            });
+            source.addEventListener("closed", function () {
+                clearCanvasNotice("Arena is no longer active.");
+                source.close();
+            });
+            source.addEventListener("error", function () {
+                clearCanvasNotice("Live stream error.");
+            });
+        }
+
+        function connectLive() {
+            const wsURL = new URL(buildViewerURL("/viewer/live-ws", { arena_id: arenaId }));
+            wsURL.protocol = wsURL.protocol === "https:" ? "wss:" : "ws:";
+            const ws = new WebSocket(wsURL.toString());
+
+            ws.onmessage = function (event) {
+                try {
+                    const envelope = JSON.parse(event.data);
+                    const type = envelope && envelope.type;
+                    const payload = envelope && envelope.payload;
+
+                    if (type === "frame") {
+                        applyLiveEvent(payload);
+                    } else if (type === "closed") {
+                        clearCanvasNotice("Arena is no longer active.");
+                        ws.close();
+                    } else if (type === "error") {
+                        clearCanvasNotice((payload && payload.error) ? String(payload.error) : "Live stream error.");
+                    }
+                } catch {
+                    clearCanvasNotice("Invalid websocket payload.");
+                }
+            };
+
+            ws.onerror = function () {
+                connectLiveViaSSE();
+            };
+        }
+
+        window.BBSViewerPluginRuntime = {
+            register: function (game, renderer) {
+                const key = String(game || "").trim().toLowerCase();
+                if (!key || !renderer || typeof renderer.render !== "function") {
+                    return;
+                }
+
+                pluginRenderers.set(key, renderer);
+                if (key === activePluginGame) {
+                    activePluginRenderer = renderer;
+                }
+
+                if (currentFrame) {
+                    renderCurrentFrame(currentFrame);
+                }
+            },
+        };
+
+        window.addEventListener("resize", function () {
+            syncCanvasLayout();
+            renderCurrentFrame(currentFrame);
+        });
+
+        if (arenaId <= 0) {
+            clearCanvasNotice("arena_id is required.");
+            return;
+        }
+
+        clearCanvasNotice("Connecting to live arena stream...");
+        connectLive();
+    })();
+    </script>
+</body>
+</html>

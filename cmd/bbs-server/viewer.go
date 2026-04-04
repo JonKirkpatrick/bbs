@@ -89,6 +89,20 @@ func handleViewerPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleViewerCanvasPage(w http.ResponseWriter, r *http.Request) {
+	arenaID, _ := parsePositiveQueryInt(r, "arena_id")
+
+	data := viewerPageData{
+		ArenaID:  arenaID,
+		MatchID:  0,
+		AdminKey: strings.TrimSpace(r.URL.Query().Get("admin_key")),
+	}
+
+	if err := dashTemplates.ExecuteTemplate(w, "viewer-canvas.html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func handleViewerReplayData(w http.ResponseWriter, r *http.Request) {
 	matchID, ok := parsePositiveQueryInt(r, "match_id")
 	if !ok {

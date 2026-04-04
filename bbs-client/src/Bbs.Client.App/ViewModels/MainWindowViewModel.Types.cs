@@ -39,5 +39,6 @@ public enum WorkspaceContext
 {
     Home = 0,
     BotDetails = 1,
-    ServerDetails = 2
+    ServerDetails = 2,
+    ArenaViewer = 3
 }

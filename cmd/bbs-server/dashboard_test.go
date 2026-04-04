@@ -189,6 +189,104 @@ func TestAdminDebugOutboxAndRecentMatches(t *testing.T) {
 	}
 }
 
+func TestAPIStatus(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rr := httptest.NewRecorder()
+
+	handleAPIStatus(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+
+	if payload["status"] != "ok" {
+		t.Fatalf("expected status=ok, got %v", payload["status"])
+	}
+}
+
+func TestAPIGameCatalog(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/game-catalog", nil)
+	rr := httptest.NewRecorder()
+
+	handleAPIGameCatalog(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var payload []map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+}
+
+func TestAPIArenas(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/arenas", nil)
+	req.Host = "localhost:3000"
+	rr := httptest.NewRecorder()
+
+	handleAPIArenas(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+
+	if payload["status"] != "ok" {
+		t.Fatalf("expected status=ok, got %v", payload["status"])
+	}
+
+	if _, ok := payload["arenas"]; !ok {
+		t.Fatalf("expected arenas field in response")
+	}
+}
+
+func TestAPIArenas_ViewerURLUsesCanvasRoute(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/arenas", nil)
+	req.Host = "localhost:3000"
+	rr := httptest.NewRecorder()
+
+	handleAPIArenas(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var payload struct {
+		Status string `json:"status"`
+		Arenas []struct {
+			ViewerURL string `json:"viewer_url"`
+		} `json:"arenas"`
+	}
+
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+
+	if payload.Status != "ok" {
+		t.Fatalf("expected status=ok, got %q", payload.Status)
+	}
+
+	if len(payload.Arenas) == 0 {
+		t.Skip("no active arenas available in test environment")
+	}
+
+	for _, arena := range payload.Arenas {
+		if !strings.Contains(arena.ViewerURL, "/viewer/canvas?") {
+			t.Fatalf("expected viewer_url to contain /viewer/canvas, got %q", arena.ViewerURL)
+		}
+	}
+}
+
 func TestMockFederationIngest_DisabledByDefault(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/federation/mock/ingest", strings.NewReader(`{"event_id":"evt_1","origin_server_id":"srv_1"}`))
 	rr := httptest.NewRecorder()

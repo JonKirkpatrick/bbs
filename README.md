@@ -346,14 +346,20 @@ The dashboard includes:
 Viewer routes:
 
 - `GET /viewer?arena_id=<id>` for live viewer
+- `GET /viewer/canvas?arena_id=<id>` for canvas-only live viewer (embedded client path)
 - `GET /viewer?match_id=<id>` for replay viewer
 
 Data routes:
 
+- `GET /api/status`
+- `GET /api/game-catalog`
+- `GET /api/arenas`
 - `GET /viewer/live-sse?arena_id=<id>`
 - `GET /viewer/live-ws?arena_id=<id>`
 - `GET /viewer/replay-data?match_id=<id>`
 - `GET /viewer/plugin-entry?game=<name>`
+
+`/api/arenas` includes `viewer_url`, `plugin_entry_url`, and native `viewer_width`/`viewer_height` hints for embedded clients.
 
 ## Agent Abstraction (`bbs-agent`)
 

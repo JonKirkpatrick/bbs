@@ -58,6 +58,85 @@ type dashboardStateView struct {
 	PluginInfo      games.PluginDiagnostics
 }
 
+type apiArenaView struct {
+	ArenaID        int    `json:"arena_id"`
+	Game           string `json:"game"`
+	Status         string `json:"status"`
+	Player1Name    string `json:"player1_name,omitempty"`
+	Player2Name    string `json:"player2_name,omitempty"`
+	MoveCount      int    `json:"move_count"`
+	GameState      string `json:"game_state"`
+	ViewerURL      string `json:"viewer_url"`
+	PluginEntryURL string `json:"plugin_entry_url,omitempty"`
+	ViewerWidth    int    `json:"viewer_width"`
+	ViewerHeight   int    `json:"viewer_height"`
+}
+
+func resolveArenaViewerDimensions(gameName, rawState string) (int, int) {
+	game := strings.TrimSpace(strings.ToLower(gameName))
+	switch game {
+	case "guess_number":
+		return 760, 300
+	case "gridworld_rl":
+		return resolveGridworldViewerDimensions(rawState)
+	default:
+		return 760, 340
+	}
+}
+
+func resolveGridworldViewerDimensions(rawState string) (int, int) {
+	const defaultWidth = 760
+	const defaultHeight = 320
+
+	if strings.TrimSpace(rawState) == "" {
+		return defaultWidth, defaultHeight
+	}
+
+	var payload struct {
+		MapRows []string `json:"map_rows"`
+	}
+
+	if err := json.Unmarshal([]byte(rawState), &payload); err != nil {
+		return defaultWidth, defaultHeight
+	}
+
+	if len(payload.MapRows) == 0 {
+		return defaultWidth, defaultHeight
+	}
+
+	height := len(payload.MapRows)
+	width := len(strings.TrimSpace(payload.MapRows[0]))
+	if width <= 0 {
+		return defaultWidth, defaultHeight
+	}
+
+	maxSide := width
+	if height > maxSide {
+		maxSide = height
+	}
+
+	tile := 460 / maxSide
+	if tile < 26 {
+		tile = 26
+	}
+
+	gridWidth := tile * width
+	gridHeight := tile * height
+	sidebarX := gridWidth + 36
+
+	viewerWidth := sidebarX + 240
+	if viewerWidth < 760 {
+		viewerWidth = 760
+	}
+
+	viewerHeight := gridHeight + 56
+	if viewerHeight < 340 {
+		viewerHeight = 340
+	}
+
+	return viewerWidth, viewerHeight
+}
+
 func initDashboard() {
 	paths, err := getRuntimePaths()
 	if err != nil {
@@ -409,6 +488,70 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+	})
+}
+
+func handleAPIGameCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, games.AvailableGameCatalog())
+}
+
+func handleAPIArenas(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	snapshot := stadium.DefaultManager.Snapshot()
+	host := dashboardBotHost(r)
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	viewerBase := fmt.Sprintf("%s://%s:%s/viewer/canvas", scheme, host, dashboardServerPort)
+
+	arenas := make([]apiArenaView, 0, len(snapshot.Arenas))
+	for _, arena := range snapshot.Arenas {
+		viewerWidth, viewerHeight := resolveArenaViewerDimensions(arena.Game, arena.GameState)
+
+		item := apiArenaView{
+			ArenaID:      arena.ID,
+			Game:         arena.Game,
+			Status:       arena.Status,
+			Player1Name:  arena.Player1Name,
+			Player2Name:  arena.Player2Name,
+			MoveCount:    arena.MoveCount,
+			GameState:    arena.GameState,
+			ViewerURL:    fmt.Sprintf("%s?arena_id=%d", viewerBase, arena.ID),
+			ViewerWidth:  viewerWidth,
+			ViewerHeight: viewerHeight,
+		}
+
+		if plugin := resolveViewerPluginClient(arena.Game); plugin != nil {
+			item.PluginEntryURL = plugin.EntryURL
+		}
+
+		arenas = append(arenas, item)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+		"arenas": arenas,
+	})
 }
 
 func boolEnv(name string) bool {
@@ -920,7 +1063,11 @@ func startDashboard() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/dashboard-sse", handleDashboardSSE)
 	mux.HandleFunc("/dashboard-ws", handleDashboardWS)
+	mux.HandleFunc("/api/status", handleAPIStatus)
+	mux.HandleFunc("/api/game-catalog", handleAPIGameCatalog)
+	mux.HandleFunc("/api/arenas", handleAPIArenas)
 	mux.HandleFunc("/viewer", handleViewerPage)
+	mux.HandleFunc("/viewer/canvas", handleViewerCanvasPage)
 	mux.HandleFunc("/viewer/live-sse", handleViewerLiveSSE)
 	mux.HandleFunc("/viewer/live-ws", handleViewerLiveWS)
 	mux.HandleFunc("/viewer/plugin-entry", handleViewerPluginEntry)
