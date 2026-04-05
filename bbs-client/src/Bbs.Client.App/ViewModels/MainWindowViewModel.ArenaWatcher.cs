@@ -347,6 +347,11 @@ public sealed partial class MainWindowViewModel
                 ? "No active arenas were reported by server."
                 : $"Active arenas: {ServerArenaEntries.Count}";
 
+            if (!silent)
+            {
+                RefreshActiveSessionArenaOptions();
+            }
+
             if (_watchedArenaId > 0)
             {
                 var watched = arenas.FirstOrDefault(a => a.ArenaId == _watchedArenaId);

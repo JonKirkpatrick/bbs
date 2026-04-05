@@ -1,9 +1,13 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Bbs.Client.App.ViewModels;
 
 namespace Bbs.Client.App.Views;
@@ -16,6 +20,8 @@ public partial class MainWindow : Window
     private Border? _embeddedViewerSurface;
     private Border? _embeddedViewerViewport;
     private const double EmbeddedViewerSurfacePadding = 6;
+
+    private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
 
     public MainWindow()
     {
@@ -60,6 +66,112 @@ public partial class MainWindow : Window
             TryInitializeEmbeddedViewer();
             UpdateEmbeddedViewerLayout();
         }
+    }
+
+    private async void OnNewPersonaClicked(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        var name = await PersonaNamePromptWindow.ShowAsync(this, "New Persona", "Enter a name for the new persona:", "New Persona");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await ViewModel.CreatePersonaAsync(name);
+    }
+
+    private async void OnLoadPersonaClicked(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Load Persona",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("SQLite persona")
+                {
+                    Patterns = new[] { "*.sqlite3", "*.db", "*.sqlite" }
+                }
+            }
+        });
+
+        var file = files.Count > 0 ? files[0] : null;
+        if (file is null)
+        {
+            return;
+        }
+
+        await ViewModel.LoadPersonaAsync(file.Path.LocalPath);
+    }
+
+    private async void OnUnloadPersonaClicked(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null)
+        {
+            return;
+        }
+
+        await ViewModel.UnloadPersonaAsync();
+    }
+
+    private async void OnDuplicatePersonaClicked(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null || !ViewModel.IsPersonaLoaded)
+        {
+            return;
+        }
+
+        var currentName = Path.GetFileNameWithoutExtension(ViewModel.CurrentPersonaPath ?? string.Empty);
+        var name = await PersonaNamePromptWindow.ShowAsync(this, "Duplicate Persona", "Enter a name for the duplicate persona:", $"{currentName} Copy");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await ViewModel.DuplicateCurrentPersonaAsync(name);
+    }
+
+    private async void OnRenamePersonaClicked(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null || !ViewModel.IsPersonaLoaded)
+        {
+            return;
+        }
+
+        var currentName = Path.GetFileNameWithoutExtension(ViewModel.CurrentPersonaPath ?? string.Empty);
+        var name = await PersonaNamePromptWindow.ShowAsync(this, "Rename Persona", "Enter a new name for the current persona:", currentName);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await ViewModel.RenameCurrentPersonaAsync(name);
+    }
+
+    private async void OnDeletePersonaClicked(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null || !ViewModel.IsPersonaLoaded)
+        {
+            return;
+        }
+
+        var currentName = Path.GetFileNameWithoutExtension(ViewModel.CurrentPersonaPath ?? string.Empty);
+        var confirmation = await PersonaNamePromptWindow.ShowAsync(this, "Delete Persona", $"Type '{currentName}' to confirm delete:", currentName);
+        if (!string.Equals(confirmation, currentName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await ViewModel.DeleteCurrentPersonaAsync();
     }
 
     private void EnsureEmbeddedViewerLayoutHooks()

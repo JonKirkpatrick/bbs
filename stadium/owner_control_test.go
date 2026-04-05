@@ -54,15 +54,28 @@ func TestOwnerSessionSnapshot(t *testing.T) {
 	}
 }
 
-func TestCreateArenaForOwner_RequiresLinkedSession(t *testing.T) {
+func TestCreateArenaForOwner_RequiresValidOwnerToken(t *testing.T) {
 	m := newTestManager()
 	game := testGame{name: "owner_create", requiredPlayers: 2, enforceMoveClock: true, supportsHandicap: true}
 
-	_, err := m.CreateArenaForOwner("owner_missing_token_123456789012345678", game, nil, time.Second, false)
-	if err == nil {
-		t.Fatalf("expected error when no active owner session exists")
+	ownerToken, err := NewOwnerToken()
+	if err != nil {
+		t.Fatalf("NewOwnerToken failed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "no active session") {
+
+	arenaID, err := m.CreateArenaForOwner(ownerToken, game, nil, time.Second, false)
+	if err != nil {
+		t.Fatalf("CreateArenaForOwner failed: %v", err)
+	}
+	if arenaID <= 0 {
+		t.Fatalf("expected valid arena id, got %d", arenaID)
+	}
+
+	_, err = m.CreateArenaForOwner("owner_short", game, nil, time.Second, false)
+	if err == nil {
+		t.Fatalf("expected invalid owner token to be rejected")
+	}
+	if !strings.Contains(err.Error(), "owner token") || !strings.Contains(err.Error(), "invalid") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -108,6 +108,12 @@ public sealed partial class MainWindowViewModel
                 {
                     metadata["probe_plugin_error"] = pluginCatalogResult.ErrorCode;
                 }
+
+                var ownerTokenResult = await EnsureServerOwnerTokenAsync(knownServer, metadata, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(ownerTokenResult.OwnerToken))
+                {
+                    metadata[ClientOwnerTokenMetadataKey] = ownerTokenResult.OwnerToken;
+                }
             }
             else
             {
@@ -410,6 +416,81 @@ public sealed partial class MainWindowViewModel
             : $"plugin_catalog_fetch_failed:{string.Join(',', observedErrors)}";
 
         return (false, Array.Empty<PluginDescriptor>(), errorCode, "api_game_catalog");
+    }
+
+    private async Task<(bool Succeeded, string OwnerToken)> EnsureServerOwnerTokenAsync(KnownServer knownServer, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken)
+    {
+        var existingToken = metadata.TryGetValue(ClientOwnerTokenMetadataKey, out var rawExisting) && !string.IsNullOrWhiteSpace(rawExisting)
+            ? rawExisting.Trim()
+            : string.Empty;
+
+        var endpointCandidates = BuildServerBaseEndpointCandidates(knownServer);
+        foreach (var endpoint in endpointCandidates)
+        {
+            try
+            {
+                var uri = string.IsNullOrWhiteSpace(existingToken)
+                    ? new Uri(endpoint + "/api/owner-token")
+                    : new Uri(endpoint + "/api/owner-token?owner_token=" + Uri.EscapeDataString(existingToken));
+
+                using var response = await _serverCatalogHttpClient.GetAsync(uri, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (!TryParseOwnerTokenResponse(payload, out var token) || string.IsNullOrWhiteSpace(token))
+                {
+                    continue;
+                }
+
+                return (true, token);
+            }
+            catch (TaskCanceledException)
+            {
+                continue;
+            }
+            catch (HttpRequestException)
+            {
+                continue;
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+        }
+
+        return (false, existingToken);
+    }
+
+    private static bool TryParseOwnerTokenResponse(string payload, out string ownerToken)
+    {
+        ownerToken = string.Empty;
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return false;
+        }
+
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!root.TryGetProperty("status", out var statusNode) || !string.Equals(statusNode.GetString(), "ok", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!root.TryGetProperty("owner_token", out var ownerTokenNode))
+        {
+            return false;
+        }
+
+        ownerToken = ownerTokenNode.GetString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(ownerToken);
     }
 
     private static IReadOnlyList<string> BuildServerBaseEndpointCandidates(KnownServer knownServer)

@@ -5,7 +5,8 @@ namespace Bbs.Client.Core.Domain;
 public enum OwnerTokenActionType
 {
     CreateArena = 0,
-    JoinArena = 1
+    JoinArena = 1,
+    LeaveArena = 2
 }
 
 public sealed record OwnerTokenActionPlan(
@@ -70,6 +71,11 @@ public static class OwnerTokenGatedActionRules
                 ActionType: OwnerTokenActionType.JoinArena,
                 DisplayName: "Join Arena",
                 PlaceholderRoute: "/owner/join-arena",
+                PlaceholderMethod: "POST"),
+            OwnerTokenActionType.LeaveArena => new OwnerTokenActionPlan(
+                ActionType: OwnerTokenActionType.LeaveArena,
+                DisplayName: "Leave Arena",
+                PlaceholderRoute: "/owner/leave-arena",
                 PlaceholderMethod: "POST"),
             _ => throw new ArgumentOutOfRangeException(nameof(actionType), actionType, "Unsupported owner-token action type.")
         };

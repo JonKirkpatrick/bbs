@@ -10,6 +10,20 @@ public sealed record AgentRuntimeState(
     string? LastErrorCode,
     DateTimeOffset UpdatedAtUtc)
 {
+    public AgentRuntimeState(
+        string BotId,
+        AgentLifecycleState LifecycleState,
+        bool IsArmed,
+        string? LastErrorCode,
+        DateTimeOffset UpdatedAtUtc,
+        int compatibilityMarker = 0)
+        : this(BotId, LifecycleState, IsArmed, LastErrorCode, UpdatedAtUtc)
+    {
+        _ = compatibilityMarker;
+    }
+
+    public bool IsArmed => IsAttached;
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();

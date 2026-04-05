@@ -26,12 +26,6 @@ func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecr
 		return result, errors.New("owner token is invalid")
 	}
 
-	for _, sess := range m.ActiveSessions {
-		if ownerToken != "" && sess.OwnerToken == ownerToken {
-			return result, errors.New("owner token is already linked to another active session")
-		}
-	}
-
 	// 2. Set ID and core flags
 	s.SessionID = m.nextSessionID
 	m.nextSessionID++

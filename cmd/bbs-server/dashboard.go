@@ -773,6 +773,51 @@ func requireOwnerToken(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return ownerToken, true
 }
 
+func optionalSessionIDFromRequest(r *http.Request) int {
+	raw := strings.TrimSpace(r.FormValue("session_id"))
+	if raw == "" {
+		raw = strings.TrimSpace(r.URL.Query().Get("session_id"))
+	}
+	if raw == "" {
+		return 0
+	}
+
+	id, err := strconv.Atoi(raw)
+	if err != nil || id <= 0 {
+		return 0
+	}
+
+	return id
+}
+
+func handleAPIOwnerToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"status":  "err",
+			"message": "use GET or POST",
+		})
+		return
+	}
+
+	ownerToken := ownerTokenFromRequest(r)
+	if ownerToken == "" {
+		issued, err := stadium.NewOwnerToken()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"status":  "err",
+				"message": "failed to generate owner token",
+			})
+			return
+		}
+		ownerToken = issued
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":      "ok",
+		"owner_token": ownerToken,
+	})
+}
+
 func handleOwnerRegisterBot(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -862,9 +907,17 @@ func handleOwnerJoinArena(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := stadium.DefaultManager.JoinArenaForOwner(ownerToken, arenaID, handicap); err != nil {
+	sessionID := optionalSessionIDFromRequest(r)
+	var joinErr error
+	if sessionID > 0 {
+		joinErr = stadium.DefaultManager.JoinArenaForOwnerSession(ownerToken, sessionID, arenaID, handicap)
+	} else {
+		joinErr = stadium.DefaultManager.JoinArenaForOwner(ownerToken, arenaID, handicap)
+	}
+
+	if joinErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		renderActionResult(w, false, err.Error())
+		renderActionResult(w, false, joinErr.Error())
 		return
 	}
 
@@ -884,9 +937,17 @@ func handleOwnerLeaveArena(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := stadium.DefaultManager.LeaveArenaForOwner(ownerToken); err != nil {
+	sessionID := optionalSessionIDFromRequest(r)
+	var leaveErr error
+	if sessionID > 0 {
+		leaveErr = stadium.DefaultManager.LeaveArenaForOwnerSession(ownerToken, sessionID)
+	} else {
+		leaveErr = stadium.DefaultManager.LeaveArenaForOwner(ownerToken)
+	}
+
+	if leaveErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		renderActionResult(w, false, err.Error())
+		renderActionResult(w, false, leaveErr.Error())
 		return
 	}
 
@@ -907,9 +968,17 @@ func handleOwnerEjectBot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reason := strings.TrimSpace(r.FormValue("reason"))
-	if err := stadium.DefaultManager.EjectOwnerSession(ownerToken, reason); err != nil {
+	sessionID := optionalSessionIDFromRequest(r)
+	var ejectErr error
+	if sessionID > 0 {
+		ejectErr = stadium.DefaultManager.EjectOwnerSessionBySessionID(ownerToken, sessionID, reason)
+	} else {
+		ejectErr = stadium.DefaultManager.EjectOwnerSession(ownerToken, reason)
+	}
+
+	if ejectErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		renderActionResult(w, false, err.Error())
+		renderActionResult(w, false, ejectErr.Error())
 		return
 	}
 
@@ -1064,6 +1133,7 @@ func startDashboard() {
 	mux.HandleFunc("/dashboard-sse", handleDashboardSSE)
 	mux.HandleFunc("/dashboard-ws", handleDashboardWS)
 	mux.HandleFunc("/api/status", handleAPIStatus)
+	mux.HandleFunc("/api/owner-token", handleAPIOwnerToken)
 	mux.HandleFunc("/api/game-catalog", handleAPIGameCatalog)
 	mux.HandleFunc("/api/arenas", handleAPIArenas)
 	mux.HandleFunc("/viewer", handleViewerPage)

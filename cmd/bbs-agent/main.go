@@ -30,8 +30,7 @@ const (
 )
 
 type credentials struct {
-	BotID     string
-	BotSecret string
+	BotID string
 }
 
 type contractMessage struct {
@@ -60,7 +59,6 @@ type localHello struct {
 	CapabilitiesCSV string
 	CredentialsFile string
 	BotID           string
-	BotSecret       string
 }
 
 type agent struct {
@@ -166,9 +164,6 @@ func run() int {
 	}
 	if strings.TrimSpace(creds.BotID) == "" {
 		creds.BotID = fileCreds.BotID
-	}
-	if strings.TrimSpace(creds.BotSecret) == "" {
-		creds.BotSecret = fileCreds.BotSecret
 	}
 
 	ag.name = cfg.name
@@ -443,7 +438,6 @@ func (a *agent) handleControlLine(line string) {
 			"server":             a.server,
 			"server_connected":   a.conn != nil,
 			"session_id":         a.sessionID,
-			"bot_secret":         a.credentials.BotSecret,
 			"owner_token":        a.issuedOwnerToken,
 			"dashboard_host":     a.dashboardHost,
 			"dashboard_port":     a.dashboardPort,
@@ -451,10 +445,12 @@ func (a *agent) handleControlLine(line string) {
 		})
 	case "server_connect", "connect_server":
 		requestedServer := ""
+		requestedOwnerToken := ""
 		if len(env.Payload) > 0 {
 			var payload map[string]interface{}
 			if err := json.Unmarshal(env.Payload, &payload); err == nil {
 				requestedServer = strings.TrimSpace(asString(payload["server"]))
+				requestedOwnerToken = strings.TrimSpace(asString(payload["owner_token"]))
 				if requestedServer == "" {
 					host := strings.TrimSpace(asString(payload["host"]))
 					port := asInt(payload["port"])
@@ -472,6 +468,10 @@ func (a *agent) handleControlLine(line string) {
 				"message": "server endpoint is required (payload.server=host:port)",
 			})
 			return
+		}
+
+		if requestedOwnerToken != "" {
+			a.ownerToken = requestedOwnerToken
 		}
 
 		result, err := a.connectAndRegister(requestedServer)
@@ -683,10 +683,10 @@ func (a *agent) lifecycleSnapshot() (bool, string, string) {
 	return a.clientArmed, a.armReason, a.armChangedAtRFC3339
 }
 
-func (a *agent) applyRegisterPayload(registerPayload map[string]interface{}) string {
+func (a *agent) applyRegisterPayload(registerPayload map[string]interface{}) {
 	a.sessionID = asInt(registerPayload["session_id"])
 	if registerPayload == nil {
-		return ""
+		return
 	}
 
 	token := asString(registerPayload["owner_token"])
@@ -700,7 +700,6 @@ func (a *agent) applyRegisterPayload(registerPayload map[string]interface{}) str
 	a.dashboardHost = asString(registerPayload["dashboard_host"])
 	a.dashboardPort = asString(registerPayload["dashboard_port"])
 	a.dashboardEndpoint = asString(registerPayload["dashboard_endpoint"])
-	return asString(registerPayload["bot_secret"])
 }
 
 func (a *agent) sendControl(msg contractMessage) error {
@@ -763,7 +762,6 @@ func parseLocalHello(line string) (localHello, error) {
 		CapabilitiesCSV: capabilitiesCSV(payload["capabilities"]),
 		CredentialsFile: asString(payload["credentials_file"]),
 		BotID:           asString(payload["bot_id"]),
-		BotSecret:       asString(payload["bot_secret"]),
 	}
 	if out.CapabilitiesCSV == "" {
 		out.CapabilitiesCSV = asString(payload["capabilities_csv"])
@@ -794,9 +792,6 @@ func applyLocalHello(cfg *runtimeConfig, creds *credentials, hello localHello) {
 	}
 	if hello.BotID != "" {
 		creds.BotID = hello.BotID
-	}
-	if hello.BotSecret != "" {
-		creds.BotSecret = hello.BotSecret
 	}
 }
 
@@ -877,11 +872,8 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 	}
 
 	registerPayload, _ := registerMsg.Payload.(map[string]interface{})
-	botSecret := a.applyRegisterPayload(registerPayload)
-	if botSecret != "" {
-		a.credentials.BotSecret = botSecret
-	}
-	if a.credentials.BotID != "" && a.credentials.BotSecret != "" && strings.TrimSpace(a.credsPath) != "" {
+	a.applyRegisterPayload(registerPayload)
+	if a.credentials.BotID != "" && strings.TrimSpace(a.credsPath) != "" {
 		if err := saveCredentials(a.credsPath, a.credentials); err != nil {
 			fmt.Fprintf(os.Stderr, "[agent] warning: failed to save credentials: %v\n", err)
 		} else {
@@ -950,7 +942,7 @@ func drainRegisterChannel(ch <-chan serverMessage) {
 }
 
 func shouldRetryRegisterWithFreshCredentials(registerMsg serverMessage, creds credentials) bool {
-	if strings.TrimSpace(creds.BotID) == "" || strings.TrimSpace(creds.BotSecret) == "" {
+	if strings.TrimSpace(creds.BotID) == "" {
 		return false
 	}
 
@@ -1481,8 +1473,6 @@ func loadCredentials(path string) (credentials, error) {
 		switch key {
 		case "bot_id":
 			out.BotID = value
-		case "bot_secret":
-			out.BotSecret = value
 		}
 	}
 
@@ -1497,7 +1487,6 @@ func saveCredentials(path string, creds credentials) error {
 	content := strings.Builder{}
 	content.WriteString("# Build-a-Bot Stadium bot credentials\n")
 	content.WriteString("bot_id=" + strings.TrimSpace(creds.BotID) + "\n")
-	content.WriteString("bot_secret=" + strings.TrimSpace(creds.BotSecret) + "\n")
 
 	return os.WriteFile(path, []byte(content.String()), 0o600)
 }

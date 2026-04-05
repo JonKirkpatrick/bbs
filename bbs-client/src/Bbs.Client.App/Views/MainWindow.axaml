@@ -58,8 +58,13 @@
                   Margin="10,0,0,0"
                   Background="Transparent">
                   <MenuItem Header="_File">
-                        <MenuItem Header="_New Persona"/>
-                        <MenuItem Header="_Load Persona"/>
+                        <MenuItem Header="_New Persona" Click="OnNewPersonaClicked" />
+                        <MenuItem Header="_Load Persona" Click="OnLoadPersonaClicked" />
+                        <MenuItem Header="_Unload Persona" Click="OnUnloadPersonaClicked" IsEnabled="{Binding IsPersonaLoaded}" />
+                        <Separator/>
+                        <MenuItem Header="_Duplicate Persona" Click="OnDuplicatePersonaClicked" IsEnabled="{Binding IsPersonaLoaded}" />
+                        <MenuItem Header="_Rename Persona" Click="OnRenamePersonaClicked" IsEnabled="{Binding IsPersonaLoaded}" />
+                        <MenuItem Header="_Delete Persona" Click="OnDeletePersonaClicked" IsEnabled="{Binding IsPersonaLoaded}" />
                         <Separator/>
                         <MenuItem Header="_Exit" Command="{Binding $parent[Window].Close}"/>
                   </MenuItem>

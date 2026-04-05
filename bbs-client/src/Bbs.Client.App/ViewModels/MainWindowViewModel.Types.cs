@@ -20,7 +20,8 @@ public sealed record ServerPluginCatalogItem(
 
 public sealed record RegisterHandshakeResult(
     string SessionId,
-    string ControlToken,
+    string ServerBotId,
+    string ServerBotSecret,
     string OwnerToken,
     string DashboardEndpoint);
 
@@ -34,7 +35,10 @@ public sealed record AgentControlResponse(
     string OwnerToken,
     string DashboardEndpoint,
     string DashboardHost,
-    string DashboardPort);
+    string DashboardPort)
+{
+    public string BotSecret => ControlToken;
+}
 
 public sealed record ServerArenaOptionItem(string Label, int ArenaId);
 

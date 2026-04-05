@@ -90,7 +90,11 @@ public sealed class PersonaContextManager
 
         try
         {
-            // IBotOrchestrationService doesn't implement IDisposable, so just nullify references
+            if (_currentOrchestration is IDisposable disposableOrchestration)
+            {
+                disposableOrchestration.Dispose();
+            }
+
             _currentStorage = null;
             _currentOrchestration = null;
             _currentPersonaPath = null;

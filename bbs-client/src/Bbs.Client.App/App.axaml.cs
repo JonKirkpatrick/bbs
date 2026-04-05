@@ -48,10 +48,40 @@ public partial class App : Application
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        var sessionsClosed = 0;
+        var unloadAttempted = false;
+        var unloadSucceeded = false;
+        if (sender is IClassicDesktopStyleApplicationLifetime desktop &&
+            desktop.MainWindow?.DataContext is MainWindowViewModel vm)
+        {
+            unloadAttempted = true;
+            try
+            {
+                // Mirror the behavior that already works: unload persona tears down orchestration/runtime.
+                vm.UnloadPersonaAsync().GetAwaiter().GetResult();
+                unloadSucceeded = true;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Log(LogLevel.Warning, "app_exit_unload_failed", "Failed to unload persona during app shutdown.",
+                    new System.Collections.Generic.Dictionary<string, string>
+                    {
+                        ["error"] = ex.GetType().Name,
+                        ["message"] = ex.Message
+                    });
+            }
+
+            // Keep explicit quit sweep as a fallback/extra guarantee.
+            sessionsClosed = vm.ShutdownRuntimeSessionsForExit();
+        }
+
         _logger?.Log(LogLevel.Information, "app_exit", "BBS client shutting down.",
             new System.Collections.Generic.Dictionary<string, string>
             {
-                ["exit_code"] = e.ApplicationExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                ["exit_code"] = e.ApplicationExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["sessions_closed"] = sessionsClosed.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["unload_attempted"] = unloadAttempted.ToString(),
+                ["unload_succeeded"] = unloadSucceeded.ToString()
             });
     }
 

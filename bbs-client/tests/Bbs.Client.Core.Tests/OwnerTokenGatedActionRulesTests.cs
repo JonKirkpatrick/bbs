@@ -103,4 +103,26 @@ public sealed class OwnerTokenGatedActionRulesTests
         Assert.Equal("/owner/join-arena", result.Plan.PlaceholderRoute);
         Assert.Equal("POST", result.Plan.PlaceholderMethod);
     }
+
+    [Fact]
+    public void Validate_ReturnsLeaveArenaPlan_WhenPreconditionsSatisfied()
+    {
+        var metadata = new ServerAccessMetadata(
+            IsValid: true,
+            OwnerToken: "owner-token",
+            DashboardEndpoint: "https://localhost:8080/dashboard",
+            StatusMessage: "ok",
+            Source: "test");
+
+        var result = OwnerTokenGatedActionRules.Validate(
+            OwnerTokenActionType.LeaveArena,
+            metadata,
+            selectedServerId: "srv-1");
+
+        Assert.True(result.CanExecute);
+        Assert.NotNull(result.Plan);
+        Assert.Equal("Leave Arena", result.Plan!.DisplayName);
+        Assert.Equal("/owner/leave-arena", result.Plan.PlaceholderRoute);
+        Assert.Equal("POST", result.Plan.PlaceholderMethod);
+    }
 }

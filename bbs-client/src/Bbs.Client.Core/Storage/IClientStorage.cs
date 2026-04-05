@@ -15,8 +15,6 @@ public interface IClientStorage
 
     Task<IReadOnlyList<BotProfile>> ListBotProfilesAsync(CancellationToken cancellationToken = default);
     Task UpsertBotProfileAsync(BotProfile profile, CancellationToken cancellationToken = default);
-    Task<BotServerCredential?> GetBotServerCredentialAsync(string clientBotId, string serverId, string? serverGlobalId = null, CancellationToken cancellationToken = default);
-    Task UpsertBotServerCredentialAsync(BotServerCredential credential, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<KnownServer>> ListKnownServersAsync(CancellationToken cancellationToken = default);
     Task UpsertKnownServerAsync(KnownServer server, CancellationToken cancellationToken = default);

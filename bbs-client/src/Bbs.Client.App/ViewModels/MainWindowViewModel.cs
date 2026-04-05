@@ -18,6 +18,7 @@ using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
 using Bbs.Client.Core.Orchestration;
 using Bbs.Client.Core.Storage;
+using Bbs.Client.Infrastructure.Personas;
 
 namespace Bbs.Client.App.ViewModels;
 
@@ -31,6 +32,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private const int ServerProbeMaxAttempts = 2;
     private const int ServerProbeRetryDelayMs = 200;
     private const int DeployHandshakeTimeoutMs = 3000;
+    private const int DeployControlSocketReadyTimeoutMs = 8000;
     private const string ProbeStatusMetadataKey = "probe_status";
     private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
     private const string ProbeLastErrorMetadataKey = "probe_last_error";
@@ -38,6 +40,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private const string ServerAccessSessionIdMetadataKey = "server_access.session_id";
     private const string ServerAccessOwnerTokenMetadataKey = "server_access.owner_token";
     private const string ServerAccessDashboardEndpointMetadataKey = "server_access.dashboard_endpoint";
+    private const string ClientOwnerTokenMetadataKey = "client.owner_token";
     private static readonly string[] DashboardEndpointMetadataKeys =
     {
         "dashboard_endpoint",
@@ -59,8 +62,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     };
 
     private readonly IClientLogger _logger;
-    private readonly IClientStorage _storage;
-    private readonly IBotOrchestrationService _orchestration;
+    private readonly PersonaManager? _personaManager;
+    private string? _currentPersonaPath;
+    private IClientStorage _storage;
+    private IBotOrchestrationService _orchestration;
     private readonly HttpClient _serverCatalogHttpClient;
     private WorkspaceContext _currentContext;
     private BotSummaryItem? _selectedBot;
@@ -82,7 +87,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _isServerDetailLoading;
     private bool _isServerAccessLoading;
     private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
-    private string _serverAccessStatus = "Select an armed bot session to load server access metadata.";
+    private string _serverAccessStatus = "Select a server to load server access metadata.";
     private string _ownerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
     private string _ownerArenaSelectedPlugin = string.Empty;
     private string _ownerArenaArgs = string.Empty;
@@ -98,11 +103,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly object _serverProbeLock = new();
     private readonly object _serverCatalogRefreshLock = new();
     private readonly object _deployConnectionLock = new();
-    private readonly HashSet<string> _activeDeployConnections = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<(string BotId, string SessionId)> _activeDeployConnections = new();
     private readonly object _activeAccessCacheLock = new();
-    private readonly Dictionary<string, (string ServerId, ServerAccessMetadata Access)> _activeServerAccessByBotId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<(string BotId, string SessionId), (string RuntimeBotId, string RuntimeBotName, string ServerId, ServerAccessMetadata Access)> _activeSessionsByBotAndSession = new();
 
-    public MainWindowViewModel(
+    private MainWindowViewModel(
         IClientLogger logger,
         IClientStorage storage,
         IBotOrchestrationService orchestration,
@@ -125,44 +130,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ToggleLeftPanelCommand = new RelayCommand(ToggleLeftPanel);
         ToggleRightPanelCommand = new RelayCommand(ToggleRightPanel);
         SetHomeContextCommand = new RelayCommand(SetHomeContext);
-        SetBotContextCommand = new RelayCommand(SetBotContextFromSelection, () => SelectedBot is not null);
-        SetServerContextCommand = new RelayCommand(SetServerContextFromSelection, () => SelectedServer is not null);
+        SetBotContextCommand = new RelayCommand(SetBotContextFromSelection, () => SelectedBot is not null && IsPersonaLoaded);
+        SetServerContextCommand = new RelayCommand(SetServerContextFromSelection, () => SelectedServer is not null && IsPersonaLoaded);
         SaveBotProfileCommand = new RelayCommand(SaveBotProfile);
         StartNewBotCommand = new RelayCommand(StartNewBot);
-        ArmSelectedBotCommand = new RelayCommand(ArmSelectedBot, () => SelectedBot is not null);
-        DisarmSelectedBotCommand = new RelayCommand(DisarmSelectedBot, () => SelectedBot is not null);
         DeploySelectedBotCommand = new RelayCommand(DeploySelectedBotToSelectedServer, CanDeploySelectedBot);
         SaveServerProfileCommand = new RelayCommand(SaveServerProfile);
         StartNewServerCommand = new RelayCommand(StartNewServer);
-        ReprobeServersCommand = new RelayCommand(ReprobeServers, () => !IsServerProbeInProgress && Servers.Count > 0);
+        ReprobeServersCommand = new RelayCommand(ReprobeServers, () => !IsServerProbeInProgress && Servers.Count > 0 && IsPersonaLoaded);
         RefreshServerAccessCommand = new RelayCommand(RefreshServerAccessMetadata);
         CreateArenaCommand = new RelayCommand(ExecuteCreateArena, CanExecuteOwnerTokenAction);
         JoinArenaCommand = new RelayCommand(ExecuteJoinArena, CanExecuteOwnerTokenAction);
-        RefreshServerArenasCommand = new RelayCommand(RefreshServerArenas, () => SelectedServer is not null);
+        RefreshServerArenasCommand = new RelayCommand(RefreshServerArenas, () => SelectedServer is not null && IsPersonaLoaded);
         OpenArenaViewerInBrowserCommand = new RelayCommand(OpenArenaViewerInBrowser, () => !string.IsNullOrWhiteSpace(ArenaViewerUrl));
 
         ConfigureEmbeddedViewerSupport(embeddedViewerAvailable, embeddedViewerMessage);
 
+        _logger.Log(LogLevel.Information, "mainvm_init_mvfix", "MainWindowViewModel constructor initialized (mvfix path).", null);
+
         _currentContext = WorkspaceContext.Home;
-        LoadBotsFromStorage();
-        LoadServersFromStorage();
-        _selectedBot = Bots.Count > 0 ? Bots[0] : null;
-        _selectedServer = Servers.Count > 0 ? Servers[0] : null;
-        if (_selectedBot is not null)
-        {
-            PopulateBotEditor(_selectedBot);
-        }
-
-        if (_selectedServer is not null)
-        {
-            PopulateServerEditor(_selectedServer);
-        }
-
-        RefreshSelectedServerDetail();
-        TriggerServerAccessRefresh();
-
-        RefreshContextProjection();
-        StartStartupServerProbe();
+        // Do NOT load bots/servers here; wait for persona to be loaded
     }
 
     public string WorkspaceTitle { get; private set; } = "";
@@ -631,8 +618,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _selectedBot = value;
             OnPropertyChanged();
             ((RelayCommand)SetBotContextCommand).RaiseCanExecuteChanged();
-            ((RelayCommand)ArmSelectedBotCommand).RaiseCanExecuteChanged();
-            ((RelayCommand)DisarmSelectedBotCommand).RaiseCanExecuteChanged();
             ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
             if (value is not null)
             {
@@ -640,6 +625,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 _currentContext = WorkspaceContext.BotDetails; 
                 RefreshContextProjection();
             }
+            RefreshActiveBotSessionsProjection();
             TriggerServerAccessRefresh();
         }
     }
@@ -671,6 +657,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 RefreshContextProjection();
             }
 
+            RefreshActiveBotSessionsProjection();
             TriggerServerAccessRefresh();
         }
     }
@@ -682,8 +669,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ICommand SetServerContextCommand { get; }
     public ICommand SaveBotProfileCommand { get; }
     public ICommand StartNewBotCommand { get; }
-    public ICommand ArmSelectedBotCommand { get; }
-    public ICommand DisarmSelectedBotCommand { get; }
     public ICommand DeploySelectedBotCommand { get; }
     public ICommand SaveServerProfileCommand { get; }
     public ICommand StartNewServerCommand { get; }
@@ -721,11 +706,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private bool CanDeploySelectedBot()
     {
-        bool botReady = SelectedBot is { IsArmed: true };
-        bool serverReady = SelectedServer is { VisualState: ServerCardVisualState.Live }; 
-        bool contextReady = _currentContext == WorkspaceContext.ServerDetails;
+        if (!IsPersonaLoaded || _currentContext != WorkspaceContext.ServerDetails)
+        {
+            return false;
+        }
 
-        return botReady && serverReady && contextReady;
+        if (SelectedBot is null || SelectedServer is null)
+        {
+            return false;
+        }
+
+        return SelectedServer.VisualState == ServerCardVisualState.Live;
     }
 
     private void ExecuteCreateArena()
@@ -1011,83 +1002,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             });
     }
 
-    private void ArmSelectedBot()
-    {
-        if (SelectedBot is null)
-        {
-            return;
-        }
-
-        var selectedBotId = SelectedBot.BotId;
-        var profile = SelectedBot.ToProfile();
-        try
-        {
-            var result = _orchestration.ArmBotAsync(profile).GetAwaiter().GetResult();
-            LoadBotsFromStorage();
-            SelectedBot = FindBotById(profile.BotId);
-            TriggerServerAccessRefresh();
-            BotEditorMessage = result.Message;
-        }
-        catch (SocketException socketException)
-        {
-            HandleOrchestrationException("arm", selectedBotId, $"socket_{socketException.SocketErrorCode}".ToLowerInvariant(), socketException);
-        }
-        catch (InvalidOperationException invalidOperationException)
-        {
-            HandleOrchestrationException("arm", selectedBotId, "stale_process_handle", invalidOperationException);
-        }
-        catch (Exception ex)
-        {
-            HandleOrchestrationException("arm", selectedBotId, "orchestration_failure", ex);
-        }
-    }
-
-    private void DisarmSelectedBot()
-    {
-        if (SelectedBot is null)
-        {
-            return;
-        }
-
-        var selectedBotId = SelectedBot.BotId;
-        var profile = SelectedBot.ToProfile();
-        try
-        {
-            DisconnectActiveDeploymentConnection(selectedBotId, sendQuit: true);
-            ClearActiveServerAccess(selectedBotId);
-            var result = _orchestration.DisarmBotAsync(profile).GetAwaiter().GetResult();
-            LoadBotsFromStorage();
-            SelectedBot = FindBotById(profile.BotId);
-            TriggerServerAccessRefresh();
-            BotEditorMessage = result.Message;
-        }
-        catch (SocketException socketException)
-        {
-            HandleOrchestrationException("disarm", selectedBotId, $"socket_{socketException.SocketErrorCode}".ToLowerInvariant(), socketException);
-        }
-        catch (InvalidOperationException invalidOperationException)
-        {
-            HandleOrchestrationException("disarm", selectedBotId, "stale_process_handle", invalidOperationException);
-        }
-        catch (Exception ex)
-        {
-            HandleOrchestrationException("disarm", selectedBotId, "orchestration_failure", ex);
-        }
-    }
-
     private void DeploySelectedBotToSelectedServer()
     {
+        if (!CanDeploySelectedBot())
+        {
+            BotEditorMessage = "Deploy is only available when a live server is selected in Server context.";
+            return;
+        }
+
         var bot = SelectedBot;
         var server = SelectedServer;
         if (bot is null)
         {
             BotEditorMessage = "Select a bot before deploy.";
-            return;
-        }
-
-        if (!bot.IsArmed)
-        {
-            BotEditorMessage = "Deploy requires an armed bot.";
             return;
         }
 
@@ -1097,73 +1024,118 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (_currentContext != WorkspaceContext.ServerDetails)
-        {
-            BotEditorMessage = "Deploy requires an active server in the center activity space.";
-            return;
-        }
-
-        if (bot.LifecycleState == AgentLifecycleState.ActiveSession || HasActiveDeployConnection(bot.BotId))
-        {
-            BotEditorMessage = "This bot is already deployed. Disconnect it before deploying again.";
-            return;
-        }
-
         try
         {
             var sourceProfile = bot.ToProfile();
-            var serverGlobalId = ResolveServerGlobalId(server);
-            var previousCredential = _storage.GetBotServerCredentialAsync(sourceProfile.BotId, server.ServerId, serverGlobalId).GetAwaiter().GetResult();
-            var registerResponse = RegisterBotSessionViaAgentControl(server, sourceProfile);
-            var attachedMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
+            var runtimeProfile = BuildRuntimeInstanceProfile(sourceProfile);
+            var controlSocketPath = BuildAgentControlSocketPath(runtimeProfile.BotId);
+
+            void EnsureRuntimeReady()
             {
-                [ServerAccessServerIdMetadataKey] = server.ServerId
+                var launchResult = _orchestration.LaunchBotAsync(runtimeProfile).GetAwaiter().GetResult();
+                if (!launchResult.Succeeded || !launchResult.RuntimeState.IsAttached)
+                {
+                    throw new InvalidOperationException($"Deploy failed while starting bot: {launchResult.Message}");
+                }
+
+                WaitForControlSocketReady(controlSocketPath, DeployControlSocketReadyTimeoutMs);
+
+                LoadBotsFromStorage();
+                SelectedBot = FindBotById(sourceProfile.BotId);
+            }
+
+            // Deploy always creates a fresh runtime instance for multi-session support.
+            EnsureRuntimeReady();
+
+            RegisterHandshakeResult? registerResponse = null;
+            var registered = false;
+            Exception? lastRegisterFailure = null;
+            for (var attempt = 1; attempt <= 3 && !registered; attempt++)
+            {
+                try
+                {
+                    registerResponse = RegisterBotSessionViaAgentControl(server, runtimeProfile);
+                    registered = true;
+                }
+                catch (Exception ex) when (TryResolveSocketErrorCode(ex, out _))
+                {
+                    lastRegisterFailure = ex;
+                    // Relaunch for subsequent attempts to recover from stale or short-lived runtime/socket state.
+                    EnsureRuntimeReady();
+                    Thread.Sleep(150 * attempt);
+                }
+            }
+
+            if (!registered)
+            {
+                throw new InvalidOperationException("Deploy failed: unable to complete control handshake after retries.", lastRegisterFailure);
+            }
+            if (registerResponse is null)
+            {
+                throw new InvalidOperationException("Deploy failed: handshake retries completed without response payload.");
+            }
+
+            var runtimeMetadata = new Dictionary<string, string>(runtimeProfile.Metadata, StringComparer.OrdinalIgnoreCase)
+            {
+                [ServerAccessServerIdMetadataKey] = server.ServerId,
+                [ServerAccessSessionIdMetadataKey] = registerResponse.SessionId
             };
+
+            if (!string.IsNullOrWhiteSpace(registerResponse.OwnerToken))
+            {
+                runtimeMetadata[ServerAccessOwnerTokenMetadataKey] = registerResponse.OwnerToken;
+            }
 
             if (!string.IsNullOrWhiteSpace(registerResponse.DashboardEndpoint))
             {
-                attachedMetadata[ServerAccessDashboardEndpointMetadataKey] = registerResponse.DashboardEndpoint;
+                runtimeMetadata[ServerAccessDashboardEndpointMetadataKey] = registerResponse.DashboardEndpoint;
             }
-            var credential = BotServerCredential.Create(
-                clientBotId: sourceProfile.BotId,
-                serverId: server.ServerId,
-                serverGlobalId: serverGlobalId,
-                serverBotId: registerResponse.ServerBotId,
-                serverBotSecret: registerResponse.ServerBotSecret);
-            _storage.UpsertBotServerCredentialAsync(credential).GetAwaiter().GetResult();
 
-            var attachedProfile = BotProfile.Create(
-                botId: sourceProfile.BotId,
-                name: sourceProfile.Name,
-                launchPath: sourceProfile.LaunchPath,
-                avatarImagePath: sourceProfile.AvatarImagePath,
-                launchArgs: sourceProfile.LaunchArgs,
-                metadata: attachedMetadata,
-                createdAtUtc: sourceProfile.CreatedAtUtc,
+            var runtimeAttachedProfile = BotProfile.Create(
+                botId: runtimeProfile.BotId,
+                name: runtimeProfile.Name,
+                launchPath: runtimeProfile.LaunchPath,
+                avatarImagePath: runtimeProfile.AvatarImagePath,
+                launchArgs: runtimeProfile.LaunchArgs,
+                metadata: runtimeMetadata,
+                createdAtUtc: runtimeProfile.CreatedAtUtc,
                 updatedAtUtc: DateTimeOffset.UtcNow);
+
+            var runtimeSessionState = new AgentRuntimeState(
+                BotId: runtimeProfile.BotId,
+                LifecycleState: AgentLifecycleState.ActiveSession,
+                IsAttached: true,
+                LastErrorCode: null,
+                UpdatedAtUtc: DateTimeOffset.UtcNow);
 
             var activeSessionState = new AgentRuntimeState(
                 BotId: sourceProfile.BotId,
                 LifecycleState: AgentLifecycleState.ActiveSession,
-                IsArmed: true,
+                IsAttached: true,
                 LastErrorCode: null,
                 UpdatedAtUtc: DateTimeOffset.UtcNow);
 
-            _storage.UpsertBotProfileAsync(attachedProfile).GetAwaiter().GetResult();
+            _storage.UpsertBotProfileAsync(runtimeAttachedProfile).GetAwaiter().GetResult();
+            _storage.UpsertAgentRuntimeStateAsync(runtimeSessionState).GetAwaiter().GetResult();
             _storage.UpsertAgentRuntimeStateAsync(activeSessionState).GetAwaiter().GetResult();
 
             lock (_deployConnectionLock)
             {
-                if (!_activeDeployConnections.Contains(sourceProfile.BotId))
-                {
-                    _activeDeployConnections.Add(sourceProfile.BotId);
-                }
+                _activeDeployConnections.Add((sourceProfile.BotId, registerResponse.SessionId));
             }
 
-            SetActiveServerAccess(sourceProfile.BotId, server.ServerId, registerResponse.OwnerToken, registerResponse.DashboardEndpoint);
+            SetActiveServerAccess(
+                sourceProfile.BotId,
+                registerResponse.SessionId,
+                runtimeProfile.BotId,
+                runtimeProfile.Name,
+                server.ServerId,
+                registerResponse.OwnerToken,
+                registerResponse.DashboardEndpoint);
 
             LoadBotsFromStorage();
             SelectedBot = FindBotById(sourceProfile.BotId);
+            RefreshActiveBotSessionsProjection();
             TriggerServerAccessRefresh();
             BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; active session established.";
 
@@ -1171,30 +1143,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 new Dictionary<string, string>
                 {
                     ["bot_id"] = sourceProfile.BotId,
+                    ["runtime_bot_id"] = runtimeProfile.BotId,
+                    ["runtime_bot_name"] = runtimeProfile.Name,
                     ["server_id"] = server.ServerId,
                     ["session_id"] = registerResponse.SessionId,
                     ["dashboard_endpoint"] = registerResponse.DashboardEndpoint
                 });
-
-            if (previousCredential is { } existingCredential &&
-                (!string.Equals(existingCredential.ServerBotId, registerResponse.ServerBotId, StringComparison.Ordinal) ||
-                 !string.Equals(existingCredential.ServerBotSecret, registerResponse.ServerBotSecret, StringComparison.Ordinal)))
-            {
-                _logger.Log(LogLevel.Information, "credentials_refreshed_after_auth_reset", "Server credentials were refreshed during deploy after authentication mismatch.",
-                    new Dictionary<string, string>
-                    {
-                        ["bot_id"] = sourceProfile.BotId,
-                        ["server_id"] = server.ServerId,
-                        ["previous_server_bot_id"] = existingCredential.ServerBotId ?? string.Empty,
-                        ["new_server_bot_id"] = registerResponse.ServerBotId ?? string.Empty,
-                        ["server_global_id"] = serverGlobalId ?? string.Empty,
-                        ["secret_rotated"] = (!string.Equals(existingCredential.ServerBotSecret, registerResponse.ServerBotSecret, StringComparison.Ordinal)).ToString()
-                    });
-            }
+        }
+        catch (SocketException socketException)
+        {
+            HandleOrchestrationException("deploy", bot.BotId, $"socket_{socketException.SocketErrorCode}".ToLowerInvariant(), socketException);
+        }
+        catch (InvalidOperationException invalidOperationException)
+        {
+            HandleOrchestrationException("deploy", bot.BotId, "deploy_runtime_unavailable", invalidOperationException);
         }
         catch (Exception ex)
         {
-            HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed", ex);
+            if (TryResolveSocketErrorCode(ex, out var socketErrorCode))
+            {
+                HandleOrchestrationException("deploy", bot.BotId, socketErrorCode, ex);
+                return;
+            }
+
+            HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed_mvfix", ex);
         }
     }
 
@@ -1256,9 +1228,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return new RegisterHandshakeResult(
             SessionId: sessionId,
             ServerBotId: serverBotId,
-            ServerBotSecret: string.IsNullOrWhiteSpace(connectReply.BotSecret)
-                ? accessReply.BotSecret
-                : connectReply.BotSecret,
+            ServerBotSecret: accessReply.ControlToken,
             OwnerToken: accessReply.OwnerToken,
             DashboardEndpoint: NormalizeDashboardEndpoint(accessReply.DashboardEndpoint, accessReply.DashboardHost, accessReply.DashboardPort, server.UseTls));
     }
@@ -1375,49 +1345,87 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private static AgentControlResponse SendAgentControlRequest(string controlSocketPath, string messageType, IReadOnlyDictionary<string, object> payload)
     {
-        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        socket.ReceiveTimeout = DeployHandshakeTimeoutMs;
-        socket.SendTimeout = DeployHandshakeTimeoutMs;
-        socket.Connect(new UnixDomainSocketEndPoint(controlSocketPath));
+        const int maxAttempts = 12;
+        Exception? lastFailure = null;
 
-        using var stream = new NetworkStream(socket, ownsSocket: true);
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-        using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true)
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            AutoFlush = true,
-            NewLine = "\n"
-        };
-
-        // The first control line is a greeting and may arrive before request/response exchange.
-        _ = TryReadControlEnvelope(reader);
-
-        var requestId = Guid.NewGuid().ToString("N");
-        var request = new Dictionary<string, object?>
-        {
-            ["v"] = "0.2",
-            ["id"] = requestId,
-            ["type"] = messageType,
-            ["payload"] = payload
-        };
-
-        writer.WriteLine(JsonSerializer.Serialize(request));
-
-        while (true)
-        {
-            var line = reader.ReadLine();
-            if (string.IsNullOrWhiteSpace(line))
+            try
             {
-                throw new InvalidOperationException($"Agent control socket returned empty response for {messageType}.");
-            }
+                if (!File.Exists(controlSocketPath))
+                {
+                    lastFailure = new IOException($"Control socket not found: {controlSocketPath}");
+                    Thread.Sleep(100 * attempt);
+                    continue;
+                }
 
-            var envelope = ParseControlEnvelope(line);
-            if (!string.Equals(envelope.Id, requestId, StringComparison.OrdinalIgnoreCase))
+                using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                socket.ReceiveTimeout = DeployHandshakeTimeoutMs;
+                socket.SendTimeout = DeployHandshakeTimeoutMs;
+                socket.Connect(new UnixDomainSocketEndPoint(controlSocketPath));
+
+                using var stream = new NetworkStream(socket, ownsSocket: true);
+                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+                using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true)
+                {
+                    AutoFlush = true,
+                    NewLine = "\n"
+                };
+
+                // The first control line is a greeting and may arrive before request/response exchange.
+                _ = TryReadControlEnvelope(reader);
+
+                var requestId = Guid.NewGuid().ToString("N");
+                var request = new Dictionary<string, object?>
+                {
+                    ["v"] = "0.2",
+                    ["id"] = requestId,
+                    ["type"] = messageType,
+                    ["payload"] = payload
+                };
+
+                writer.WriteLine(JsonSerializer.Serialize(request));
+
+                while (true)
+                {
+                    var line = reader.ReadLine();
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        throw new InvalidOperationException($"Agent control socket returned empty response for {messageType}.");
+                    }
+
+                    var envelope = ParseControlEnvelope(line);
+                    if (!string.Equals(envelope.Id, requestId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    return envelope;
+                }
+            }
+            catch (SocketException ex)
             {
-                continue;
-            }
+                lastFailure = ex;
+                if (attempt == maxAttempts)
+                {
+                    throw;
+                }
 
-            return envelope;
+                Thread.Sleep(100 * attempt);
+            }
+            catch (IOException ex) when (FindSocketException(ex) is not null)
+            {
+                lastFailure = ex;
+                if (attempt == maxAttempts)
+                {
+                    throw;
+                }
+
+                Thread.Sleep(100 * attempt);
+            }
         }
+
+        throw new InvalidOperationException($"Failed {messageType} control request after retries.", lastFailure);
     }
 
     private static AgentControlResponse? TryReadControlEnvelope(StreamReader reader)
@@ -1453,13 +1461,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var message = payload.TryGetProperty("message", out var messageNode) ? messageNode.ToString() : string.Empty;
         var sessionId = payload.TryGetProperty("session_id", out var sessionIdNode) ? sessionIdNode.ToString() : string.Empty;
         var botId = payload.TryGetProperty("bot_id", out var botIdNode) ? botIdNode.ToString() : string.Empty;
-        var botSecret = payload.TryGetProperty("bot_secret", out var botSecretNode) ? botSecretNode.ToString() : string.Empty;
+        var controlToken = payload.TryGetProperty("control_token", out var controlTokenNode) ? controlTokenNode.ToString() : string.Empty;
         var ownerToken = payload.TryGetProperty("owner_token", out var ownerTokenNode) ? ownerTokenNode.ToString() : string.Empty;
         var dashboardEndpoint = payload.TryGetProperty("dashboard_endpoint", out var endpointNode) ? endpointNode.ToString() : string.Empty;
         var dashboardHost = payload.TryGetProperty("dashboard_host", out var hostNode) ? hostNode.ToString() : string.Empty;
         var dashboardPort = payload.TryGetProperty("dashboard_port", out var portNode) ? portNode.ToString() : string.Empty;
 
-        return new AgentControlResponse(type, id, message, sessionId, botId, botSecret, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort);
+        return new AgentControlResponse(type, id, message, sessionId, botId, controlToken, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort);
     }
 
     private static string BuildAgentControlSocketPath(string botId)
@@ -1486,10 +1494,148 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return socketPath + ".control";
     }
 
+    private static void WaitForControlSocketReady(string controlSocketPath, int timeoutMs)
+    {
+        if (File.Exists(controlSocketPath))
+        {
+            return;
+        }
+
+        var timeout = TimeSpan.FromMilliseconds(Math.Max(0, timeoutMs));
+        var start = DateTime.UtcNow;
+        while (DateTime.UtcNow - start < timeout)
+        {
+            if (File.Exists(controlSocketPath))
+            {
+                return;
+            }
+
+            Thread.Sleep(50);
+        }
+    }
+
+    public int ShutdownRuntimeSessionsForExit()
+    {
+        StopArenaViewerWatch();
+
+        List<(string BotId, string SessionId)> sessions;
+        lock (_deployConnectionLock)
+        {
+            sessions = _activeDeployConnections.ToList();
+        }
+
+        foreach (var session in sessions)
+        {
+            try
+            {
+                DisconnectActiveDeploymentConnection(session.BotId, session.SessionId, sendQuit: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning, "shutdown_session_quit_failed", "Failed to quit session during app shutdown.",
+                    new Dictionary<string, string>
+                    {
+                        ["bot_id"] = session.BotId,
+                        ["session_id"] = session.SessionId,
+                        ["error"] = ex.GetType().Name
+                    });
+            }
+        }
+
+        return sessions.Count;
+    }
+
     private static string? ResolveServerGlobalId(ServerSummaryItem server)
     {
         var raw = FirstNonEmptyMetadataValue(server.Metadata, ServerGlobalIdMetadataKeys);
         return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
+    }
+
+    private static SocketException? FindSocketException(Exception ex)
+    {
+        if (ex is SocketException directSocket)
+        {
+            return directSocket;
+        }
+
+        if (ex is AggregateException aggregate)
+        {
+            foreach (var inner in aggregate.Flatten().InnerExceptions)
+            {
+                var nested = FindSocketException(inner);
+                if (nested is not null)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
+        }
+
+        if (ex.InnerException is not null)
+        {
+            return FindSocketException(ex.InnerException);
+        }
+
+        return null;
+    }
+
+    private static bool TryResolveSocketErrorCode(Exception ex, out string socketErrorCode)
+    {
+        var directSocket = FindSocketException(ex);
+        if (directSocket is not null)
+        {
+            socketErrorCode = $"socket_{directSocket.SocketErrorCode}".ToLowerInvariant();
+            return true;
+        }
+
+        var inspected = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
+        var pending = new Queue<Exception>();
+        pending.Enqueue(ex);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Dequeue();
+            if (!inspected.Add(current))
+            {
+                continue;
+            }
+
+            var type = current.GetType();
+            if (type.Name.Contains("SocketException", StringComparison.OrdinalIgnoreCase))
+            {
+                var socketCodeProperty = type.GetProperty("SocketErrorCode");
+                if (socketCodeProperty?.GetValue(current) is { } codeValue)
+                {
+                    socketErrorCode = $"socket_{codeValue}".ToLowerInvariant();
+                    return true;
+                }
+
+                socketErrorCode = "socket_error";
+                return true;
+            }
+
+            if (current is IOException)
+            {
+                socketErrorCode = "socket_io_error";
+                return true;
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions)
+                {
+                    pending.Enqueue(inner);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Enqueue(current.InnerException);
+            }
+        }
+
+        socketErrorCode = string.Empty;
+        return false;
     }
 
     private static string NormalizeDashboardEndpoint(string rawEndpoint, string rawHost, string rawPort, bool useTls)
@@ -1525,16 +1671,553 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         lock (_deployConnectionLock)
         {
-            return _activeDeployConnections.Contains(botId);
+            return _activeDeployConnections.Any(session => session.BotId == botId);
         }
     }
 
-    private void DisconnectActiveDeploymentConnection(string botId, bool sendQuit)
+    private void DisconnectActiveDeploymentConnection(string botId, string sessionId, bool sendQuit)
     {
+        if (sendQuit)
+        {
+            TrySendQuitSession(botId, sessionId);
+        }
+
         lock (_deployConnectionLock)
         {
-            _activeDeployConnections.Remove(botId);
+            _activeDeployConnections.Remove((botId, sessionId));
         }
+
+        ClearActiveServerAccess(botId, sessionId);
+        RefreshActiveBotSessionsProjection();
+        TriggerServerAccessRefresh();
+    }
+
+    private void DisconnectAllActiveDeploymentConnectionsForBot(string botId, bool sendQuit)
+    {
+        List<string> sessionsToRemove;
+        lock (_deployConnectionLock)
+        {
+            sessionsToRemove = _activeDeployConnections
+                .Where(session => session.BotId == botId)
+                .Select(session => session.SessionId)
+                .ToList();
+        }
+
+        foreach (var sessionId in sessionsToRemove)
+        {
+            DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit);
+        }
+    }
+
+    private void TrySendQuitSession(string sourceBotId, string sessionId)
+    {
+        try
+        {
+            if (!TryGetRuntimeSession(sourceBotId, sessionId, out var runtimeBotId, out _, out _))
+            {
+                return;
+            }
+
+            var controlSocketPath = BuildAgentControlSocketPath(runtimeBotId);
+            if (!File.Exists(controlSocketPath))
+            {
+                return;
+            }
+
+            var reply = SendAgentControlRequest(controlSocketPath, "quit_session", new Dictionary<string, object>());
+            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Log(LogLevel.Warning, "session_quit_control_error", "Failed to quit active session via control socket.",
+                    new Dictionary<string, string>
+                    {
+                        ["bot_id"] = sourceBotId,
+                        ["runtime_bot_id"] = runtimeBotId,
+                        ["session_id"] = sessionId,
+                        ["message"] = reply.Message
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Log(LogLevel.Warning, "session_quit_failed", "Failed to quit active session via control socket.",
+                new Dictionary<string, string>
+                {
+                    ["bot_id"] = sourceBotId,
+                    ["session_id"] = sessionId,
+                    ["error"] = ex.GetType().Name
+                });
+        }
+    }
+
+    private void RefreshActiveBotSessionsProjection()
+    {
+        PruneStaleActiveSessionCaches();
+
+        var selectedBot = SelectedBot;
+        var selectedBotId = selectedBot?.BotId;
+        ActiveBotSessions.Clear();
+
+        if (selectedBot is null || string.IsNullOrWhiteSpace(selectedBotId))
+        {
+            OnPropertyChanged(nameof(HasActiveBotSessions));
+            OnPropertyChanged(nameof(ShowActiveBotSessionsEmpty));
+            return;
+        }
+
+        ReconcileActiveSessionsFromRuntimeProfiles(selectedBot);
+        ReconcileActiveSessionsFromRuntimeSockets(selectedBot);
+
+        List<(string BotId, string SessionId)> sessions;
+        lock (_deployConnectionLock)
+        {
+            sessions = _activeDeployConnections
+                .Where(s => string.Equals(s.BotId, selectedBotId, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(s => s.SessionId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        foreach (var session in sessions)
+        {
+            var serverId = string.Empty;
+            var runtimeBotId = session.BotId;
+            var runtimeBotName = session.BotId;
+            var access = ServerAccessMetadata.Invalid("Owner token is not available for this server yet.");
+            lock (_activeAccessCacheLock)
+            {
+                if (_activeSessionsByBotAndSession.TryGetValue((session.BotId, session.SessionId), out var cached))
+                {
+                    runtimeBotId = cached.RuntimeBotId;
+                    runtimeBotName = cached.RuntimeBotName;
+                    serverId = cached.ServerId;
+                    access = cached.Access;
+                }
+            }
+
+            var serverName = ResolveServerName(serverId);
+            var arenaOptions = BuildArenaOptionsForServer(serverId);
+            ActiveBotSessions.Add(new ActiveBotSessionItem
+            {
+                RuntimeBotId = runtimeBotId,
+                SessionId = session.SessionId,
+                ServerId = serverId,
+                ServerName = string.IsNullOrWhiteSpace(runtimeBotName) ? serverName : $"{serverName} ({runtimeBotName})",
+                OwnerTokenMasked = access.IsValid ? MainWindowViewModelHelpers.MaskToken(access.OwnerToken) : "-",
+                ArenaOptions = arenaOptions,
+                JoinCommand = new RelayCommand(() => ExecuteSessionJoin(session.BotId, session.SessionId)),
+                LeaveCommand = new RelayCommand(() => ExecuteSessionLeave(session.BotId, session.SessionId)),
+                QuitCommand = new RelayCommand(() => ExecuteSessionQuit(session.BotId, session.SessionId))
+            });
+        }
+
+        OnPropertyChanged(nameof(HasActiveBotSessions));
+        OnPropertyChanged(nameof(ShowActiveBotSessionsEmpty));
+    }
+
+    private void ReconcileActiveSessionsFromRuntimeProfiles(BotSummaryItem sourceBot)
+    {
+        var sourceBotId = sourceBot.BotId;
+        var sourceBotName = sourceBot.Name;
+        var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
+        foreach (var profile in profiles)
+        {
+            if (!IsRuntimeInstanceProfile(profile))
+            {
+                continue;
+            }
+
+            var matchesSourceBotId = profile.Metadata.TryGetValue("source_bot_id", out var mappedSourceBotId) &&
+                                     string.Equals(mappedSourceBotId, sourceBotId, StringComparison.OrdinalIgnoreCase);
+            var matchesSourceBotName = profile.Metadata.TryGetValue("source_bot_name", out var mappedSourceBotName) &&
+                                       string.Equals(mappedSourceBotName, sourceBotName, StringComparison.OrdinalIgnoreCase);
+            var matchesRuntimeNamePrefix = profile.Name.StartsWith(sourceBotName + "-", StringComparison.OrdinalIgnoreCase);
+
+            if (!matchesSourceBotId && !matchesSourceBotName && !matchesRuntimeNamePrefix)
+            {
+                continue;
+            }
+
+            var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
+            var runtimeSocketAlive = File.Exists(BuildAgentControlSocketPath(profile.BotId));
+            if ((runtimeState is null || !runtimeState.IsAttached) && !runtimeSocketAlive)
+            {
+                continue;
+            }
+
+            if (runtimeSocketAlive && (runtimeState is null || !runtimeState.IsAttached))
+            {
+                var refreshedRuntimeState = new AgentRuntimeState(
+                    BotId: profile.BotId,
+                    LifecycleState: AgentLifecycleState.ActiveSession,
+                    IsAttached: true,
+                    LastErrorCode: null,
+                    UpdatedAtUtc: DateTimeOffset.UtcNow);
+                _storage.UpsertAgentRuntimeStateAsync(refreshedRuntimeState).GetAwaiter().GetResult();
+            }
+
+            var sessionId = profile.Metadata.TryGetValue(ServerAccessSessionIdMetadataKey, out var mappedSessionId) &&
+                            !string.IsNullOrWhiteSpace(mappedSessionId)
+                ? mappedSessionId
+                : profile.BotId;
+
+            var serverId = profile.Metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var mappedServerId)
+                ? mappedServerId
+                : string.Empty;
+            var ownerToken = profile.Metadata.TryGetValue(ServerAccessOwnerTokenMetadataKey, out var mappedOwnerToken)
+                ? mappedOwnerToken
+                : string.Empty;
+            var dashboardEndpoint = profile.Metadata.TryGetValue(ServerAccessDashboardEndpointMetadataKey, out var mappedDashboard)
+                ? mappedDashboard
+                : string.Empty;
+
+            lock (_deployConnectionLock)
+            {
+                _activeDeployConnections.Add((sourceBotId, sessionId));
+            }
+
+            SetActiveServerAccess(sourceBotId, sessionId, profile.BotId, profile.Name, serverId, ownerToken, dashboardEndpoint);
+        }
+    }
+
+    private void ReconcileActiveSessionsFromRuntimeSockets(BotSummaryItem sourceBot)
+    {
+        var sourceBotId = sourceBot.BotId;
+        var sourceBotName = sourceBot.Name;
+        var runtimeIdPrefix = sourceBotId + "-";
+        var socketPrefix = "bbs-agent-" + runtimeIdPrefix;
+        var socketSuffix = ".sock.control";
+
+        string[] controlSockets;
+        try
+        {
+            controlSockets = Directory.GetFiles(Path.GetTempPath(), socketPrefix + "*" + socketSuffix);
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var controlSocketPath in controlSockets)
+        {
+            var fileName = Path.GetFileName(controlSocketPath);
+            if (!fileName.StartsWith("bbs-agent-", StringComparison.Ordinal) ||
+                !fileName.EndsWith(socketSuffix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var runtimeBotId = fileName.Substring("bbs-agent-".Length, fileName.Length - "bbs-agent-".Length - socketSuffix.Length);
+            if (!runtimeBotId.StartsWith(runtimeIdPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var statusReply = ReadRuntimeStatus(runtimeBotId);
+            if (statusReply is null)
+            {
+                continue;
+            }
+
+            var activeSessionId = NormalizeActiveSessionId(statusReply.SessionId);
+            if (string.IsNullOrWhiteSpace(activeSessionId))
+            {
+                continue;
+            }
+
+            var runtimeSuffix = runtimeBotId[runtimeIdPrefix.Length..];
+            if (string.IsNullOrWhiteSpace(runtimeSuffix))
+            {
+                continue;
+            }
+
+            var sessionId = activeSessionId;
+            var runtimeBotName = sourceBotName + "-" + runtimeSuffix;
+
+            lock (_deployConnectionLock)
+            {
+                _activeDeployConnections.Add((sourceBotId, sessionId));
+            }
+
+            // Socket fallback has no guaranteed persisted owner/dashboard metadata.
+            SetActiveServerAccess(
+                sourceBotId,
+                sessionId,
+                runtimeBotId,
+                runtimeBotName,
+                SelectedServer?.ServerId ?? string.Empty,
+                string.Empty,
+                string.Empty);
+        }
+    }
+
+    private AgentControlResponse? ReadRuntimeStatus(string runtimeBotId)
+    {
+        try
+        {
+            var controlSocketPath = BuildAgentControlSocketPath(runtimeBotId);
+            if (!File.Exists(controlSocketPath))
+            {
+                return null;
+            }
+
+            var reply = SendAgentControlRequest(controlSocketPath, "status", new Dictionary<string, object>());
+            if (!string.Equals(reply.Type, "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return reply;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string NormalizeActiveSessionId(string rawSessionId)
+    {
+        var trimmed = rawSessionId.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return string.Empty;
+        }
+
+        if (int.TryParse(trimmed, out var numericSessionId) && numericSessionId <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (string.Equals(trimmed, "null", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(trimmed, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return trimmed;
+    }
+
+    private void ExecuteSessionJoin(string botId, string sessionId)
+    {
+        var item = ActiveBotSessions.FirstOrDefault(x => x.SessionId == sessionId);
+        if (item is null)
+        {
+            return;
+        }
+
+        if (!TryGetRuntimeSession(botId, sessionId, out var runtimeBotId, out _, out _))
+        {
+            BotEditorMessage = "JOIN failed: runtime session mapping not found.";
+            return;
+        }
+
+        if (item.SelectedArena is null || item.SelectedArena.ArenaId <= 0)
+        {
+            BotEditorMessage = "Select an arena before JOIN.";
+            return;
+        }
+
+        if (!int.TryParse(item.JoinHandicapPercent.Trim(), out var handicapPercent))
+        {
+            BotEditorMessage = "JOIN handicap must be an integer.";
+            return;
+        }
+
+        try
+        {
+            var reply = SendAgentControlRequest(
+                BuildAgentControlSocketPath(runtimeBotId),
+                "join_session",
+                new Dictionary<string, object>
+                {
+                    ["arena_id"] = item.SelectedArena.ArenaId,
+                    ["handicap_percent"] = handicapPercent
+                });
+
+            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
+            {
+                BotEditorMessage = $"JOIN failed: {reply.Message}";
+                return;
+            }
+
+            BotEditorMessage = $"JOIN requested for session {sessionId}.";
+        }
+        catch (Exception ex)
+        {
+            BotEditorMessage = $"JOIN failed: {ex.Message}";
+        }
+    }
+
+    private void ExecuteSessionLeave(string botId, string sessionId)
+    {
+        if (!TryGetRuntimeSession(botId, sessionId, out var runtimeBotId, out _, out _))
+        {
+            BotEditorMessage = "LEAVE failed: runtime session mapping not found.";
+            return;
+        }
+
+        try
+        {
+            var reply = SendAgentControlRequest(
+                BuildAgentControlSocketPath(runtimeBotId),
+                "leave_session",
+                new Dictionary<string, object>());
+
+            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
+            {
+                BotEditorMessage = $"LEAVE failed: {reply.Message}";
+                return;
+            }
+
+            BotEditorMessage = $"LEAVE requested for session {sessionId}.";
+        }
+        catch (Exception ex)
+        {
+            BotEditorMessage = $"LEAVE failed: {ex.Message}";
+        }
+    }
+
+    private void ExecuteSessionQuit(string botId, string sessionId)
+    {
+        if (!TryGetRuntimeSession(botId, sessionId, out var runtimeBotId, out _, out _))
+        {
+            DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
+            BotEditorMessage = $"Removed stale session {sessionId}.";
+            return;
+        }
+
+        try
+        {
+            var reply = SendAgentControlRequest(
+                BuildAgentControlSocketPath(runtimeBotId),
+                "quit_session",
+                new Dictionary<string, object>());
+
+            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
+            {
+                BotEditorMessage = $"QUIT failed: {reply.Message}";
+                return;
+            }
+
+            DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
+            BotEditorMessage = $"QUIT requested for session {sessionId}.";
+            LoadBotsFromStorage();
+            SelectedBot = FindBotById(botId);
+        }
+        catch (Exception ex)
+        {
+            BotEditorMessage = $"QUIT failed: {ex.Message}";
+        }
+    }
+
+    private ObservableCollection<ServerArenaOptionItem> BuildArenaOptionsForServer(string serverId)
+    {
+        var options = new ObservableCollection<ServerArenaOptionItem>();
+        if (string.IsNullOrWhiteSpace(serverId))
+        {
+            return options;
+        }
+
+        if (!string.Equals(SelectedServer?.ServerId, serverId, StringComparison.OrdinalIgnoreCase))
+        {
+            return options;
+        }
+
+        foreach (var arena in ServerArenaEntries)
+        {
+            options.Add(new ServerArenaOptionItem($"#{arena.ArenaId} - {arena.Game}", arena.ArenaId));
+        }
+
+        return options;
+    }
+
+    private void RefreshActiveSessionArenaOptions()
+    {
+        if (ActiveBotSessions.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var session in ActiveBotSessions)
+        {
+            var selectedArenaId = session.SelectedArena?.ArenaId;
+            var options = BuildArenaOptionsForServer(session.ServerId);
+
+            session.ArenaOptions.Clear();
+            foreach (var option in options)
+            {
+                session.ArenaOptions.Add(option);
+            }
+
+            if (selectedArenaId is > 0)
+            {
+                session.SelectedArena = session.ArenaOptions.FirstOrDefault(x => x.ArenaId == selectedArenaId);
+            }
+            else if (session.ArenaOptions.Count == 1)
+            {
+                session.SelectedArena = session.ArenaOptions[0];
+            }
+            else if (session.SelectedArena is not null && session.ArenaOptions.Count == 0)
+            {
+                session.SelectedArena = null;
+            }
+        }
+    }
+
+    private string ResolveServerName(string serverId)
+    {
+        if (string.IsNullOrWhiteSpace(serverId))
+        {
+            return "Unknown server";
+        }
+
+        var server = FindServerById(serverId);
+        return server is null ? serverId : server.Name;
+    }
+
+    private void PruneStaleActiveSessionCaches()
+    {
+        List<(string BotId, string SessionId)> stale;
+
+        lock (_activeAccessCacheLock)
+        {
+            stale = _activeSessionsByBotAndSession
+                .Where(s => !File.Exists(BuildAgentControlSocketPath(s.Value.RuntimeBotId)))
+                .Select(s => s.Key)
+                .ToList();
+        }
+
+        foreach (var session in stale)
+        {
+            lock (_deployConnectionLock)
+            {
+                _activeDeployConnections.Remove((session.BotId, session.SessionId));
+            }
+
+            ClearActiveServerAccess(session.BotId, session.SessionId);
+        }
+    }
+
+    private static BotProfile BuildRuntimeInstanceProfile(BotProfile sourceProfile)
+    {
+        var runtimeSuffix = Guid.NewGuid().ToString("N")[..6];
+        var runtimeName = $"{sourceProfile.Name}-{runtimeSuffix}";
+        var runtimeBotId = $"{sourceProfile.BotId}-{runtimeSuffix}";
+        var runtimeMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
+        {
+            ["source_bot_id"] = sourceProfile.BotId,
+            ["source_bot_name"] = sourceProfile.Name,
+            ["runtime_instance_suffix"] = runtimeSuffix,
+            ["runtime_instance"] = "true"
+        };
+
+        return BotProfile.Create(
+            botId: runtimeBotId,
+            name: runtimeName,
+            launchPath: sourceProfile.LaunchPath,
+            avatarImagePath: sourceProfile.AvatarImagePath,
+            launchArgs: sourceProfile.LaunchArgs,
+            metadata: runtimeMetadata,
+            createdAtUtc: DateTimeOffset.UtcNow,
+            updatedAtUtc: DateTimeOffset.UtcNow);
     }
 
     private static string ResolveServerDashboardEndpoint(ServerSummaryItem server)
@@ -1552,15 +2235,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void HandleOrchestrationException(string action, string botId, string errorCode, Exception ex)
     {
+        if (string.Equals(action, "deploy", StringComparison.OrdinalIgnoreCase) &&
+            !errorCode.EndsWith("_mvfix", StringComparison.OrdinalIgnoreCase))
+        {
+            errorCode = errorCode + "_mvfix";
+        }
+
         BotEditorMessage = $"Unable to {action} bot ({errorCode}). You can retry without restarting the app.";
-        _logger.Log(LogLevel.Warning, "bot_orchestration_exception", "Bot orchestration command failed.",
-            new Dictionary<string, string>
-            {
-                ["action"] = action,
-                ["bot_id"] = botId,
-                ["error_code"] = errorCode,
-                ["exception_type"] = ex.GetType().Name
-            });
+        var topStackFrame = ex.StackTrace?.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? string.Empty;
+        var fields = new Dictionary<string, string>
+        {
+            ["action"] = action,
+            ["bot_id"] = botId,
+            ["error_code"] = errorCode,
+            ["exception_type"] = ex.GetType().Name,
+            ["exception_message"] = ex.Message,
+            ["exception_top_frame"] = topStackFrame
+        };
+
+        _logger.Log(LogLevel.Warning, "bot_orchestration_exception", "Bot orchestration command failed.", fields);
+        _logger.Log(LogLevel.Warning, "bot_orchestration_exception_mvfix", "Bot orchestration command failed (mvfix path).", fields);
 
         LoadBotsFromStorage();
         SelectedBot = FindBotById(botId);
@@ -1571,9 +2265,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
 
+        PruneStaleActiveSessionCaches();
+
         Bots.Clear();
         foreach (var profile in profiles)
         {
+            if (IsRuntimeInstanceProfile(profile))
+            {
+                continue;
+            }
+
             var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
             if (runtimeState is not null &&
                 runtimeState.LifecycleState == AgentLifecycleState.ActiveSession &&
@@ -1582,7 +2283,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 runtimeState = new AgentRuntimeState(
                     BotId: runtimeState.BotId,
                     LifecycleState: AgentLifecycleState.Idle,
-                    IsArmed: true,
+                    IsAttached: false,
                     LastErrorCode: null,
                     UpdatedAtUtc: DateTimeOffset.UtcNow);
                 _storage.UpsertAgentRuntimeStateAsync(runtimeState).GetAwaiter().GetResult();
@@ -1591,12 +2292,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Bots.Add(BotSummaryItem.FromProfile(
                 profile,
                 runtimeState,
-                ArmSelectedBotCommand,
-                DisarmSelectedBotCommand,
                 DeploySelectedBotCommand));
         }
 
         OnPropertyChanged(nameof(Bots));
+        RefreshActiveBotSessionsProjection();
+    }
+
+    private static bool IsRuntimeInstanceProfile(BotProfile profile)
+    {
+        if (profile.Metadata.TryGetValue("runtime_instance", out var runtimeFlag) &&
+            string.Equals(runtimeFlag, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private void LoadServersFromStorage()
@@ -1613,6 +2324,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(Servers));
         ((RelayCommand)ReprobeServersCommand).RaiseCanExecuteChanged();
         RefreshSelectedServerDetail();
+        RefreshActiveBotSessionsProjection();
     }
 
     private BotSummaryItem? FindBotById(string botId)
@@ -1903,13 +2615,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private ServerAccessMetadata ResolveServerAccessMetadata(string? selectedServerId, string? selectedBotId)
     {
+        // Server metadata is the canonical owner-token source in Server context.
+        if (!string.IsNullOrWhiteSpace(selectedServerId))
+        {
+            var knownServerAccess = ResolveKnownServerAccessMetadata(selectedServerId);
+            if (knownServerAccess.IsValid || _currentContext == WorkspaceContext.ServerDetails)
+            {
+                return knownServerAccess;
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(selectedBotId) &&
-            TryGetActiveServerAccess(selectedBotId, out var activeServerId, out var activeAccess) &&
+            TryGetActiveServerAccess(selectedBotId, selectedServerId, out var activeServerId, out var activeAccess) &&
             (string.IsNullOrWhiteSpace(selectedServerId) || string.Equals(selectedServerId, activeServerId, StringComparison.OrdinalIgnoreCase)))
         {
             if (string.IsNullOrWhiteSpace(activeAccess.OwnerToken))
             {
-                return ServerAccessMetadata.Invalid("Owner token pending from active bot session.");
+                return ServerAccessMetadata.Invalid("Owner token is not available for this runtime session yet.");
             }
 
             return activeAccess;
@@ -1933,7 +2655,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             foreach (var candidate in allProfiles)
             {
                 var candidateState = _storage.GetAgentRuntimeStateAsync(candidate.BotId).GetAwaiter().GetResult();
-                if (candidateState?.IsArmed == true)
+                if (candidateState?.IsAttached == true)
                 {
                     profile = candidate;
                     runtimeState = candidateState;
@@ -1945,45 +2667,122 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return ServerAccessMetadataResolver.Resolve(profile, runtimeState, selectedServerId);
     }
 
-    private void SetActiveServerAccess(string botId, string serverId, string ownerToken, string dashboardEndpoint)
+    private ServerAccessMetadata ResolveKnownServerAccessMetadata(string? selectedServerId)
+    {
+        var server = !string.IsNullOrWhiteSpace(selectedServerId)
+            ? FindServerById(selectedServerId)
+            : SelectedServer;
+
+        if (server is null)
+        {
+            return ServerAccessMetadata.Invalid("No server selected for access metadata.");
+        }
+
+        var ownerToken = FirstNonEmptyMetadataValue(server.Metadata, new[]
+        {
+            ClientOwnerTokenMetadataKey,
+            ServerAccessOwnerTokenMetadataKey,
+            "owner_token",
+            "server.owner_token"
+        });
+
+        if (string.IsNullOrWhiteSpace(ownerToken))
+        {
+            return ServerAccessMetadata.Invalid("Owner token missing from selected server metadata.");
+        }
+
+        var dashboardEndpoint = ResolveServerDashboardEndpoint(server);
+        if (string.IsNullOrWhiteSpace(dashboardEndpoint) || !Uri.TryCreate(dashboardEndpoint, UriKind.Absolute, out _))
+        {
+            return ServerAccessMetadata.Invalid("Dashboard endpoint missing or invalid for selected server.");
+        }
+
+        return new ServerAccessMetadata(
+            IsValid: true,
+            OwnerToken: ownerToken,
+            DashboardEndpoint: dashboardEndpoint,
+            StatusMessage: "Server access metadata loaded from selected server profile.",
+            Source: "known-server-metadata");
+    }
+
+    private void SetActiveServerAccess(string botId, string sessionId, string runtimeBotId, string runtimeBotName, string serverId, string ownerToken, string dashboardEndpoint)
     {
         var access = string.IsNullOrWhiteSpace(ownerToken)
-            ? ServerAccessMetadata.Invalid("Owner token pending from active bot session.")
+            ? ServerAccessMetadata.Invalid("Owner token is not available for this runtime session yet.")
             : new ServerAccessMetadata(
                 IsValid: true,
                 OwnerToken: ownerToken,
                 DashboardEndpoint: dashboardEndpoint,
-                StatusMessage: "Server access metadata loaded from active bot session.",
+                StatusMessage: "Server access metadata loaded from active runtime session.",
                 Source: "active-session-cache");
 
         lock (_activeAccessCacheLock)
         {
-            _activeServerAccessByBotId[botId] = (serverId, access);
+            _activeSessionsByBotAndSession[(botId, sessionId)] = (runtimeBotId, runtimeBotName, serverId, access);
         }
     }
 
-    private void ClearActiveServerAccess(string botId)
+    private void ClearActiveServerAccess(string botId, string sessionId)
     {
         lock (_activeAccessCacheLock)
         {
-            _activeServerAccessByBotId.Remove(botId);
+            _activeSessionsByBotAndSession.Remove((botId, sessionId));
         }
     }
 
-    private bool TryGetActiveServerAccess(string botId, out string serverId, out ServerAccessMetadata access)
+    private bool TryGetActiveServerAccess(string botId, string? targetServerId, out string serverId, out ServerAccessMetadata access)
     {
         lock (_activeAccessCacheLock)
         {
-            if (_activeServerAccessByBotId.TryGetValue(botId, out var value))
+            // If a specific target server is requested, find the session for that server
+            if (!string.IsNullOrWhiteSpace(targetServerId))
             {
-                serverId = value.ServerId;
-                access = value.Access;
-                return true;
+                foreach (var kvp in _activeSessionsByBotAndSession)
+                {
+                    if (kvp.Key.BotId == botId && kvp.Value.ServerId == targetServerId)
+                    {
+                        serverId = kvp.Value.ServerId;
+                        access = kvp.Value.Access;
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                // If no specific server requested, return the first active session for this bot
+                foreach (var kvp in _activeSessionsByBotAndSession)
+                {
+                    if (kvp.Key.BotId == botId)
+                    {
+                        serverId = kvp.Value.ServerId;
+                        access = kvp.Value.Access;
+                        return true;
+                    }
+                }
             }
         }
 
         serverId = string.Empty;
         access = ServerAccessMetadata.Invalid("No active session metadata cached.");
+        return false;
+    }
+
+    private bool TryGetRuntimeSession(string sourceBotId, string sessionId, out string runtimeBotId, out string runtimeBotName, out string serverId)
+    {
+        lock (_activeAccessCacheLock)
+        {
+            if (_activeSessionsByBotAndSession.TryGetValue((sourceBotId, sessionId), out var session))
+            {
+                runtimeBotId = session.RuntimeBotId;
+                runtimeBotName = session.RuntimeBotName;
+                serverId = session.ServerId;
+                return true;
+            }
+        }
+
+        runtimeBotId = string.Empty;
+        runtimeBotName = string.Empty;
+        serverId = string.Empty;
         return false;
     }
 }

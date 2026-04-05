@@ -31,6 +31,7 @@ public sealed class BotSummaryItem : ViewModelBase
     public BotCardVisualState VisualState { get; init; }
     public AgentLifecycleState LifecycleState { get; init; }
     public bool IsAttached { get; init; }
+    public bool IsArmed => IsAttached;
     public string? LastErrorCode { get; init; }
     public required ICommand DeployCommand { get; init; }
 
@@ -62,6 +63,18 @@ public sealed class BotSummaryItem : ViewModelBase
             LastErrorCode = runtimeState?.LastErrorCode,
             DeployCommand = deployCommand
         };
+    }
+
+    public static BotSummaryItem FromProfile(
+        BotProfile profile,
+        AgentRuntimeState? runtimeState,
+        ICommand armCommand,
+        ICommand disarmCommand,
+        ICommand deployCommand)
+    {
+        _ = armCommand;
+        _ = disarmCommand;
+        return FromProfile(profile, runtimeState, deployCommand);
     }
 
     private static string BuildStatusText(AgentRuntimeState? runtimeState, BotCardVisualState visualState)

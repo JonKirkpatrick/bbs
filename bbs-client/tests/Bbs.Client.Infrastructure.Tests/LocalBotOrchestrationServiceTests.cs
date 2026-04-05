@@ -296,12 +296,6 @@ public sealed class LocalBotOrchestrationServiceTests
 
         public Task UpsertBotProfileAsync(BotProfile profile, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task<BotServerCredential?> GetBotServerCredentialAsync(string clientBotId, string serverId, string? serverGlobalId = null, CancellationToken cancellationToken = default)
-            => Task.FromResult<BotServerCredential?>(null);
-
-        public Task UpsertBotServerCredentialAsync(BotServerCredential credential, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
-
         public Task<IReadOnlyList<KnownServer>> ListKnownServersAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<KnownServer>>(Array.Empty<KnownServer>());
 

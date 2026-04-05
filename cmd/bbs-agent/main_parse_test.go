@@ -119,7 +119,7 @@ func TestDefaultControlEndpoint(t *testing.T) {
 }
 
 func TestParseLocalHello_Valid(t *testing.T) {
-	line := `{"v":"0.2","type":"hello","payload":{"name":"bot_one","owner_token":"owner_1","capabilities":["a"," b "],"credentials_file":"/tmp/creds.txt","bot_id":"bot_123","bot_secret":"sec_123"}}`
+	line := `{"v":"0.2","type":"hello","payload":{"name":"bot_one","owner_token":"owner_1","capabilities":["a"," b "],"credentials_file":"/tmp/creds.txt","bot_id":"bot_123"}}`
 
 	hello, err := parseLocalHello(line)
 	if err != nil {
@@ -138,7 +138,7 @@ func TestParseLocalHello_Valid(t *testing.T) {
 	if hello.CredentialsFile != "/tmp/creds.txt" {
 		t.Fatalf("hello.CredentialsFile = %q, want %q", hello.CredentialsFile, "/tmp/creds.txt")
 	}
-	if hello.BotID != "bot_123" || hello.BotSecret != "sec_123" {
+	if hello.BotID != "bot_123" {
 		t.Fatalf("unexpected credentials in hello: %+v", hello)
 	}
 }
@@ -198,7 +198,7 @@ func TestBuildRegisterCommand(t *testing.T) {
 	})
 
 	t.Run("full command", func(t *testing.T) {
-		cmd := buildRegisterCommand(" bot_one ", credentials{BotID: " bot_1 ", BotSecret: " sec_1 "}, "a,b", "owner_1", "nonce_abc", "1712000")
+		cmd := buildRegisterCommand(" bot_one ", credentials{BotID: " bot_1 "}, "a,b", "owner_1", "nonce_abc", "1712000")
 		want := `REGISTER bot_one a,b owner_token=owner_1 client_nonce=nonce_abc client_ts=1712000`
 		if cmd != want {
 			t.Fatalf("buildRegisterCommand = %q, want %q", cmd, want)
