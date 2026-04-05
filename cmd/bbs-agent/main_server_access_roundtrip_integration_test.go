@@ -88,7 +88,7 @@ func TestServerAccessRoundTrip_WithRealServer(t *testing.T) {
 		t.Fatalf("connectServer failed: %v\nserver log:\n%s", err, serverLog.String())
 	}
 
-	registerCommand := buildRegisterCommand(ag.name, credentials{}, ag.capabilities, "")
+	registerCommand := buildRegisterCommand(ag.name, credentials{}, ag.capabilities, "", "nonce_test", "1712000")
 	if err := ag.sendServerCommand(registerCommand); err != nil {
 		t.Fatalf("sendServerCommand(REGISTER) failed: %v", err)
 	}

@@ -116,15 +116,7 @@ func (m *Manager) finalizeArenaLocked(arena *Arena, endReason, terminalStatus st
 	record.MoveCount = len(record.MoveSequence)
 	record.CompactMoves = strings.Join(record.MoveSequence, ",")
 
-	player1BotID := ""
-	player2BotID := ""
 	winnerName := ""
-	if player1 != nil {
-		player1BotID = player1.BotID
-	}
-	if player2 != nil {
-		player2BotID = player2.BotID
-	}
 	if winnerPlayerID == 1 && player1 != nil {
 		record.WinnerBotID = player1.BotID
 		winnerName = player1.BotName
@@ -157,7 +149,7 @@ func (m *Manager) finalizeArenaLocked(arena *Arena, endReason, terminalStatus st
 	m.mu.Lock()
 	record.MatchID = m.nextMatchID
 	m.nextMatchID++
-	m.applyOutcomeToProfilesByBotIDsLocked(player1BotID, player2BotID, winnerPlayerID, isDraw)
+	m.applyOutcomeToSessionsLocked(player1, player2, winnerPlayerID, isDraw)
 	m.MatchHistory = append(m.MatchHistory, record)
 	m.mu.Unlock()
 	m.persistMatchRecord(record)
@@ -165,66 +157,44 @@ func (m *Manager) finalizeArenaLocked(arena *Arena, endReason, terminalStatus st
 	return record, nil
 }
 
-func (m *Manager) applyOutcomeToProfilesByBotIDsLocked(player1BotID, player2BotID string, winnerPlayerID int, isDraw bool) {
-	profiles := make([]*BotProfile, 0, 2)
-	if player1BotID != "" {
-		if p, ok := m.BotProfiles[player1BotID]; ok {
-			profiles = append(profiles, p)
-		}
+func (m *Manager) applyOutcomeToSessionsLocked(player1, player2 *Session, winnerPlayerID int, isDraw bool) {
+	participants := make([]*Session, 0, 2)
+	if player1 != nil {
+		participants = append(participants, player1)
 	}
-	if player2BotID != "" {
-		if p, ok := m.BotProfiles[player2BotID]; ok {
-			profiles = append(profiles, p)
-		}
-	}
-
-	for _, profile := range profiles {
-		profile.GamesPlayed++
-		profile.LastSeenAt = time.Now()
+	if player2 != nil {
+		participants = append(participants, player2)
 	}
 
 	if isDraw {
-		for _, profile := range profiles {
-			profile.Draws++
+		for _, participant := range participants {
+			participant.Draws++
 		}
-	} else {
-		if winnerPlayerID == 0 && player2BotID == "" && player1BotID != "" {
-			if p, ok := m.BotProfiles[player1BotID]; ok {
-				p.Losses++
-			}
-		}
-		if winnerPlayerID == 1 && player1BotID != "" {
-			if p, ok := m.BotProfiles[player1BotID]; ok {
-				p.Wins++
-			}
-			if player2BotID != "" {
-				if p, ok := m.BotProfiles[player2BotID]; ok {
-					p.Losses++
-				}
-			}
-		}
-		if winnerPlayerID == 2 && player2BotID != "" {
-			if p, ok := m.BotProfiles[player2BotID]; ok {
-				p.Wins++
-			}
-			if player1BotID != "" {
-				if p, ok := m.BotProfiles[player1BotID]; ok {
-					p.Losses++
-				}
-			}
-		}
+		return
 	}
 
-	for _, sess := range m.ActiveSessions {
-		if profile, ok := m.BotProfiles[sess.BotID]; ok {
-			sess.Wins = profile.Wins
-			sess.Losses = profile.Losses
-			sess.Draws = profile.Draws
-		}
+	if winnerPlayerID == 0 && player1 != nil && player2 == nil {
+		player1.Losses++
+		return
 	}
 
-	for _, profile := range profiles {
-		m.persistBotProfileLocked(profile)
+	if winnerPlayerID == 1 {
+		if player1 != nil {
+			player1.Wins++
+		}
+		if player2 != nil {
+			player2.Losses++
+		}
+		return
+	}
+
+	if winnerPlayerID == 2 {
+		if player2 != nil {
+			player2.Wins++
+		}
+		if player1 != nil {
+			player1.Losses++
+		}
 	}
 }
 

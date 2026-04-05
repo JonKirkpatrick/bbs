@@ -46,7 +46,7 @@ The app currently launches into a unified workspace shell with:
 
 Bot registration/edit is available in the center workspace, and saved bot profiles persist in SQLite and reload into the left panel on startup.
 
-Arm/disarm baseline controls are available in the center bot workspace. Lifecycle state transitions are persisted in SQLite and reflected in left-panel bot card status text.
+Launch/detach baseline controls are available in the center bot workspace. Lifecycle state transitions are persisted in SQLite and reflected in left-panel bot card status text.
 
 Current UX refinements in this shell include:
 

@@ -10,8 +10,8 @@ public sealed class BotSummaryItem : ViewModelBase
 {
     private static readonly IBrush DefaultAccentBrush = new SolidColorBrush(Color.Parse("#0e7a6d"));
     private static readonly IBrush DefaultBackgroundBrush = new SolidColorBrush(Color.Parse("#fffaf3"));
-    private static readonly IBrush ArmedAccentBrush = new SolidColorBrush(Color.Parse("#b7791f"));
-    private static readonly IBrush ArmedBackgroundBrush = new SolidColorBrush(Color.Parse("#fff4df"));
+    private static readonly IBrush AttachedAccentBrush = new SolidColorBrush(Color.Parse("#b7791f"));
+    private static readonly IBrush AttachedBackgroundBrush = new SolidColorBrush(Color.Parse("#fff4df"));
     private static readonly IBrush ActiveAccentBrush = new SolidColorBrush(Color.Parse("#2b8a3e"));
     private static readonly IBrush ActiveBackgroundBrush = new SolidColorBrush(Color.Parse("#e8f8ec"));
     private static readonly IBrush ErrorAccentBrush = new SolidColorBrush(Color.Parse("#c92a2a"));
@@ -30,46 +30,13 @@ public sealed class BotSummaryItem : ViewModelBase
     public required DateTimeOffset CreatedAtUtc { get; init; }
     public BotCardVisualState VisualState { get; init; }
     public AgentLifecycleState LifecycleState { get; init; }
-    public bool IsArmed { get; init; }
+    public bool IsAttached { get; init; }
     public string? LastErrorCode { get; init; }
-    public required ICommand ArmCommand { get; init; }
-    public required ICommand DisarmCommand { get; init; }
     public required ICommand DeployCommand { get; init; }
-    public bool CanArm => !IsArmed;
-    public bool CanDisarm => IsArmed;
-
-    public bool IsArmedToggle
-    {
-        // If we CAN disarm, it means we are currently ARMED (Toggle Up)
-        get => CanDisarm;
-        set
-        {
-            if (value)
-            {
-                // User pushed toggle UP -> Run the same command as the "Arm" button
-                if (ArmCommand.CanExecute(null)) ArmCommand.Execute(null);
-            }
-            else
-            {
-                // User pushed toggle DOWN -> Run the same command as the "Disarm" button
-                if (DisarmCommand.CanExecute(null)) DisarmCommand.Execute(null);
-            }
-
-            // We use the string "IsArmedToggle" here to tell Avalonia to refresh the knob
-            OnPropertyChanged("IsArmedToggle");
-
-            // We also notify these so the "Deploy" button visibility updates
-            OnPropertyChanged("CanArm");
-            OnPropertyChanged("CanDisarm");
-            OnPropertyChanged("IsArmed");
-        }
-    }
 
     public static BotSummaryItem FromProfile(
         BotProfile profile,
         AgentRuntimeState? runtimeState,
-        ICommand armCommand,
-        ICommand disarmCommand,
         ICommand deployCommand)
     {
         var visualState = BotCardVisualStateRules.Resolve(runtimeState);
@@ -91,10 +58,8 @@ public sealed class BotSummaryItem : ViewModelBase
             CreatedAtUtc = profile.CreatedAtUtc,
             VisualState = visualState,
             LifecycleState = runtimeState?.LifecycleState ?? AgentLifecycleState.Unknown,
-            IsArmed = runtimeState?.IsArmed ?? false,
+            IsAttached = runtimeState?.IsAttached ?? false,
             LastErrorCode = runtimeState?.LastErrorCode,
-            ArmCommand = armCommand,
-            DisarmCommand = disarmCommand,
             DeployCommand = deployCommand
         };
     }
@@ -108,7 +73,7 @@ public sealed class BotSummaryItem : ViewModelBase
 
         return visualState switch
         {
-            BotCardVisualState.Armed => "Armed",
+            BotCardVisualState.Attached => "Attached",
             BotCardVisualState.ActiveSession => "Active Session",
             BotCardVisualState.Error => string.IsNullOrWhiteSpace(runtimeState.LastErrorCode)
                 ? "Error"
@@ -121,7 +86,7 @@ public sealed class BotSummaryItem : ViewModelBase
     {
         return visualState switch
         {
-            BotCardVisualState.Armed => (ArmedAccentBrush, ArmedBackgroundBrush),
+            BotCardVisualState.Attached => (AttachedAccentBrush, AttachedBackgroundBrush),
             BotCardVisualState.ActiveSession => (ActiveAccentBrush, ActiveBackgroundBrush),
             BotCardVisualState.Error => (ErrorAccentBrush, ErrorBackgroundBrush),
             _ => (DefaultAccentBrush, DefaultBackgroundBrush)

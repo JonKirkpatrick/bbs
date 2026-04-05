@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,9 +23,10 @@ import (
 )
 
 const (
-	contractVersion = "0.2"
-	agentVersion    = "0.2.0"
-	maxScannerToken = 16 * 1024 * 1024
+	contractVersion        = "0.2"
+	agentVersion           = "0.2.0"
+	maxScannerToken        = 16 * 1024 * 1024
+	defaultRegisterTimeout = 12 * time.Second
 )
 
 type credentials struct {
@@ -97,11 +101,11 @@ type agent struct {
 	joinedMoveMS   int
 	turnStep       int
 
-	registeredBotID   string
-	issuedOwnerToken  string
-	dashboardHost     string
-	dashboardPort     string
-	dashboardEndpoint string
+	issuedOwnerToken   string
+	issuedControlToken string
+	dashboardHost      string
+	dashboardPort      string
+	dashboardEndpoint  string
 
 	orchestrationMu     sync.Mutex
 	clientArmed         bool
@@ -173,6 +177,9 @@ func run() int {
 	ag.credentials = creds
 	ag.credsPath = cfg.credentialsFile
 	ag.registerWait = cfg.registerTimeout
+	if ag.registerWait <= 0 {
+		ag.registerWait = defaultRegisterTimeout
+	}
 	ag.botConn = conn
 	go ag.readBotScanner(scanner)
 
@@ -236,7 +243,7 @@ func parseFlags() (runtimeConfig, error) {
 	flag.StringVar(&cfg.ownerToken, "owner-token", "", "optional owner token from dashboard")
 	flag.StringVar(&cfg.capabilities, "capabilities", "any", "comma-separated capability list")
 	flag.StringVar(&cfg.credentialsFile, "credentials-file", "", "path to bot credentials file (key=value format)")
-	flag.DurationVar(&cfg.registerTimeout, "register-timeout", 12*time.Second, "server register response timeout")
+	flag.DurationVar(&cfg.registerTimeout, "register-timeout", defaultRegisterTimeout, "server register response timeout")
 
 	flag.Parse()
 
@@ -256,6 +263,9 @@ func parseFlags() (runtimeConfig, error) {
 	if strings.Contains(cfg.name, " ") {
 		return cfg, errors.New("--name cannot contain spaces")
 	}
+	if cfg.registerTimeout <= 0 {
+		cfg.registerTimeout = defaultRegisterTimeout
+	}
 
 	return cfg, nil
 }
@@ -269,6 +279,7 @@ func newAgent(cfg runtimeConfig) (*agent, error) {
 		server:       cfg.server,
 		ownerToken:   strings.TrimSpace(cfg.ownerToken),
 		capabilities: strings.TrimSpace(cfg.capabilities),
+		registerWait: cfg.registerTimeout,
 		registerCh:   make(chan serverMessage, 1),
 		serverErrCh:  make(chan error, 1),
 		botReadErrCh: make(chan error, 1),
@@ -423,7 +434,6 @@ func (a *agent) handleControlLine(line string) {
 			"server":           a.server,
 			"server_connected": a.conn != nil,
 			"session_id":       a.sessionID,
-			"bot_id":           a.registeredBotID,
 			"arena_id":         a.joinedArenaID,
 			"player_id":        a.joinedPlayerID,
 			"awaiting_action":  a.awaitingAction.Load(),
@@ -433,7 +443,6 @@ func (a *agent) handleControlLine(line string) {
 			"server":             a.server,
 			"server_connected":   a.conn != nil,
 			"session_id":         a.sessionID,
-			"bot_id":             a.registeredBotID,
 			"bot_secret":         a.credentials.BotSecret,
 			"owner_token":        a.issuedOwnerToken,
 			"dashboard_host":     a.dashboardHost,
@@ -523,6 +532,102 @@ func (a *agent) handleControlLine(line string) {
 			"type":    env.Type,
 			"message": "server command passthrough is intentionally unsupported on control socket",
 		})
+	case "leave_session", "leave":
+		if a.conn == nil {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "server_not_connected",
+				"type":    env.Type,
+				"message": "server connection is not established",
+			})
+			return
+		}
+
+		if err := a.sendServerCommandWhenReady("LEAVE", 2*time.Second); err != nil {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "leave_session_failed",
+				"type":    env.Type,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		a.sendControlReply(env.ID, "leave_ack", map[string]interface{}{
+			"ok":         true,
+			"session_id": a.sessionID,
+			"arena_id":   a.joinedArenaID,
+			"message":    "leave requested",
+		})
+	case "join_session", "join":
+		if a.conn == nil {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "server_not_connected",
+				"type":    env.Type,
+				"message": "server connection is not established",
+			})
+			return
+		}
+
+		arenaID := 0
+		handicapPercent := 0
+		if len(env.Payload) > 0 {
+			var payload map[string]interface{}
+			if err := json.Unmarshal(env.Payload, &payload); err == nil {
+				arenaID = asInt(payload["arena_id"])
+				handicapPercent = asInt(payload["handicap_percent"])
+			}
+		}
+
+		if arenaID <= 0 {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "invalid_payload",
+				"type":    env.Type,
+				"message": "arena_id must be a positive integer",
+			})
+			return
+		}
+
+		joinCommand := fmt.Sprintf("JOIN %d %d", arenaID, handicapPercent)
+		if err := a.sendServerCommandWhenReady(joinCommand, 2*time.Second); err != nil {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "join_session_failed",
+				"type":    env.Type,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		a.sendControlReply(env.ID, "join_ack", map[string]interface{}{
+			"ok":               true,
+			"session_id":       a.sessionID,
+			"arena_id":         arenaID,
+			"handicap_percent": handicapPercent,
+			"message":          "join requested",
+		})
+	case "quit_session", "quit_server":
+		if a.conn == nil {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "server_not_connected",
+				"type":    env.Type,
+				"message": "server connection is not established",
+			})
+			return
+		}
+
+		a.markExpectedServerDisconnect()
+		if err := a.sendServerCommandWhenReady("QUIT", 2*time.Second); err != nil {
+			a.sendControlReply(env.ID, "control_error", map[string]interface{}{
+				"error":   "quit_session_failed",
+				"type":    env.Type,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		a.clearServerSessionState()
+		a.sendControlReply(env.ID, "quit_session_ack", map[string]interface{}{
+			"ok":      true,
+			"message": "quit requested",
+		})
 	case "quit":
 		reason := "control_quit"
 		if len(env.Payload) > 0 {
@@ -578,23 +683,24 @@ func (a *agent) lifecycleSnapshot() (bool, string, string) {
 	return a.clientArmed, a.armReason, a.armChangedAtRFC3339
 }
 
-func (a *agent) applyRegisterPayload(registerPayload map[string]interface{}) (string, string) {
+func (a *agent) applyRegisterPayload(registerPayload map[string]interface{}) string {
 	a.sessionID = asInt(registerPayload["session_id"])
 	if registerPayload == nil {
-		return "", ""
+		return ""
 	}
 
-	botID := asString(registerPayload["bot_id"])
-	botSecret := asString(registerPayload["bot_secret"])
-	a.registeredBotID = botID
 	token := asString(registerPayload["owner_token"])
 	if token != "" {
 		a.issuedOwnerToken = token
 	}
+	controlToken := asString(registerPayload["control_token"])
+	if controlToken != "" {
+		a.issuedControlToken = controlToken
+	}
 	a.dashboardHost = asString(registerPayload["dashboard_host"])
 	a.dashboardPort = asString(registerPayload["dashboard_port"])
 	a.dashboardEndpoint = asString(registerPayload["dashboard_endpoint"])
-	return botID, botSecret
+	return asString(registerPayload["bot_secret"])
 }
 
 func (a *agent) sendControl(msg contractMessage) error {
@@ -771,10 +877,7 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 	}
 
 	registerPayload, _ := registerMsg.Payload.(map[string]interface{})
-	botID, botSecret := a.applyRegisterPayload(registerPayload)
-	if botID != "" {
-		a.credentials.BotID = botID
-	}
+	botSecret := a.applyRegisterPayload(registerPayload)
 	if botSecret != "" {
 		a.credentials.BotSecret = botSecret
 	}
@@ -790,9 +893,8 @@ func (a *agent) connectAndRegister(server string) (map[string]interface{}, error
 		"server":             a.server,
 		"server_connected":   a.conn != nil,
 		"session_id":         a.sessionID,
-		"bot_id":             a.registeredBotID,
-		"bot_secret":         a.credentials.BotSecret,
 		"owner_token":        a.issuedOwnerToken,
+		"control_token":      a.issuedControlToken,
 		"dashboard_host":     a.dashboardHost,
 		"dashboard_port":     a.dashboardPort,
 		"dashboard_endpoint": a.dashboardEndpoint,
@@ -817,8 +919,13 @@ func (a *agent) consumeExpectedServerDisconnect() bool {
 
 func (a *agent) sendRegisterAndWait(creds credentials) (serverMessage, error) {
 	drainRegisterChannel(a.registerCh)
+	clientNonce, nonceErr := randomHex(12)
+	if nonceErr != nil {
+		return serverMessage{}, fmt.Errorf("failed to generate client nonce: %w", nonceErr)
+	}
+	clientTs := strconv.FormatInt(time.Now().UTC().Unix(), 10)
 
-	registerCommand := buildRegisterCommand(a.name, creds, a.capabilities, "")
+	registerCommand := buildRegisterCommand(a.name, creds, a.capabilities, "", clientNonce, clientTs)
 	fmt.Fprintf(os.Stderr, "[agent] sending REGISTER to %s\n", a.server)
 	if err := a.sendServerCommand(registerCommand); err != nil {
 		return serverMessage{}, fmt.Errorf("failed to send register command: %w", err)
@@ -858,6 +965,9 @@ func shouldRetryRegisterWithFreshCredentials(registerMsg serverMessage, creds cr
 }
 
 func waitForRegister(ch <-chan serverMessage, timeout time.Duration) (serverMessage, error) {
+	if timeout <= 0 {
+		timeout = defaultRegisterTimeout
+	}
 	select {
 	case msg := <-ch:
 		return msg, nil
@@ -1164,6 +1274,40 @@ func (a *agent) sendServerCommand(command string) error {
 	return err
 }
 
+func (a *agent) sendServerCommandWhenReady(command string, waitTimeout time.Duration) error {
+	if waitTimeout <= 0 {
+		waitTimeout = 2 * time.Second
+	}
+
+	deadline := time.Now().Add(waitTimeout)
+	for a.awaitingAction.Load() {
+		if time.Now().After(deadline) {
+			return errors.New("bot is awaiting action; try again shortly")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	return a.sendServerCommand(command)
+}
+
+func (a *agent) clearServerSessionState() {
+	a.sessionID = 0
+	a.joinedArenaID = 0
+	a.joinedPlayerID = 0
+	a.joinedGame = ""
+	a.joinedTimeMS = 0
+	a.joinedMoveMS = 0
+	a.turnStep = 0
+	a.lastStatePayload = nil
+	a.pendingResponse = nil
+	a.awaitingAction.Store(false)
+	a.issuedOwnerToken = ""
+	a.issuedControlToken = ""
+	a.dashboardHost = ""
+	a.dashboardPort = ""
+	a.dashboardEndpoint = ""
+}
+
 func (a *agent) shutdown(reason string) {
 	a.cancel()
 
@@ -1243,20 +1387,9 @@ func parseServerAddress(raw string) (string, int, error) {
 	return host, port, nil
 }
 
-func buildRegisterCommand(name string, creds credentials, capabilitiesCSV, ownerToken string) string {
+func buildRegisterCommand(name string, creds credentials, capabilitiesCSV, ownerToken, clientNonce, clientTimestamp string) string {
+	_ = creds
 	parts := []string{"REGISTER", strings.TrimSpace(name)}
-
-	if strings.TrimSpace(creds.BotID) != "" {
-		parts = append(parts, strings.TrimSpace(creds.BotID))
-	} else {
-		parts = append(parts, "\"\"")
-	}
-
-	if strings.TrimSpace(creds.BotSecret) != "" {
-		parts = append(parts, strings.TrimSpace(creds.BotSecret))
-	} else {
-		parts = append(parts, "\"\"")
-	}
 
 	caps := strings.TrimSpace(capabilitiesCSV)
 	if caps != "" {
@@ -1268,7 +1401,28 @@ func buildRegisterCommand(name string, creds credentials, capabilitiesCSV, owner
 		parts = append(parts, "owner_token="+ownerToken)
 	}
 
+	clientNonce = strings.TrimSpace(clientNonce)
+	if clientNonce != "" {
+		parts = append(parts, "client_nonce="+clientNonce)
+	}
+
+	clientTimestamp = strings.TrimSpace(clientTimestamp)
+	if clientTimestamp != "" {
+		parts = append(parts, "client_ts="+clientTimestamp)
+	}
+
 	return strings.Join(parts, " ")
+}
+
+func randomHex(byteCount int) (string, error) {
+	if byteCount <= 0 {
+		return "", errors.New("byteCount must be positive")
+	}
+	b := make([]byte, byteCount)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func splitCapabilities(csv string) []string {

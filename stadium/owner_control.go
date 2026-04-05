@@ -12,6 +12,10 @@ func NewOwnerToken() (string, error) {
 	return newToken("owner", 18)
 }
 
+func NewControlToken() (string, error) {
+	return newToken("ctl", 18)
+}
+
 func normalizeOwnerToken(raw string) string {
 	return strings.TrimSpace(raw)
 }

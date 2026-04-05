@@ -49,20 +49,20 @@ Estimate scale:
 | A2-04 | A2 | Create reusable card components for bot/server entries with status style hooks | S | A2-01 | done | Card component supports title, metadata, status style, click/select |
 | A3-01 | A3 | Implement bot registration/edit form in center activity area | M | A2-03, A1-02 | done | User can add and edit bot path/args/metadata |
 | A3-02 | A3 | Persist bot profiles and display them in left panel cards | S | A3-01 | done | Bot list survives restart and renders from storage |
-| A3-03 | A3 | Implement arm/disarm orchestration service for bot+agent lifecycle | L | A3-02 | done | Arm launches processes and disarm stops them with clear result state |
+| A3-03 | A3 | Implement launch/detach orchestration service for bot+agent lifecycle | L | A3-02 | done | Launch starts processes and detach stops them with clear result state |
 | A3-04 | A3 | Wire control-channel status/lifecycle updates into bot runtime state model | M | A3-03 | done | Runtime updates reflected in state store and visible in UI |
-| A3-05 | A3 | Apply bot card glow rules (amber armed, green active session, red error) | S | A3-04, A2-04 | todo | Glows match state transitions and update in near-real time |
+| A3-05 | A3 | Apply bot card glow rules (amber attached, green active session, red error) | S | A3-04, A2-04 | todo | Glows match state transitions and update in near-real time |
 | A4-01 | A4 | Implement known server registration/edit flow in center activity area | M | A2-03, A1-02 | todo | User can add/edit server records with IDs and endpoints |
 | A4-02 | A4 | Persist known server records + cached plugin snapshots | M | A4-01 | todo | Server and plugin cache state survives restart |
 | A4-03 | A4 | Implement startup probe loop for known servers | M | A4-02 | todo | Startup probe marks servers reachable/unreachable with timeout policy |
 | A4-04 | A4 | Apply server card visual states (green live, grey inactive) | S | A4-03, A2-04 | todo | Card styling matches latest probe result |
 | A4-05 | A4 | Add manual refresh/reprobe action for known servers | S | A4-03 | todo | User can trigger reprobe and see updated status |
 | A5-01 | A5 | Build server detail view in center activity area | M | A4-02, A2-03 | todo | Selecting a server loads details view with cached metadata |
-| A5-02 | A5 | Retrieve and display agent `server_access` metadata (owner token + dashboard endpoint) | M | A3-04, A5-01 | todo | Access metadata shown for armed bot sessions and refreshable |
+| A5-02 | A5 | Retrieve and display agent `server_access` metadata (owner token + dashboard endpoint) | M | A3-04, A5-01 | todo | Access metadata shown for attached bot sessions and refreshable |
 | A5-03 | A5 | Add owner-token-gated action stubs (create/join arena command path placeholders) | M | A5-02 | todo | Gated actions appear only when session metadata is valid |
 | A5-04 | A5 | Add server plugin catalog viewer pane in center activity area | S | A5-01, A4-02 | todo | Cached plugin data is readable in UI |
 | A6-01 | A6 | Add integration tests for first-launch identity + storage migration | M | A1-03, A1-04 | done | Tests validate initialization and schema progression behavior |
-| A6-02 | A6 | Add integration tests for arm/disarm/lifecycle/quit orchestration states | M | A3-04 | in-progress | Tests cover expected transitions and failure handling |
+| A6-02 | A6 | Add integration tests for launch/detach/lifecycle/quit orchestration states | M | A3-04 | in-progress | Tests cover expected transitions and failure handling |
 | A6-03 | A6 | Add resilient error handling for stale process handles and socket failures | M | A3-03 | todo | User-visible errors are clear and app recovers without restart |
 | A6-04 | A6 | Document Linux build/run packaging and local development workflow | S | A2-01, A6-02 | todo | Docs allow clean setup and launch on a fresh Linux environment |
 | A6-05 | A6 | Alpha readiness pass (UX sanity, data durability checks, smoke checklist) | M | A6-01, A6-02, A6-04 | todo | Internal alpha sign-off checklist completed |
@@ -216,16 +216,16 @@ Execution order:
 ### PR4 Orchestration service baseline
 
 - Suggested branch: `track-a/s2-pr4-orchestration-baseline`
-- Suggested PR title: `Track A S2/PR4: Arm/disarm orchestration baseline and lifecycle state`
+- Suggested PR title: `Track A S2/PR4: Launch/detach orchestration baseline and lifecycle state`
 - Task mapping:
 	- `A3-03` (baseline path)
 	- `A3-04` (initial state propagation)
 - Completion checks:
-	- Arm/disarm service path is implemented for at least one bot profile.
+	- Launch/detach service path is implemented for at least one bot profile.
 	- Lifecycle state transitions are captured in runtime state model.
 	- UI can surface lifecycle state changes without app restart.
 - Evidence to attach:
-	- Integration test output for arm/disarm transitions.
+	- Integration test output for launch/detach transitions.
 	- Runtime log excerpt with lifecycle events.
 
 Sprint 2 exit criteria:
@@ -251,7 +251,7 @@ Execution order:
 - Task mapping:
 	- `A3-05`
 - Completion checks:
-	- Bot cards show amber while armed/idle, green during active session, and red on error conditions.
+	- Bot cards show amber while attached/idle, green during active session, and red on error conditions.
 	- Glow transitions follow runtime state updates without requiring app restart.
 	- Visual rules are covered by view model/state mapping tests where feasible.
 - Evidence to attach:
@@ -337,11 +337,11 @@ Execution order:
 ### PR2 Session access metadata in server context
 
 - Suggested branch: `track-a/s4-pr2-server-access-metadata`
-- Suggested PR title: `Track A S4/PR2: Surface server access metadata from armed sessions`
+- Suggested PR title: `Track A S4/PR2: Surface server access metadata from attached sessions`
 - Task mapping:
 	- `A5-02`
 - Completion checks:
-	- Active armed sessions can retrieve and display `server_access` metadata.
+	- Active attached sessions can retrieve and display `server_access` metadata.
 	- Owner token and dashboard endpoint fields are surfaced with clear validity states.
 	- Metadata refresh path is non-blocking and error-tolerant.
 - Evidence to attach:
@@ -370,7 +370,7 @@ Execution order:
 	- `A6-02`
 	- `A6-03`
 - Completion checks:
-	- Integration tests cover arm/disarm/lifecycle/quit transitions including failure paths.
+	- Integration tests cover launch/detach/lifecycle/quit transitions including failure paths.
 	- Stale process handles and socket failures are surfaced with recoverable UX behavior.
 	- Failure handling does not require app restart to continue normal operation.
 - Evidence to attach:

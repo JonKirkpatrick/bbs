@@ -29,7 +29,7 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
         _logger = logger;
     }
 
-    public async Task<BotOrchestrationResult> ArmBotAsync(BotProfile profile, CancellationToken cancellationToken = default)
+    public async Task<BotOrchestrationResult> LaunchBotAsync(BotProfile profile, CancellationToken cancellationToken = default)
     {
         AgentRuntimeState nextState;
         string message;
@@ -38,26 +38,26 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
 
         if (string.IsNullOrWhiteSpace(profile.LaunchPath))
         {
-            nextState = BuildState(profile.BotId, AgentLifecycleState.Error, isArmed: false, "launch_path_required");
-            message = "Cannot arm bot: launch path is required.";
+            nextState = BuildState(profile.BotId, AgentLifecycleState.Error, isAttached: false, "launch_path_required");
+            message = "Cannot launch bot: launch path is required.";
             success = false;
         }
         else if (!File.Exists(profile.LaunchPath))
         {
-            nextState = BuildState(profile.BotId, AgentLifecycleState.Error, isArmed: false, "launch_path_missing");
-            message = $"Cannot arm bot: launch path not found ({profile.LaunchPath}).";
+            nextState = BuildState(profile.BotId, AgentLifecycleState.Error, isAttached: false, "launch_path_missing");
+            message = $"Cannot launch bot: launch path not found ({profile.LaunchPath}).";
             success = false;
         }
         else if (!TryStartManagedPair(profile, out startedPair, out var launchErrorCode, out var launchErrorMessage))
         {
-            nextState = BuildState(profile.BotId, AgentLifecycleState.Error, isArmed: false, launchErrorCode);
+            nextState = BuildState(profile.BotId, AgentLifecycleState.Error, isAttached: false, launchErrorCode);
             message = launchErrorMessage;
             success = false;
         }
         else
         {
-            nextState = BuildState(profile.BotId, AgentLifecycleState.Idle, isArmed: true, null);
-            message = "Bot armed successfully; agent+bot pair started.";
+            nextState = BuildState(profile.BotId, AgentLifecycleState.Idle, isAttached: true, null);
+            message = "Bot launched successfully; agent+bot pair started.";
             success = true;
         }
 
@@ -65,13 +65,13 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
         {
             await _storage.UpsertAgentRuntimeStateAsync(nextState, cancellationToken);
             _logger?.Log(success ? LogLevel.Information : LogLevel.Warning,
-                "bot_arm_result",
+                "bot_launch_result",
                 message,
                 new System.Collections.Generic.Dictionary<string, string>
                 {
                     ["bot_id"] = profile.BotId,
                     ["state"] = nextState.LifecycleState.ToString(),
-                    ["armed"] = nextState.IsArmed.ToString()
+                    ["attached"] = nextState.IsAttached.ToString()
                 });
 
             return new BotOrchestrationResult(success, nextState, message);
@@ -84,11 +84,11 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
             }
 
             var errorCode = MapExceptionToErrorCode(ex);
-            var failureState = BuildState(profile.BotId, AgentLifecycleState.Error, isArmed: false, errorCode);
-            var failureMessage = $"Bot arm failed due to runtime error ({errorCode}). You can retry without restarting the app.";
+            var failureState = BuildState(profile.BotId, AgentLifecycleState.Error, isAttached: false, errorCode);
+            var failureMessage = $"Bot launch failed due to runtime error ({errorCode}). You can retry without restarting the app.";
 
             _logger?.Log(LogLevel.Warning,
-                "bot_arm_runtime_error",
+                "bot_launch_runtime_error",
                 failureMessage,
                 new System.Collections.Generic.Dictionary<string, string>
                 {
@@ -101,23 +101,23 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
         }
     }
 
-    public async Task<BotOrchestrationResult> DisarmBotAsync(BotProfile profile, CancellationToken cancellationToken = default)
+    public async Task<BotOrchestrationResult> StopBotAsync(BotProfile profile, CancellationToken cancellationToken = default)
     {
-        var nextState = BuildState(profile.BotId, AgentLifecycleState.Stopped, isArmed: false, null);
+        var nextState = BuildState(profile.BotId, AgentLifecycleState.Stopped, isAttached: false, null);
         try
         {
             StopManagedPair(profile.BotId);
             await _storage.UpsertAgentRuntimeStateAsync(nextState, cancellationToken);
 
-            const string message = "Bot disarmed successfully.";
+            const string message = "Bot detached successfully.";
             _logger?.Log(LogLevel.Information,
-                "bot_disarm_result",
+                "bot_detach_result",
                 message,
                 new System.Collections.Generic.Dictionary<string, string>
                 {
                     ["bot_id"] = profile.BotId,
                     ["state"] = nextState.LifecycleState.ToString(),
-                    ["armed"] = nextState.IsArmed.ToString()
+                    ["attached"] = nextState.IsAttached.ToString()
                 });
 
             return new BotOrchestrationResult(true, nextState, message);
@@ -125,11 +125,11 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
         catch (Exception ex)
         {
             var errorCode = MapExceptionToErrorCode(ex);
-            var failureState = BuildState(profile.BotId, AgentLifecycleState.Error, isArmed: false, errorCode);
-            var failureMessage = $"Bot disarm failed due to runtime error ({errorCode}). You can retry without restarting the app.";
+            var failureState = BuildState(profile.BotId, AgentLifecycleState.Error, isAttached: false, errorCode);
+            var failureMessage = $"Bot detach failed due to runtime error ({errorCode}). You can retry without restarting the app.";
 
             _logger?.Log(LogLevel.Warning,
-                "bot_disarm_runtime_error",
+                "bot_detach_runtime_error",
                 failureMessage,
                 new System.Collections.Generic.Dictionary<string, string>
                 {
@@ -175,7 +175,7 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
                 out var agentError))
         {
             errorCode = "agent_launch_failed";
-            errorMessage = $"Cannot arm bot: failed to launch bbs-agent ({agentError}).";
+            errorMessage = $"Cannot launch bot: failed to start bbs-agent ({agentError}).";
             return false;
         }
 
@@ -186,13 +186,13 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
                 var exitCode = agentProcess.ExitCode;
                 StopProcess(agentProcess, "agent", profile.BotId);
                 errorCode = $"agent_process_exited_{exitCode}";
-                errorMessage = $"Cannot arm bot: bbs-agent exited before socket became ready (exit {exitCode}).";
+                errorMessage = $"Cannot launch bot: bbs-agent exited before socket became ready (exit {exitCode}).";
                 return false;
             }
 
             StopProcess(agentProcess, "agent", profile.BotId);
             errorCode = "agent_socket_not_ready";
-            errorMessage = "Cannot arm bot: bbs-agent did not publish its socket in time.";
+            errorMessage = "Cannot launch bot: bbs-agent did not publish its socket in time.";
             return false;
         }
 
@@ -205,7 +205,7 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
         {
             StopProcess(agentProcess, "agent", profile.BotId);
             errorCode = "bot_launch_failed";
-            errorMessage = $"Cannot arm bot: failed to launch bot process ({botError}).";
+            errorMessage = $"Cannot launch bot: failed to start bot process ({botError}).";
             return false;
         }
 
@@ -670,7 +670,7 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
 
         _logger?.Log(LogLevel.Warning,
             $"{role}_process_exited",
-            $"Local {role} process exited while armed pair was active.",
+            $"Local {role} process exited while attached pair was active.",
             new Dictionary<string, string>
             {
                 ["bot_id"] = botId,
@@ -679,12 +679,12 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
             });
 
         var currentState = await _storage.GetAgentRuntimeStateAsync(botId);
-        if (currentState is null || !currentState.IsArmed)
+        if (currentState is null || !currentState.IsAttached)
         {
             return;
         }
 
-        var exitedState = BuildState(botId, AgentLifecycleState.Error, isArmed: false, $"{role}_process_exited_{exitCode}");
+        var exitedState = BuildState(botId, AgentLifecycleState.Error, isAttached: false, $"{role}_process_exited_{exitCode}");
         try
         {
             await _storage.UpsertAgentRuntimeStateAsync(exitedState);
@@ -767,12 +767,12 @@ public sealed class LocalBotOrchestrationService : IBotOrchestrationService, IDi
         };
     }
 
-    private static AgentRuntimeState BuildState(string botId, AgentLifecycleState lifecycle, bool isArmed, string? lastErrorCode)
+    private static AgentRuntimeState BuildState(string botId, AgentLifecycleState lifecycle, bool isAttached, string? lastErrorCode)
     {
         return new AgentRuntimeState(
             BotId: botId,
             LifecycleState: lifecycle,
-            IsArmed: isArmed,
+            IsAttached: isAttached,
             LastErrorCode: lastErrorCode,
             UpdatedAtUtc: DateTimeOffset.UtcNow);
     }

@@ -13,7 +13,7 @@ func GetHelpText(isRegistered bool) string {
 	sb.WriteString("\n--- BBS STADIUM HELP ---\n")
 
 	if !isRegistered {
-		fmt.Fprintf(&sb, format, "REGISTER <name> <id> <secret>", "Use id/secret or \"\" \"\" to request a new identity")
+		fmt.Fprintf(&sb, format, "REGISTER <name> [caps] [owner_token=<token>]", "Create a new runtime session identity")
 		fmt.Fprintf(&sb, format, "QUIT", "Exit")
 	} else {
 		fmt.Fprintf(&sb, format, "LIST", "View arenas")

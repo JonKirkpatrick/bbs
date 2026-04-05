@@ -39,23 +39,19 @@ func TestBootstrapServerIdentity_CreatesAndRegisters(t *testing.T) {
 	}
 }
 
-func TestRegisterSession_PersistsProfile(t *testing.T) {
+func TestRegisterSession_DoesNotPersistProfile(t *testing.T) {
 	m := newTestManager()
 	store := NewInMemoryPersistenceStore()
 	m.SetPersistenceStore(store)
 
 	session := &Session{}
-	result, err := m.RegisterSession(session, "bot-alpha", "", "", []string{"any"}, "")
+	_, err := m.RegisterSession(session, "bot-alpha", "", "", []string{"any"}, "")
 	if err != nil {
 		t.Fatalf("RegisterSession returned error: %v", err)
 	}
 
-	persisted, ok := store.botProfiles[result.BotID]
-	if !ok {
-		t.Fatal("expected bot profile to be persisted")
-	}
-	if persisted.DisplayName != "bot-alpha" {
-		t.Fatalf("display name mismatch: got %q", persisted.DisplayName)
+	if len(store.botProfiles) != 0 {
+		t.Fatalf("expected no persisted bot profiles, found %d", len(store.botProfiles))
 	}
 }
 

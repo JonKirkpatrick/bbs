@@ -7,8 +7,8 @@ func TestSnapshot_ContainsSessionsArenasHistory(t *testing.T) {
 	game := testGame{name: "snap_game", requiredPlayers: 2, enforceMoveClock: true, supportsHandicap: true, state: `{"turn":1}`}
 	arenaID := m.CreateArena(game, []string{"size=8"}, 1000, true)
 
-	s1, r1 := newRegisteredSession(t, m, "p1")
-	s2, r2 := newRegisteredSession(t, m, "p2")
+	s1, _ := newRegisteredSession(t, m, "p1")
+	s2, _ := newRegisteredSession(t, m, "p2")
 	s3, _ := newRegisteredSession(t, m, "obs")
 
 	if err := m.JoinArena(arenaID, s1, 0); err != nil {
@@ -29,8 +29,8 @@ func TestSnapshot_ContainsSessionsArenasHistory(t *testing.T) {
 	if snapshot.ArenaCount != 1 {
 		t.Fatalf("ArenaCount = %d, want 1", snapshot.ArenaCount)
 	}
-	if snapshot.BotCount != 3 {
-		t.Fatalf("BotCount = %d, want 3", snapshot.BotCount)
+	if snapshot.BotCount != 0 {
+		t.Fatalf("BotCount = %d, want 0", snapshot.BotCount)
 	}
 
 	if len(snapshot.Sessions) != 3 {
@@ -54,19 +54,8 @@ func TestSnapshot_ContainsSessionsArenasHistory(t *testing.T) {
 		t.Fatalf("unexpected observer snapshot: %+v", arena)
 	}
 
-	// Ensure bot snapshot sorting is deterministic.
-	if len(snapshot.Bots) != 3 {
-		t.Fatalf("Bots length = %d, want 3", len(snapshot.Bots))
-	}
-	if snapshot.Bots[0].BotID > snapshot.Bots[1].BotID || snapshot.Bots[1].BotID > snapshot.Bots[2].BotID {
-		t.Fatalf("bot snapshots are not sorted by BotID: %+v", snapshot.Bots)
-	}
-
-	if _, ok := m.BotProfiles[r1.BotID]; !ok {
-		t.Fatalf("missing profile for bot %q", r1.BotID)
-	}
-	if _, ok := m.BotProfiles[r2.BotID]; !ok {
-		t.Fatalf("missing profile for bot %q", r2.BotID)
+	if len(snapshot.Bots) != 0 {
+		t.Fatalf("Bots length = %d, want 0", len(snapshot.Bots))
 	}
 }
 

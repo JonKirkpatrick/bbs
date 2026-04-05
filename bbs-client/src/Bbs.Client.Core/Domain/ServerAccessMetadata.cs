@@ -50,9 +50,9 @@ public static class ServerAccessMetadataResolver
             return ServerAccessMetadata.Invalid("No bot selected for server access metadata.");
         }
 
-        if (runtimeState is null || !runtimeState.IsArmed)
+        if (runtimeState is null || !runtimeState.IsAttached)
         {
-            return ServerAccessMetadata.Invalid("Selected bot is not armed.");
+            return ServerAccessMetadata.Invalid("Selected bot is not attached.");
         }
 
         var metadata = botProfile.Metadata;
@@ -61,19 +61,19 @@ public static class ServerAccessMetadataResolver
             !string.IsNullOrWhiteSpace(metadataServerId) &&
             !string.Equals(metadataServerId, selectedServerId, StringComparison.OrdinalIgnoreCase))
         {
-            return ServerAccessMetadata.Invalid("Armed bot metadata is for a different server.");
+            return ServerAccessMetadata.Invalid("Attached bot metadata is for a different server.");
         }
 
         var ownerToken = FirstNonEmpty(metadata, OwnerTokenKeys);
         if (string.IsNullOrWhiteSpace(ownerToken))
         {
-            return ServerAccessMetadata.Invalid("Owner token missing from armed bot metadata.");
+            return ServerAccessMetadata.Invalid("Owner token missing from attached bot metadata.");
         }
 
         var dashboardEndpoint = FirstNonEmpty(metadata, DashboardEndpointKeys);
         if (string.IsNullOrWhiteSpace(dashboardEndpoint))
         {
-            return ServerAccessMetadata.Invalid("Dashboard endpoint missing from armed bot metadata.");
+            return ServerAccessMetadata.Invalid("Dashboard endpoint missing from attached bot metadata.");
         }
 
         if (!Uri.TryCreate(dashboardEndpoint, UriKind.Absolute, out _))
@@ -85,8 +85,8 @@ public static class ServerAccessMetadataResolver
             IsValid: true,
             OwnerToken: ownerToken,
             DashboardEndpoint: dashboardEndpoint,
-            StatusMessage: "Server access metadata loaded from armed bot session.",
-            Source: "armed-bot-metadata");
+                StatusMessage: "Server access metadata loaded from attached bot session.",
+                Source: "attached-bot-metadata");
     }
 
     private static string? FirstNonEmpty(IReadOnlyDictionary<string, string> metadata, IEnumerable<string> keys)

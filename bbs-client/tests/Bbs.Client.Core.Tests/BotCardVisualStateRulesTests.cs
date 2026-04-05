@@ -20,13 +20,13 @@ public sealed class BotCardVisualStateRulesTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.Idle,
-            IsArmed: true,
+            IsAttached: true,
             LastErrorCode: null,
             UpdatedAtUtc: DateTimeOffset.UtcNow);
 
         var state = BotCardVisualStateRules.Resolve(runtime);
 
-        Assert.Equal(BotCardVisualState.Armed, state);
+        Assert.Equal(BotCardVisualState.Attached, state);
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public sealed class BotCardVisualStateRulesTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.ActiveSession,
-            IsArmed: true,
+            IsAttached: true,
             LastErrorCode: null,
             UpdatedAtUtc: DateTimeOffset.UtcNow);
 
@@ -50,7 +50,7 @@ public sealed class BotCardVisualStateRulesTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.Error,
-            IsArmed: false,
+            IsAttached: false,
             LastErrorCode: null,
             UpdatedAtUtc: DateTimeOffset.UtcNow);
 
@@ -65,7 +65,7 @@ public sealed class BotCardVisualStateRulesTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.Idle,
-            IsArmed: true,
+            IsAttached: true,
             LastErrorCode: "socket_timeout",
             UpdatedAtUtc: DateTimeOffset.UtcNow);
 

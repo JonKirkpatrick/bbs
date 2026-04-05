@@ -3,7 +3,7 @@ namespace Bbs.Client.Core.Domain;
 public enum BotCardVisualState
 {
     Registered = 0,
-    Armed = 1,
+    Attached = 1,
     ActiveSession = 2,
     Error = 3
 }
@@ -27,9 +27,9 @@ public static class BotCardVisualStateRules
             return BotCardVisualState.ActiveSession;
         }
 
-        if (runtimeState.IsArmed)
+        if (runtimeState.IsAttached)
         {
-            return BotCardVisualState.Armed;
+            return BotCardVisualState.Attached;
         }
 
         return BotCardVisualState.Registered;

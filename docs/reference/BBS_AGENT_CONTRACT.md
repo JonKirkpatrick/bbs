@@ -140,30 +140,30 @@ Request the current server access metadata captured during REGISTER.
 }
 ```
 
-### `arm`
+### `launch`
 
-Mark agent lifecycle state as armed for client orchestration.
+Mark agent lifecycle state as attached for client orchestration.
 
 ```json
 {
   "v": "0.2",
-  "type": "arm",
-  "id": "req-arm-1",
+  "type": "launch",
+  "id": "req-launch-1",
   "payload": {
     "reason": "client_boot"
   }
 }
 ```
 
-### `disarm`
+### `detach`
 
-Mark agent lifecycle state as disarmed for client orchestration.
+Mark agent lifecycle state as detached for client orchestration.
 
 ```json
 {
   "v": "0.2",
-  "type": "disarm",
-  "id": "req-disarm-1",
+  "type": "detach",
+  "id": "req-detach-1",
   "payload": {
     "reason": "client_shutdown"
   }
@@ -411,34 +411,34 @@ Response to control `server_access` request.
 }
 ```
 
-### `arm_ack`
+### `launch_ack`
 
-Response to `arm`.
+Response to `launch`.
 
 ```json
 {
   "v": "0.2",
-  "type": "arm_ack",
-  "id": "req-arm-1",
+  "type": "launch_ack",
+  "id": "req-launch-1",
   "payload": {
-    "armed": true,
+    "attached": true,
     "reason": "client_boot",
     "changed_at": "2026-03-23T12:00:00Z"
   }
 }
 ```
 
-### `disarm_ack`
+### `detach_ack`
 
-Response to `disarm`.
+Response to `detach`.
 
 ```json
 {
   "v": "0.2",
-  "type": "disarm_ack",
-  "id": "req-disarm-1",
+  "type": "detach_ack",
+  "id": "req-detach-1",
   "payload": {
-    "armed": false,
+    "attached": false,
     "reason": "client_shutdown",
     "changed_at": "2026-03-23T12:05:00Z"
   }
@@ -455,7 +455,7 @@ Response to `lifecycle` request.
   "type": "lifecycle",
   "id": "req-lifecycle-1",
   "payload": {
-    "armed": true,
+    "attached": true,
     "reason": "client_boot",
     "changed_at": "2026-03-23T12:00:00Z"
   }

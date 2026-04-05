@@ -33,12 +33,12 @@ public sealed class LocalBotOrchestrationServiceTests
             });
 
         var service = new LocalBotOrchestrationService(storage);
-        var result = await service.ArmBotAsync(profile);
+        var result = await service.LaunchBotAsync(profile);
         var state = await storage.GetAgentRuntimeStateAsync(profile.BotId);
 
         Assert.True(result.Succeeded);
         Assert.NotNull(state);
-        Assert.True(state!.IsArmed);
+        Assert.True(state!.IsAttached);
         Assert.Equal(AgentLifecycleState.Idle, state.LifecycleState);
         Assert.Null(state.LastErrorCode);
     }
@@ -56,12 +56,12 @@ public sealed class LocalBotOrchestrationServiceTests
             launchPath: "/tmp/does-not-exist-bot.py");
 
         var service = new LocalBotOrchestrationService(storage);
-        var result = await service.ArmBotAsync(profile);
+        var result = await service.LaunchBotAsync(profile);
         var state = await storage.GetAgentRuntimeStateAsync(profile.BotId);
 
         Assert.False(result.Succeeded);
         Assert.NotNull(state);
-        Assert.False(state!.IsArmed);
+        Assert.False(state!.IsAttached);
         Assert.Equal(AgentLifecycleState.Error, state.LifecycleState);
         Assert.Equal("launch_path_missing", state.LastErrorCode);
     }
@@ -85,13 +85,13 @@ public sealed class LocalBotOrchestrationServiceTests
             });
 
         var service = new LocalBotOrchestrationService(storage);
-        await service.ArmBotAsync(profile);
-        var result = await service.DisarmBotAsync(profile);
+        await service.LaunchBotAsync(profile);
+        var result = await service.StopBotAsync(profile);
         var state = await storage.GetAgentRuntimeStateAsync(profile.BotId);
 
         Assert.True(result.Succeeded);
         Assert.NotNull(state);
-        Assert.False(state!.IsArmed);
+        Assert.False(state!.IsAttached);
         Assert.Equal(AgentLifecycleState.Stopped, state.LifecycleState);
         Assert.Null(state.LastErrorCode);
     }
@@ -111,7 +111,7 @@ public sealed class LocalBotOrchestrationServiceTests
             });
 
         var failingService = new LocalBotOrchestrationService(new ThrowingRuntimeStateStorage(new InvalidOperationException("stale handle")));
-        var failed = await failingService.DisarmBotAsync(profile);
+        var failed = await failingService.StopBotAsync(profile);
 
         Assert.False(failed.Succeeded);
         Assert.Equal(AgentLifecycleState.Error, failed.RuntimeState.LifecycleState);
@@ -122,13 +122,13 @@ public sealed class LocalBotOrchestrationServiceTests
         await storage.InitializeAsync();
         var healthyService = new LocalBotOrchestrationService(storage);
 
-        await healthyService.ArmBotAsync(profile);
-        var retry = await healthyService.DisarmBotAsync(profile);
+        await healthyService.LaunchBotAsync(profile);
+        var retry = await healthyService.StopBotAsync(profile);
         var state = await storage.GetAgentRuntimeStateAsync(profile.BotId);
 
         Assert.True(retry.Succeeded);
         Assert.NotNull(state);
-        Assert.False(state!.IsArmed);
+        Assert.False(state!.IsAttached);
         Assert.Equal(AgentLifecycleState.Stopped, state.LifecycleState);
     }
 
@@ -147,11 +147,11 @@ public sealed class LocalBotOrchestrationServiceTests
             });
 
         var service = new LocalBotOrchestrationService(new ThrowingRuntimeStateStorage(new SocketException((int)SocketError.ConnectionReset)));
-        var result = await service.ArmBotAsync(profile);
+        var result = await service.LaunchBotAsync(profile);
 
         Assert.False(result.Succeeded);
         Assert.Equal(AgentLifecycleState.Error, result.RuntimeState.LifecycleState);
-        Assert.False(result.RuntimeState.IsArmed);
+        Assert.False(result.RuntimeState.IsAttached);
         Assert.Equal("socket_connectionreset", result.RuntimeState.LastErrorCode);
         Assert.Contains("retry", result.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -171,11 +171,11 @@ public sealed class LocalBotOrchestrationServiceTests
             });
 
         var service = new LocalBotOrchestrationService(new ThrowingRuntimeStateStorage(new InvalidOperationException("stale process")));
-        var result = await service.DisarmBotAsync(profile);
+        var result = await service.StopBotAsync(profile);
 
         Assert.False(result.Succeeded);
         Assert.Equal(AgentLifecycleState.Error, result.RuntimeState.LifecycleState);
-        Assert.False(result.RuntimeState.IsArmed);
+        Assert.False(result.RuntimeState.IsAttached);
         Assert.Equal("stale_process_handle", result.RuntimeState.LastErrorCode);
         Assert.Contains("retry", result.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -202,7 +202,7 @@ public sealed class LocalBotOrchestrationServiceTests
             });
 
         var service = new LocalBotOrchestrationService(storage);
-        var armResult = await service.ArmBotAsync(profile);
+        var armResult = await service.LaunchBotAsync(profile);
         Assert.True(armResult.Succeeded);
 
         await Task.Delay(300);
@@ -210,7 +210,7 @@ public sealed class LocalBotOrchestrationServiceTests
         Assert.Contains("--socket", argsLine, StringComparison.Ordinal);
         Assert.Contains("bbs-agent-bot-socket-injected.sock", argsLine, StringComparison.Ordinal);
 
-        await service.DisarmBotAsync(profile);
+        await service.StopBotAsync(profile);
     }
 
     private static string NewTempDatabasePath()

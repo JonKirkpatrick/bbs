@@ -104,7 +104,7 @@ public sealed class SqliteClientStorageTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.Idle,
-            IsArmed: true,
+            IsAttached: true,
             LastErrorCode: null,
             UpdatedAtUtc: DateTimeOffset.Parse("2026-03-23T03:00:00+00:00"));
         await storage.UpsertAgentRuntimeStateAsync(runtime);
@@ -141,7 +141,32 @@ public sealed class SqliteClientStorageTests
         Assert.NotNull(loadedRuntime);
         Assert.Equal(runtime.BotId, loadedRuntime!.BotId);
         Assert.Equal(runtime.LifecycleState, loadedRuntime.LifecycleState);
-        Assert.True(loadedRuntime.IsArmed);
+        Assert.True(loadedRuntime.IsAttached);
+    }
+
+    [Fact]
+    public async Task ClearTransientRuntimeStateAsync_RemovesPersistedRuntimeStatus()
+    {
+        var dbPath = NewTempDatabasePath();
+        var storage = new SqliteClientStorage(dbPath);
+        await storage.InitializeAsync();
+
+        var runtime = new AgentRuntimeState(
+            BotId: "bot-ephemeral",
+            LifecycleState: AgentLifecycleState.ActiveSession,
+            IsAttached: true,
+            LastErrorCode: null,
+            UpdatedAtUtc: DateTimeOffset.Parse("2026-03-23T03:00:00+00:00"));
+
+        await storage.UpsertAgentRuntimeStateAsync(runtime);
+
+        var beforeClear = await storage.GetAgentRuntimeStateAsync(runtime.BotId);
+        Assert.NotNull(beforeClear);
+
+        await storage.ClearTransientRuntimeStateAsync();
+
+        var afterClear = await storage.GetAgentRuntimeStateAsync(runtime.BotId);
+        Assert.Null(afterClear);
     }
 
     [Fact]

@@ -2,7 +2,6 @@ package stadium
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"strings"
@@ -16,9 +15,9 @@ func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecr
 	var result RegistrationResult
 
 	now := time.Now()
-	requestedBotID = normalizeIdentityInput(requestedBotID)
-	providedSecret = normalizeIdentityInput(providedSecret)
 	ownerToken = normalizeOwnerToken(ownerToken)
+	_ = normalizeIdentityInput(requestedBotID)
+	_ = normalizeIdentityInput(providedSecret)
 
 	if name == "" {
 		return result, errors.New("name is required")
@@ -27,60 +26,7 @@ func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecr
 		return result, errors.New("owner token is invalid")
 	}
 
-	var profile *BotProfile
-	newIdentity := false
-
-	if requestedBotID == "" {
-		botID, err := newToken("bot", 12)
-		if err != nil {
-			return result, errors.New("failed to generate bot id")
-		}
-		secret, err := newToken("sec", 24)
-		if err != nil {
-			return result, errors.New("failed to generate bot secret")
-		}
-
-		for {
-			if _, exists := m.BotProfiles[botID]; !exists {
-				break
-			}
-			botID, err = newToken("bot", 12)
-			if err != nil {
-				return result, errors.New("failed to generate unique bot id")
-			}
-		}
-
-		profile = &BotProfile{
-			BotID:       botID,
-			BotSecret:   secret,
-			DisplayName: name,
-			CreatedAt:   now,
-			LastSeenAt:  now,
-		}
-		m.BotProfiles[botID] = profile
-		newIdentity = true
-	} else {
-		existing, exists := m.BotProfiles[requestedBotID]
-		if !exists {
-			return result, errors.New("unknown bot_id; send \"\" for bot_id and bot_secret to request a new identity")
-		}
-		if providedSecret == "" {
-			return result, errors.New("bot_secret required for existing bot_id")
-		}
-		if subtle.ConstantTimeCompare([]byte(existing.BotSecret), []byte(providedSecret)) != 1 {
-			return result, errors.New("invalid bot_secret")
-		}
-
-		profile = existing
-		profile.DisplayName = name
-		profile.LastSeenAt = now
-	}
-
-	// Avoid multiple simultaneous sessions for the same persistent identity.
 	for _, sess := range m.ActiveSessions {
-		if sess.BotID == profile.BotID {
-			return result, errors.New("bot already connected")
-		}
 		if ownerToken != "" && sess.OwnerToken == ownerToken {
 			return result, errors.New("owner token is already linked to another active session")
 		}
@@ -90,7 +36,7 @@ func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecr
 	s.SessionID = m.nextSessionID
 	m.nextSessionID++
 	s.IsRegistered = true
-	s.BotID = profile.BotID
+	s.BotID = ""
 	s.OwnerToken = ownerToken
 	s.Capabilities = caps // Store what this bot can actually play
 	s.PlayerID = 0
@@ -98,34 +44,21 @@ func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecr
 
 	// 3. Identity assignment
 	s.BotName = name
-	s.Wins = profile.Wins
-	s.Losses = profile.Losses
-	s.Draws = profile.Draws
-
-	profile.RegistrationCount++
-	m.persistBotProfileLocked(profile)
+	s.Wins = 0
+	s.Losses = 0
+	s.Draws = 0
 
 	m.ActiveSessions[s.SessionID] = s
 
 	result = RegistrationResult{
 		SessionID:      s.SessionID,
-		BotID:          profile.BotID,
-		IsNewIdentity:  newIdentity,
 		Name:           s.BotName,
-		GamesPlayed:    profile.GamesPlayed,
-		Wins:           profile.Wins,
-		Losses:         profile.Losses,
-		Draws:          profile.Draws,
+		GamesPlayed:    0,
+		Wins:           0,
+		Losses:         0,
+		Draws:          0,
 		RegisteredAt:   now.UTC().Format(time.RFC3339Nano),
-		Authentication: "id+secret",
-	}
-
-	if ownerToken != "" {
-		result.Authentication = "id+secret+owner_token"
-	}
-
-	if newIdentity {
-		result.BotSecret = profile.BotSecret
+		Authentication: "owner_token+control_token",
 	}
 
 	return result, nil
@@ -208,12 +141,6 @@ func (m *Manager) UpdateSessionProfile(sess *Session, key, val string) error {
 	default:
 		m.mu.Unlock()
 		return errors.New("unknown field")
-	}
-
-	if profile, ok := m.BotProfiles[sess.BotID]; ok {
-		profile.DisplayName = sess.BotName
-		profile.LastSeenAt = time.Now()
-		m.persistBotProfileLocked(profile)
 	}
 
 	m.mu.Unlock()

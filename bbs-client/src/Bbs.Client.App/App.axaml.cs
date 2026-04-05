@@ -4,10 +4,8 @@ using Avalonia.Markup.Xaml;
 using Bbs.Client.App.ViewModels;
 using Bbs.Client.App.Views;
 using Bbs.Client.Core.Logging;
-using Bbs.Client.Infrastructure.Identity;
 using Bbs.Client.Infrastructure.Logging;
-using Bbs.Client.Infrastructure.Orchestration;
-using Bbs.Client.Infrastructure.Storage;
+using Bbs.Client.Infrastructure.Personas;
 using System;
 
 namespace Bbs.Client.App;
@@ -15,8 +13,7 @@ namespace Bbs.Client.App;
 public partial class App : Application
 {
     private IClientLogger? _logger;
-    private SqliteClientStorage? _storage;
-    private LocalBotOrchestrationService? _orchestration;
+    private PersonaManager? _personaManager;
 
     public override void Initialize()
     {
@@ -26,26 +23,9 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         _logger = new FileClientLogger();
-        _storage = new SqliteClientStorage();
-        _storage.InitializeAsync().GetAwaiter().GetResult();
-        _orchestration = new LocalBotOrchestrationService(_storage, _logger);
-        var schemaVersion = _storage.GetSchemaVersionAsync().GetAwaiter().GetResult();
-        var identityBootstrap = new ClientIdentityBootstrapper(_storage);
-        var identity = identityBootstrap.EnsureClientIdentityAsync().GetAwaiter().GetResult();
+        _personaManager = new PersonaManager();
 
         _logger.Log(LogLevel.Information, "app_start", "BBS client started.");
-        _logger.Log(LogLevel.Information, "storage_initialized", "SQLite storage initialized.",
-            new System.Collections.Generic.Dictionary<string, string>
-            {
-                ["db_path"] = _storage.DatabasePath,
-                ["schema_version"] = schemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            });
-        _logger.Log(LogLevel.Information, "client_identity_ready", "Client identity available.",
-            new System.Collections.Generic.Dictionary<string, string>
-            {
-                ["client_id"] = identity.Identity.ClientId,
-                ["created"] = identity.Created.ToString()
-            });
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -55,8 +35,7 @@ public partial class App : Application
             {
                 DataContext = new MainWindowViewModel(
                     _logger,
-                    _storage,
-                    _orchestration,
+                    _personaManager,
                     embeddedViewerAvailable,
                     embeddedViewerMessage)
             };
@@ -69,7 +48,6 @@ public partial class App : Application
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
-        _orchestration?.Dispose();
         _logger?.Log(LogLevel.Information, "app_exit", "BBS client shutting down.",
             new System.Collections.Generic.Dictionary<string, string>
             {

@@ -44,8 +44,8 @@ func TestFinalizeArena_WinnerUpdatesProfiles(t *testing.T) {
 	game := testGame{name: "finalize_win", requiredPlayers: 2, enforceMoveClock: true, supportsHandicap: true}
 	arenaID := m.CreateArena(game, []string{"seed=1"}, time.Second, true)
 
-	p1, r1 := newRegisteredSession(t, m, "p1")
-	p2, r2 := newRegisteredSession(t, m, "p2")
+	p1, _ := newRegisteredSession(t, m, "p1")
+	p2, _ := newRegisteredSession(t, m, "p2")
 	if err := m.JoinArena(arenaID, p1, 0); err != nil {
 		t.Fatalf("JoinArena p1 returned unexpected error: %v", err)
 	}
@@ -61,20 +61,18 @@ func TestFinalizeArena_WinnerUpdatesProfiles(t *testing.T) {
 	if record.WinnerPlayerID != 1 || record.IsDraw {
 		t.Fatalf("unexpected final record winner/draw: %+v", record)
 	}
-	if record.WinnerBotID != r1.BotID || record.WinnerBotName != "p1" {
+	if record.WinnerBotID != "" || record.WinnerBotName != "p1" {
 		t.Fatalf("unexpected winner identity in record: %+v", record)
 	}
-	if record.Player1.BotID != r1.BotID || record.Player2.BotID != r2.BotID {
+	if record.Player1.BotID != "" || record.Player2.BotID != "" {
 		t.Fatalf("participant identities not preserved in record: %+v", record)
 	}
 
-	profile1 := m.BotProfiles[r1.BotID]
-	profile2 := m.BotProfiles[r2.BotID]
-	if profile1.Wins != 1 || profile1.Losses != 0 || profile1.GamesPlayed != 1 {
-		t.Fatalf("unexpected profile1 stats: %+v", profile1)
+	if p1.Wins != 1 || p1.Losses != 0 || p1.Draws != 0 {
+		t.Fatalf("unexpected p1 session stats: %+v", p1)
 	}
-	if profile2.Wins != 0 || profile2.Losses != 1 || profile2.GamesPlayed != 1 {
-		t.Fatalf("unexpected profile2 stats: %+v", profile2)
+	if p2.Wins != 0 || p2.Losses != 1 || p2.Draws != 0 {
+		t.Fatalf("unexpected p2 session stats: %+v", p2)
 	}
 	if p1.PlayerID != 0 || p2.PlayerID != 0 || p1.CurrentArena != nil || p2.CurrentArena != nil {
 		t.Fatalf("sessions were not detached after finalize")
@@ -86,8 +84,8 @@ func TestFinalizeArena_DrawUpdatesProfiles(t *testing.T) {
 	game := testGame{name: "finalize_draw", requiredPlayers: 2, enforceMoveClock: true, supportsHandicap: true}
 	arenaID := m.CreateArena(game, nil, time.Second, true)
 
-	_, r1 := newRegisteredSession(t, m, "p1")
-	_, r2 := newRegisteredSession(t, m, "p2")
+	_, _ = newRegisteredSession(t, m, "p1")
+	_, _ = newRegisteredSession(t, m, "p2")
 
 	s1 := m.ActiveSessions[1]
 	s2 := m.ActiveSessions[2]
@@ -106,13 +104,11 @@ func TestFinalizeArena_DrawUpdatesProfiles(t *testing.T) {
 		t.Fatalf("unexpected draw record: %+v", record)
 	}
 
-	profile1 := m.BotProfiles[r1.BotID]
-	profile2 := m.BotProfiles[r2.BotID]
-	if profile1.Draws != 1 || profile1.GamesPlayed != 1 {
-		t.Fatalf("unexpected profile1 draw stats: %+v", profile1)
+	if s1.Draws != 1 {
+		t.Fatalf("unexpected s1 draw stats: %+v", s1)
 	}
-	if profile2.Draws != 1 || profile2.GamesPlayed != 1 {
-		t.Fatalf("unexpected profile2 draw stats: %+v", profile2)
+	if s2.Draws != 1 {
+		t.Fatalf("unexpected s2 draw stats: %+v", s2)
 	}
 }
 

@@ -62,35 +62,49 @@ func TestParseRegisterOptions_EmptyAndCSV(t *testing.T) {
 		raw          []string
 		wantCaps     []string
 		wantOwnerTok string
+		wantNonce    string
+		wantTs       string
 	}{
 		{
 			name:         "empty yields nil caps",
 			raw:          []string{"", "   "},
 			wantCaps:     nil,
 			wantOwnerTok: "",
+			wantNonce:    "",
+			wantTs:       "",
 		},
 		{
 			name:         "csv and tokens",
-			raw:          []string{"any,grid", " rl ", "owner_token=owner_123"},
+			raw:          []string{"any,grid", " rl ", "owner_token=owner_123", "client_nonce=nonce_abc", "client_ts=1712000"},
 			wantCaps:     []string{"any", "grid", "rl"},
 			wantOwnerTok: "owner_123",
+			wantNonce:    "nonce_abc",
+			wantTs:       "1712000",
 		},
 		{
 			name:         "owner token case-insensitive prefix",
 			raw:          []string{"OWNER_TOKEN=owner_xyz", "a"},
 			wantCaps:     []string{"a"},
 			wantOwnerTok: "owner_xyz",
+			wantNonce:    "",
+			wantTs:       "",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			caps, owner := parseRegisterOptions(tc.raw)
-			if !reflect.DeepEqual(caps, tc.wantCaps) {
-				t.Fatalf("caps = %#v, want %#v", caps, tc.wantCaps)
+			options := parseRegisterOptions(tc.raw)
+			if !reflect.DeepEqual(options.Capabilities, tc.wantCaps) {
+				t.Fatalf("caps = %#v, want %#v", options.Capabilities, tc.wantCaps)
 			}
-			if owner != tc.wantOwnerTok {
-				t.Fatalf("owner = %q, want %q", owner, tc.wantOwnerTok)
+			if options.OwnerToken != tc.wantOwnerTok {
+				t.Fatalf("owner = %q, want %q", options.OwnerToken, tc.wantOwnerTok)
+			}
+			if options.ClientNonce != tc.wantNonce {
+				t.Fatalf("client nonce = %q, want %q", options.ClientNonce, tc.wantNonce)
+			}
+			if options.ClientTimestamp != tc.wantTs {
+				t.Fatalf("client ts = %q, want %q", options.ClientTimestamp, tc.wantTs)
 			}
 		})
 	}

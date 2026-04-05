@@ -48,7 +48,7 @@ Scope:
 - Bot panel scope:
 	- render one card per registered bot,
 	- include entry point to register a new bot,
-	- show glanceable status glow states on cards (amber=armed, green=active session, red=error).
+	- show glanceable status glow states on cards (amber=attached, green=active session, red=error).
 - Server panel scope:
 	- render one card per known server,
 	- probe cached servers on startup to refresh availability,
@@ -60,8 +60,8 @@ Scope:
 
 Definition of done:
 - First launch initializes durable client identity and persistent storage automatically.
-- User can register at least one bot profile and arm/disarm it from the GUI, with agent lifecycle handled by the client.
-- Armed bot flow can retrieve server access metadata through the agent control channel (owner token + dashboard endpoint).
+- User can register at least one bot profile and launch/detach it from the GUI, with agent lifecycle handled by the client.
+- Attached bot flow can retrieve server access metadata through the agent control channel (owner token + dashboard endpoint).
 - Known server records persist across restarts, including cached plugin catalog snapshots.
 - Unified single-view layout is functional with collapsible bot/server side panels and context-driven center workspace.
 - Bot and server cards expose the planned alpha status indicators (bot: amber/green/red, server: green/grey).
@@ -99,9 +99,9 @@ Slice A2: Unified layout and panel infrastructure
 Slice A3: Bot registration and orchestration wiring
 - Implement bot registration/edit form in center activity area.
 - Persist bot metadata including launch path and args.
-- Implement arm/disarm orchestration path that launches/monitors agent+bot transparently.
+- Implement launch/detach orchestration path that launches/monitors agent+bot transparently.
 - Map orchestration status to bot card glow states (amber/green/red).
-- Checkpoint outcome: at least one bot can be registered, armed, disarmed, and status-reflected in UI.
+- Checkpoint outcome: at least one bot can be registered, attached, detached, and status-reflected in UI.
 
 Slice A4: Known server management and probing
 - Implement known server registration/edit workflow and persistence.
@@ -114,7 +114,7 @@ Slice A5: Context server view and owner-token actions (alpha)
 - Implement server detail view in center activity area.
 - Wire agent control channel retrieval of server access metadata (`owner_token`, dashboard endpoint).
 - Expose first owner-token-gated action stubs/flows (for example create/join arena command paths).
-- Checkpoint outcome: selected active server view can show gated controls for an armed bot session.
+- Checkpoint outcome: selected active server view can show gated controls for an attached bot session.
 
 Slice A6: Hardening and alpha packaging
 - Add integration tests for orchestration and storage initialization paths.

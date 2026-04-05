@@ -19,7 +19,7 @@ public sealed class ServerAccessMetadataResolverTests
     }
 
     [Fact]
-    public void Resolve_ReturnsInvalid_WhenBotNotArmed()
+    public void Resolve_ReturnsInvalid_WhenBotNotAttached()
     {
         var profile = BotProfile.Create(
             botId: "bot-1",
@@ -29,14 +29,14 @@ public sealed class ServerAccessMetadataResolverTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.Idle,
-            IsArmed: false,
+            IsAttached: false,
             LastErrorCode: null,
             UpdatedAtUtc: System.DateTimeOffset.UtcNow);
 
         var result = ServerAccessMetadataResolver.Resolve(profile, runtime, "srv-1");
 
         Assert.False(result.IsValid);
-        Assert.Contains("not armed", result.StatusMessage);
+        Assert.Contains("not attached", result.StatusMessage);
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public sealed class ServerAccessMetadataResolverTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.ActiveSession,
-            IsArmed: true,
+            IsAttached: true,
             LastErrorCode: null,
             UpdatedAtUtc: System.DateTimeOffset.UtcNow);
 
@@ -84,7 +84,7 @@ public sealed class ServerAccessMetadataResolverTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.ActiveSession,
-            IsArmed: true,
+            IsAttached: true,
             LastErrorCode: null,
             UpdatedAtUtc: System.DateTimeOffset.UtcNow);
 
@@ -110,7 +110,7 @@ public sealed class ServerAccessMetadataResolverTests
         var runtime = new AgentRuntimeState(
             BotId: "bot-1",
             LifecycleState: AgentLifecycleState.ActiveSession,
-            IsArmed: true,
+            IsAttached: true,
             LastErrorCode: null,
             UpdatedAtUtc: System.DateTimeOffset.UtcNow);
 

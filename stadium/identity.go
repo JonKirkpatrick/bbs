@@ -5,13 +5,14 @@ import "time"
 // RegistrationResult is returned after a bot registers with the stadium.
 type RegistrationResult struct {
 	SessionID         int    `json:"session_id"`
-	BotID             string `json:"bot_id"`
-	BotSecret         string `json:"bot_secret,omitempty"`
+	ControlToken      string `json:"control_token,omitempty"`
 	OwnerToken        string `json:"owner_token,omitempty"`
 	DashboardHost     string `json:"dashboard_host,omitempty"`
 	DashboardPort     string `json:"dashboard_port,omitempty"`
 	DashboardEndpoint string `json:"dashboard_endpoint,omitempty"`
-	IsNewIdentity     bool   `json:"is_new_identity"`
+	ClientNonce       string `json:"client_nonce,omitempty"`
+	ServerNonce       string `json:"server_nonce,omitempty"`
+	HandshakeProof    string `json:"handshake_proof,omitempty"`
 	Name              string `json:"name"`
 	GamesPlayed       int    `json:"games_played"`
 	Wins              int    `json:"wins"`

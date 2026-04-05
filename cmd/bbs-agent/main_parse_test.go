@@ -190,16 +190,16 @@ func TestParseLocalHello_DefaultsAndErrors(t *testing.T) {
 
 func TestBuildRegisterCommand(t *testing.T) {
 	t.Run("empty credentials", func(t *testing.T) {
-		cmd := buildRegisterCommand("bot_one", credentials{}, "", "")
-		want := `REGISTER bot_one "" ""`
+		cmd := buildRegisterCommand("bot_one", credentials{}, "", "", "", "")
+		want := `REGISTER bot_one`
 		if cmd != want {
 			t.Fatalf("buildRegisterCommand = %q, want %q", cmd, want)
 		}
 	})
 
 	t.Run("full command", func(t *testing.T) {
-		cmd := buildRegisterCommand(" bot_one ", credentials{BotID: " bot_1 ", BotSecret: " sec_1 "}, "a,b", "owner_1")
-		want := `REGISTER bot_one bot_1 sec_1 a,b owner_token=owner_1`
+		cmd := buildRegisterCommand(" bot_one ", credentials{BotID: " bot_1 ", BotSecret: " sec_1 "}, "a,b", "owner_1", "nonce_abc", "1712000")
+		want := `REGISTER bot_one a,b owner_token=owner_1 client_nonce=nonce_abc client_ts=1712000`
 		if cmd != want {
 			t.Fatalf("buildRegisterCommand = %q, want %q", cmd, want)
 		}

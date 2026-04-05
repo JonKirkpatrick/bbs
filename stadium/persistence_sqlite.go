@@ -49,18 +49,6 @@ func (s *SQLitePersistenceStore) migrate(ctx context.Context) error {
 			created_at TEXT NOT NULL,
 			last_registration_at TEXT NOT NULL DEFAULT ''
 		);`,
-		`CREATE TABLE IF NOT EXISTS bot_profiles (
-			bot_id TEXT PRIMARY KEY,
-			origin_server_id TEXT NOT NULL DEFAULT '',
-			display_name TEXT NOT NULL,
-			created_at TEXT NOT NULL,
-			last_seen_at TEXT NOT NULL,
-			registration_count INTEGER NOT NULL,
-			games_played INTEGER NOT NULL,
-			wins INTEGER NOT NULL,
-			losses INTEGER NOT NULL,
-			draws INTEGER NOT NULL
-		);`,
 		`CREATE TABLE IF NOT EXISTS matches (
 			match_id INTEGER PRIMARY KEY,
 			arena_id INTEGER NOT NULL,
@@ -206,35 +194,9 @@ func (s *SQLitePersistenceStore) LoadServerIdentity(ctx context.Context) (Server
 }
 
 func (s *SQLitePersistenceStore) UpsertBotProfile(ctx context.Context, profile DurableBotProfile) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO bot_profiles (
-			bot_id, origin_server_id, display_name, created_at, last_seen_at,
-			registration_count, games_played, wins, losses, draws
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(bot_id) DO UPDATE SET
-			origin_server_id=excluded.origin_server_id,
-			display_name=excluded.display_name,
-			created_at=excluded.created_at,
-			last_seen_at=excluded.last_seen_at,
-			registration_count=excluded.registration_count,
-			games_played=excluded.games_played,
-			wins=excluded.wins,
-			losses=excluded.losses,
-			draws=excluded.draws
-	`,
-		profile.BotID,
-		profile.OriginServerID,
-		profile.DisplayName,
-		profile.CreatedAt.UTC().Format(time.RFC3339Nano),
-		profile.LastSeenAt.UTC().Format(time.RFC3339Nano),
-		profile.RegistrationCount,
-		profile.GamesPlayed,
-		profile.Wins,
-		profile.Losses,
-		profile.Draws,
-	)
-	return err
+	_ = ctx
+	_ = profile
+	return nil
 }
 
 func (s *SQLitePersistenceStore) AppendMatch(ctx context.Context, match DurableMatch, moves []DurableMatchMove) error {

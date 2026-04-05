@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Windows.Input;
 using Bbs.Client.Core.Domain;
 
 namespace Bbs.Client.App.ViewModels;
@@ -18,8 +20,7 @@ public sealed record ServerPluginCatalogItem(
 
 public sealed record RegisterHandshakeResult(
     string SessionId,
-    string ServerBotId,
-    string ServerBotSecret,
+    string ControlToken,
     string OwnerToken,
     string DashboardEndpoint);
 
@@ -29,11 +30,59 @@ public sealed record AgentControlResponse(
     string Message,
     string SessionId,
     string BotId,
-    string BotSecret,
+    string ControlToken,
     string OwnerToken,
     string DashboardEndpoint,
     string DashboardHost,
     string DashboardPort);
+
+public sealed record ServerArenaOptionItem(string Label, int ArenaId);
+
+public sealed class ActiveBotSessionItem : ViewModelBase
+{
+    private ServerArenaOptionItem? _selectedArena;
+    private string _joinHandicapPercent = "0";
+
+    public required string RuntimeBotId { get; init; }
+    public required string SessionId { get; init; }
+    public required string ServerId { get; init; }
+    public required string ServerName { get; init; }
+    public required string OwnerTokenMasked { get; init; }
+    public required ObservableCollection<ServerArenaOptionItem> ArenaOptions { get; init; }
+    public required ICommand JoinCommand { get; init; }
+    public required ICommand LeaveCommand { get; init; }
+    public required ICommand QuitCommand { get; init; }
+
+    public ServerArenaOptionItem? SelectedArena
+    {
+        get => _selectedArena;
+        set
+        {
+            if (_selectedArena == value)
+            {
+                return;
+            }
+
+            _selectedArena = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string JoinHandicapPercent
+    {
+        get => _joinHandicapPercent;
+        set
+        {
+            if (string.Equals(_joinHandicapPercent, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _joinHandicapPercent = value;
+            OnPropertyChanged();
+        }
+    }
+}
 
 public enum WorkspaceContext
 {

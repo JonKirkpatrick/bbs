@@ -54,6 +54,14 @@ public sealed class SqliteClientStorage : IClientStorage
         await EnsureCurrentTablesExistAsync(connection, cancellationToken);
     }
 
+    public async Task ClearTransientRuntimeStateAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM agent_runtime_state";
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
@@ -358,7 +366,7 @@ public sealed class SqliteClientStorage : IClientStorage
         return new AgentRuntimeState(
             BotId: reader.GetString(0),
             LifecycleState: (AgentLifecycleState)reader.GetInt32(1),
-            IsArmed: reader.GetInt32(2) == 1,
+            IsAttached: reader.GetInt32(2) == 1,
             LastErrorCode: reader.IsDBNull(3) ? null : reader.GetString(3),
             UpdatedAtUtc: DateTimeOffset.Parse(reader.GetString(4)));
     }
@@ -379,7 +387,7 @@ public sealed class SqliteClientStorage : IClientStorage
             """;
         command.Parameters.AddWithValue("$bot_id", state.BotId);
         command.Parameters.AddWithValue("$lifecycle_state", (int)state.LifecycleState);
-        command.Parameters.AddWithValue("$is_armed", state.IsArmed ? 1 : 0);
+        command.Parameters.AddWithValue("$is_armed", state.IsAttached ? 1 : 0);
         command.Parameters.AddWithValue("$last_error_code", (object?)state.LastErrorCode ?? DBNull.Value);
         command.Parameters.AddWithValue("$updated_at_utc", state.UpdatedAtUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);

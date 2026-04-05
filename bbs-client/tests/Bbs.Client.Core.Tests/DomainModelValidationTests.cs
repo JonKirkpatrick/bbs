@@ -65,7 +65,7 @@ public sealed class DomainModelValidationTests
     [Fact]
     public void AgentRuntimeState_Validate_ReturnsErrorForMissingBotId()
     {
-        var state = new AgentRuntimeState("", AgentLifecycleState.Idle, IsArmed: true, LastErrorCode: null, UpdatedAtUtc: DateTimeOffset.UtcNow);
+        var state = new AgentRuntimeState("", AgentLifecycleState.Idle, IsAttached: true, LastErrorCode: null, UpdatedAtUtc: DateTimeOffset.UtcNow);
 
         var errors = state.Validate();
 

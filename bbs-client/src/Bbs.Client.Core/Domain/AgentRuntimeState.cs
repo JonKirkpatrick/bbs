@@ -6,7 +6,7 @@ namespace Bbs.Client.Core.Domain;
 public sealed record AgentRuntimeState(
     string BotId,
     AgentLifecycleState LifecycleState,
-    bool IsArmed,
+    bool IsAttached,
     string? LastErrorCode,
     DateTimeOffset UpdatedAtUtc)
 {

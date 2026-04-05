@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"net"
@@ -232,12 +234,14 @@ func handleBot(conn net.Conn) {
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "help", Payload: map[string]string{"text": stadium.GetHelpText(sess.IsRegistered)}})
 
 		case "REGISTER":
-			if len(parts) < 4 {
-				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: "Usage: REGISTER <name> <bot_id_or_\"\"> <bot_secret_or_\"\"> [cap1,cap2,...] [owner_token=<token>]"})
+			if len(parts) < 2 {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: "Usage: REGISTER <name> [cap1,cap2,...] [owner_token=<token>] [client_nonce=<nonce>] [client_ts=<ts>]"})
 				continue
 			}
 
-			caps, ownerToken := parseRegisterOptions(parts[4:])
+			registerOptions := parseRegisterOptions(parts[2:])
+			caps := registerOptions.Capabilities
+			ownerToken := registerOptions.OwnerToken
 			if strings.TrimSpace(ownerToken) == "" {
 				issuedOwnerToken, tokenErr := stadium.NewOwnerToken()
 				if tokenErr != nil {
@@ -247,7 +251,19 @@ func handleBot(conn net.Conn) {
 				ownerToken = issuedOwnerToken
 			}
 
-			result, err := stadium.DefaultManager.RegisterSession(sess, parts[1], parts[2], parts[3], caps, ownerToken)
+			controlToken, controlTokenErr := stadium.NewControlToken()
+			if controlTokenErr != nil {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: "Failed to issue control token"})
+				continue
+			}
+
+			serverNonce, serverNonceErr := stadium.NewControlToken()
+			if serverNonceErr != nil {
+				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: "Failed to issue handshake nonce"})
+				continue
+			}
+
+			result, err := stadium.DefaultManager.RegisterSession(sess, parts[1], "", "", caps, ownerToken)
 			if err != nil {
 				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: err.Error()})
 				continue
@@ -255,9 +271,13 @@ func handleBot(conn net.Conn) {
 
 			dashboardHost := dashboardHostForSession(sess)
 			result.OwnerToken = sess.OwnerToken
+			result.ControlToken = controlToken
 			result.DashboardHost = dashboardHost
 			result.DashboardPort = dashboardServerPort
 			result.DashboardEndpoint = net.JoinHostPort(dashboardHost, dashboardServerPort)
+			result.ClientNonce = registerOptions.ClientNonce
+			result.ServerNonce = serverNonce
+			result.HandshakeProof = buildRegisterHandshakeProof(registerOptions.ClientNonce, registerOptions.ClientTimestamp, serverNonce, controlToken, ownerToken)
 
 			sess.SendJSON(stadium.Response{Status: "ok", Type: "register", Payload: result})
 			stadium.DefaultManager.PublishArenaList()
@@ -265,7 +285,6 @@ func handleBot(conn net.Conn) {
 		case "WHOAMI":
 			payload := map[string]interface{}{
 				"session_id":    sess.SessionID,
-				"bot_id":        sess.BotID,
 				"name":          sess.BotName,
 				"registered":    sess.IsRegistered,
 				"current_arena": sess.CurrentArena != nil,
@@ -462,9 +481,16 @@ func handleBot(conn net.Conn) {
 	}
 }
 
-func parseRegisterOptions(rawParts []string) ([]string, string) {
+type registerOptions struct {
+	Capabilities    []string
+	OwnerToken      string
+	ClientNonce     string
+	ClientTimestamp string
+}
+
+func parseRegisterOptions(rawParts []string) registerOptions {
 	capabilities := make([]string, 0)
-	ownerToken := ""
+	options := registerOptions{}
 
 	for _, raw := range rawParts {
 		part := strings.TrimSpace(raw)
@@ -473,7 +499,17 @@ func parseRegisterOptions(rawParts []string) ([]string, string) {
 		}
 
 		if strings.HasPrefix(strings.ToLower(part), "owner_token=") {
-			ownerToken = strings.TrimSpace(part[len("owner_token="):])
+			options.OwnerToken = strings.TrimSpace(part[len("owner_token="):])
+			continue
+		}
+
+		if strings.HasPrefix(strings.ToLower(part), "client_nonce=") {
+			options.ClientNonce = strings.TrimSpace(part[len("client_nonce="):])
+			continue
+		}
+
+		if strings.HasPrefix(strings.ToLower(part), "client_ts=") {
+			options.ClientTimestamp = strings.TrimSpace(part[len("client_ts="):])
 			continue
 		}
 
@@ -486,10 +522,24 @@ func parseRegisterOptions(rawParts []string) ([]string, string) {
 	}
 
 	if len(capabilities) == 0 {
-		capabilities = nil
+		options.Capabilities = nil
+	} else {
+		options.Capabilities = capabilities
 	}
 
-	return capabilities, ownerToken
+	return options
+}
+
+func buildRegisterHandshakeProof(clientNonce, clientTimestamp, serverNonce, controlToken, ownerToken string) string {
+	proofInput := strings.Join([]string{
+		strings.TrimSpace(clientNonce),
+		strings.TrimSpace(clientTimestamp),
+		strings.TrimSpace(serverNonce),
+		strings.TrimSpace(controlToken),
+		strings.TrimSpace(ownerToken),
+	}, "|")
+	digest := sha256.Sum256([]byte(proofInput))
+	return hex.EncodeToString(digest[:])
 }
 
 func parseWinnerResult(raw string) (winnerPlayerID int, isDraw bool) {
