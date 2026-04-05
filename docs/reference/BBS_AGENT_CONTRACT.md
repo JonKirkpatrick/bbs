@@ -130,7 +130,7 @@ Request current control-plane status.
 
 ### `server_access`
 
-Request the current server access metadata captured during REGISTER.
+Request the current server access metadata captured during REGISTER or the current active server connection.
 
 ```json
 {
@@ -257,6 +257,7 @@ The agent will attempt to connect to the provided server endpoint, send a REGIST
 - The bot cannot override the name via its `hello` message; the client controls the name designation.
 - Multiple candidates may be tried by the client (e.g., normalized loopback IPs) if the first fails.
 - Session metadata is cached by the agent for retrieval via `server_access` command.
+- Client-side tooling may mirror the cached owner token and dashboard endpoint onto the selected server record for server-context UI actions.
 
 ## Agent -> Bot
 

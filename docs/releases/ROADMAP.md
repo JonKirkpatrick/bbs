@@ -48,7 +48,7 @@ Scope:
 - Bot panel scope:
 	- render one card per registered bot,
 	- include entry point to register a new bot,
-	- show glanceable status glow states on cards (amber=attached, green=active session, red=error).
+	- show glanceable status glow states on cards (amber=attached, green=active runtime session, red=error).
 - Server panel scope:
 	- render one card per known server,
 	- probe cached servers on startup to refresh availability,
@@ -56,18 +56,18 @@ Scope:
 - Center activity scope:
 	- load bot registration and bot metadata/editor flows,
 	- load server detail views when a server is selected,
-	- expose owner-token-gated commands for active sessions on selected server (for example create/join arena actions).
+	- expose owner-token-gated commands for the selected server and its active sessions (for example create/join arena actions).
 
 Definition of done:
 - First launch initializes durable client identity and persistent storage automatically.
-- User can register at least one bot profile and launch/detach it from the GUI, with agent lifecycle handled by the client.
-- Attached bot flow can retrieve server access metadata through the agent control channel (owner token + dashboard endpoint).
+- User can register at least one bot profile and deploy it from the GUI, with runtime lifecycle handled by the client.
+- The selected server view can retrieve server access metadata from the known server profile and fall back to the agent control channel when needed.
 - Known server records persist across restarts, including cached plugin catalog snapshots.
 - Unified single-view layout is functional with collapsible bot/server side panels and context-driven center workspace.
 - Bot and server cards expose the planned alpha status indicators (bot: amber/green/red, server: green/grey).
 - Startup server probing updates known server availability state in the UI.
 - Selecting bot/server cards loads appropriate context views in the center activity area.
-- Active-session server views can surface owner-token-gated actions in the center workspace.
+- Server-context views can surface owner-token-gated actions in the center workspace.
 - Alpha build/run instructions documented for Linux desktop environment.
 
 Likely follow-on:
@@ -99,7 +99,7 @@ Slice A2: Unified layout and panel infrastructure
 Slice A3: Bot registration and orchestration wiring
 - Implement bot registration/edit form in center activity area.
 - Persist bot metadata including launch path and args.
-- Implement launch/detach orchestration path that launches/monitors agent+bot transparently.
+- Implement deploy orchestration path that launches/monitors agent+bot transparently.
 - Map orchestration status to bot card glow states (amber/green/red).
 - Checkpoint outcome: at least one bot can be registered, attached, detached, and status-reflected in UI.
 
@@ -112,7 +112,7 @@ Slice A4: Known server management and probing
 
 Slice A5: Context server view and owner-token actions (alpha)
 - Implement server detail view in center activity area.
-- Wire agent control channel retrieval of server access metadata (`owner_token`, dashboard endpoint).
+- Resolve server access metadata from selected server profiles first, then agent control channel fallback.
 - Expose first owner-token-gated action stubs/flows (for example create/join arena command paths).
 - Checkpoint outcome: selected active server view can show gated controls for an attached bot session.
 

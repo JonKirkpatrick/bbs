@@ -17,7 +17,7 @@ It assumes:
 
 1. Open dashboard in browser.
 2. Click `Register Bot`.
-3. Copy owner token from Bot Control panel.
+3. Copy owner token from the server access metadata card.
 4. Note Bot Host/IP and Bot Port from same panel.
 5. Start local bridge agent:
 
@@ -84,7 +84,7 @@ QUIT
 ## Troubleshooting
 
 - `Must REGISTER first`: registration not completed before command.
-- `owner token is invalid`: refresh token from dashboard and retry.
+- `owner token is invalid`: refresh token from the server access metadata card and retry.
 - `owner token is already linked`: disconnect old linked bot first.
 - `arena full`: chosen arena already has required players.
 
@@ -93,3 +93,5 @@ QUIT
 - `owner_token`, `bot_id`, and `bot_secret` are sensitive.
 - Treat credentials files like secrets.
 - Current bot channel is plain TCP; prefer trusted networks or external tunnel/TLS.
+
+If you are using the desktop client, the active bot session card will populate JOIN targets from the selected server's arena list once the server detail view has loaded.

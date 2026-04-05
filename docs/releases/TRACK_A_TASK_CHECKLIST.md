@@ -20,6 +20,7 @@ Estimate scale:
 - Slice A3 baseline (`A3-01` through `A3-04`) is complete.
 - Remaining A3 work is visual status-glow rules (`A3-05`).
 - A6 storage/identity integration coverage (`A6-01`) is complete; orchestration hardening coverage (`A6-02`) is underway.
+- The current client also has working deploy-based runtime sessions, server-context owner-token metadata resolution, and active-session arena dropdown refreshes.
 
 ## Milestone Order
 
@@ -49,7 +50,7 @@ Estimate scale:
 | A2-04 | A2 | Create reusable card components for bot/server entries with status style hooks | S | A2-01 | done | Card component supports title, metadata, status style, click/select |
 | A3-01 | A3 | Implement bot registration/edit form in center activity area | M | A2-03, A1-02 | done | User can add and edit bot path/args/metadata |
 | A3-02 | A3 | Persist bot profiles and display them in left panel cards | S | A3-01 | done | Bot list survives restart and renders from storage |
-| A3-03 | A3 | Implement launch/detach orchestration service for bot+agent lifecycle | L | A3-02 | done | Launch starts processes and detach stops them with clear result state |
+| A3-03 | A3 | Implement deploy orchestration service for bot+agent lifecycle | L | A3-02 | done | Deploy starts processes and detach stops them with clear result state |
 | A3-04 | A3 | Wire control-channel status/lifecycle updates into bot runtime state model | M | A3-03 | done | Runtime updates reflected in state store and visible in UI |
 | A3-05 | A3 | Apply bot card glow rules (amber attached, green active session, red error) | S | A3-04, A2-04 | todo | Glows match state transitions and update in near-real time |
 | A4-01 | A4 | Implement known server registration/edit flow in center activity area | M | A2-03, A1-02 | todo | User can add/edit server records with IDs and endpoints |
@@ -58,8 +59,8 @@ Estimate scale:
 | A4-04 | A4 | Apply server card visual states (green live, grey inactive) | S | A4-03, A2-04 | todo | Card styling matches latest probe result |
 | A4-05 | A4 | Add manual refresh/reprobe action for known servers | S | A4-03 | todo | User can trigger reprobe and see updated status |
 | A5-01 | A5 | Build server detail view in center activity area | M | A4-02, A2-03 | todo | Selecting a server loads details view with cached metadata |
-| A5-02 | A5 | Retrieve and display agent `server_access` metadata (owner token + dashboard endpoint) | M | A3-04, A5-01 | todo | Access metadata shown for attached bot sessions and refreshable |
-| A5-03 | A5 | Add owner-token-gated action stubs (create/join arena command path placeholders) | M | A5-02 | todo | Gated actions appear only when session metadata is valid |
+| A5-02 | A5 | Retrieve and display server access metadata (owner token + dashboard endpoint) | M | A3-04, A5-01 | todo | Access metadata shown for selected server context and refreshable |
+| A5-03 | A5 | Add owner-token-gated action stubs (create/join arena command path placeholders) | M | A5-02 | todo | Gated actions appear only when server access metadata is valid |
 | A5-04 | A5 | Add server plugin catalog viewer pane in center activity area | S | A5-01, A4-02 | todo | Cached plugin data is readable in UI |
 | A6-01 | A6 | Add integration tests for first-launch identity + storage migration | M | A1-03, A1-04 | done | Tests validate initialization and schema progression behavior |
 | A6-02 | A6 | Add integration tests for launch/detach/lifecycle/quit orchestration states | M | A3-04 | in-progress | Tests cover expected transitions and failure handling |
@@ -337,7 +338,7 @@ Execution order:
 ### PR2 Session access metadata in server context
 
 - Suggested branch: `track-a/s4-pr2-server-access-metadata`
-- Suggested PR title: `Track A S4/PR2: Surface server access metadata from attached sessions`
+- Suggested PR title: `Track A S4/PR2: Surface server access metadata from server context`
 - Task mapping:
 	- `A5-02`
 - Completion checks:

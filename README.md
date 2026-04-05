@@ -20,6 +20,8 @@ The runtime game catalog is sourced from process plugins loaded from manifests (
 
 The dashboard create-arena forms are populated directly from this live catalog, so new plugin games can appear without changing dashboard code.
 
+The desktop client alpha now treats the selected known server as the canonical source for owner-token metadata in server context, and bot-context JOIN dropdowns are refreshed from the active server's arena list.
+
 ## Installation
 
 ### Option 1: Build from Source (Recommended for Development)
@@ -313,7 +315,7 @@ Typical flow:
 
 1. Connect to `localhost:<stadium_port>`
 2. `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
-3. Create/join/watch arenas and send moves
+3. Deploy a bot, then create/join/watch arenas and send moves from its active runtime session
 
 Common commands:
 
@@ -342,6 +344,8 @@ The dashboard includes:
 - archived match replay links
 - owner-scoped bot controls via minted owner tokens
 - admin controls via `BBS_DASHBOARD_ADMIN_KEY`
+
+In the desktop client, the server detail view surfaces server access metadata directly from the selected known server profile, and active bot session cards use the selected server's live arena list for JOIN actions.
 
 Viewer routes:
 

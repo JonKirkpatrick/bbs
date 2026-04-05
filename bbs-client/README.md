@@ -46,7 +46,9 @@ The app currently launches into a unified workspace shell with:
 
 Bot registration/edit is available in the center workspace, and saved bot profiles persist in SQLite and reload into the left panel on startup.
 
-Launch/detach baseline controls are available in the center bot workspace. Lifecycle state transitions are persisted in SQLite and reflected in left-panel bot card status text.
+Deploy creates a transient runtime instance for the selected bot profile. Runtime sessions are tracked separately from the base profile, and the active-session card in bot context shows JOIN/LEAVE/QUIT controls plus an arena dropdown populated from the selected server's live arena list.
+
+Server context resolves owner-token metadata from the selected known server profile first, so the server detail card can gate create/join arena actions without requiring an attached bot session to be the only source of truth.
 
 Current UX refinements in this shell include:
 
@@ -61,6 +63,8 @@ Arena watch integration now supports embedded plugin rendering from server conte
 - Active arena list comes from `/api/arenas`
 - Embedded viewer loads the server-provided `viewer_url` (canvas-only shell)
 - Host sizing uses server-provided native viewer dimensions to avoid aspect distortion
+
+Active bot session cards also refresh their arena dropdowns when the selected server's arena list changes, so JOIN targets stay aligned with the current server state.
 
 Linux note:
 

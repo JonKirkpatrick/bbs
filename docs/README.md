@@ -22,6 +22,12 @@ This directory contains project documentation organized by purpose.
 - [ROADMAP.md](releases/ROADMAP.md): Planned future direction.
 - Root-level [CHANGELOG.md](../CHANGELOG.md): Released changes.
 
+## Current Client Notes
+
+- The desktop client alpha uses deploy-based runtime instances for active sessions.
+- Server context resolves owner-token metadata from the selected known server profile first.
+- Bot-context JOIN dropdowns are populated from the selected server's active arena list.
+
 ## Local Working Notes
 
 The `local/` folder contains local/private workflow notes.

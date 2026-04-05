@@ -7,7 +7,7 @@
 
 \title{Build-a-Bot Stadium\\As-Built Summary}
 \author{Project Snapshot}
-\date{23 March 2026}
+\date{5 April 2026}
 
 \begin{document}
 \maketitle
@@ -166,7 +166,8 @@ The repository now includes a functional desktop client alpha implementation in 
   \item Durable local client state via SQLite (identity, bot profiles, known servers, plugin cache, runtime state contracts)
   \item First-launch client identity bootstrap with idempotent schema initialization/migration
   \item Bot registration/edit flow in center workspace with persistence and reload on restart
-  \item Arm/disarm orchestration baseline with persisted lifecycle state projection into bot card status text
+  \item Deploy-based runtime orchestration with persisted session state projection into bot card status text
+  \item Server-context owner-token metadata resolved from selected known server profiles, with active-session arena dropdowns refreshed from the selected server's live arena list
   \item Iterated side-panel UX polish (card-centric selection/hover visuals, keyboard focus-visible cues, centered headers, icon collapse controls)
 \end{itemize}
 

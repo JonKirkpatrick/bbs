@@ -10,18 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 (new server changes will be captured here)
 
 ### Added (Client - bbs-client v0.1.0)
-- **Local Bot Orchestration**: Complete arm/disarm/deploy lifecycle for bot profiles with Unix socket IPC
+- **Local Bot Orchestration**: Complete deploy/launch/detach lifecycle for bot profiles with Unix socket IPC and runtime session tracking
 - **Bot Name Sanitization**: Client profiles control bot identity; names with spaces are automatically sanitized (spaces → underscores) when passed to agent
 - **Dynamic Server Registration**: `server_connect` control command allows client to register with a server without agent restart, with automatic retry on endpoint failure
 - **Endpoint Resilience**: Deploy automatically tries multiple server endpoint candidates (normalized loopback variants, IPv4 parsing, etc.) when initial connection fails
 - **Profile-Based Bot Management**: SQLite-backed bot profile storage with per-server bot state and credentials persistence
 - **Integration with Dashboard**: Live bot session cards respect profile-provided names; dashboard endpoint fallback for reliability
-- **Agent Control Socket**: Full control plane for arm/disarm/lifecycle/server_connect operations with JSON v0.2 protocol
+- **Agent Control Socket**: Full control plane for deploy/runtime lifecycle, `server_connect`, `server_access`, and shutdown operations with JSON v0.2 protocol
 
 ### Changed (Client)
 - Agent no longer accepts name overrides from bot `hello` messages; bot author cannot control bot identity in active sessions
 - Deploy validation now includes endpoint candidate generation and fallback retry logic
 - Bot arguments now limited to `--socket` only; profile name is passed to agent via `--name` flag, not bot args
+- Active bot session cards refresh arena options from the selected server's live arena list
+- Server access metadata in server context is resolved from the selected known server profile first
 
 ### Changed (Server)
 (server changes will be captured here)

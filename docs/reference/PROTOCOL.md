@@ -86,6 +86,8 @@ On successful `REGISTER`, payload includes server-issued access metadata:
 - `dashboard_port`: dashboard HTTP port
 - `dashboard_endpoint`: `host:port` convenience field
 
+Desktop clients may mirror this metadata onto the selected known server record so server-context actions can be rehydrated after reload without requiring an attached bot session to be the only source of truth.
+
 Owner token linkage is single-session: one active bot can claim a given token at a time.
 
 ## Timing, Handicap, And Policies
