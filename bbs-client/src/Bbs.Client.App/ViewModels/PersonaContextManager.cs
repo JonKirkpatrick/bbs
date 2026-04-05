@@ -90,20 +90,19 @@ public sealed class PersonaContextManager
 
         try
         {
-            _currentOrchestration?.Dispose();
+            // IBotOrchestrationService doesn't implement IDisposable, so just nullify references
+            _currentStorage = null;
+            _currentOrchestration = null;
+            _currentPersonaPath = null;
+
+            _logger.Log(LogLevel.Information, "persona_unloaded", "Persona unloaded.");
         }
         catch (Exception ex)
         {
-            _logger.Log(LogLevel.Warning, "persona_unload_orchestration_error", 
-                "Error disposing orchestration service.",
+            _logger.Log(LogLevel.Warning, "persona_unload_error", 
+                "Error unloading persona.",
                 new Dictionary<string, string> { ["error"] = ex.Message });
         }
-
-        _currentPersonaPath = null;
-        _currentStorage = null;
-        _currentOrchestration = null;
-
-        _logger.Log(LogLevel.Information, "persona_unloaded", "Persona unloaded.");
     }
 
     public async Task<string> DuplicatePersonaAsync(string newPersonaName, CancellationToken cancellationToken = default)
