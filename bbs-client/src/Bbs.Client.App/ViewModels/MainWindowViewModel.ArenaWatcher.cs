@@ -15,6 +15,7 @@ public sealed partial class MainWindowViewModel
 
     private CancellationTokenSource? _arenaViewerWatchCts;
     private int _watchedArenaId;
+    private int _serverArenasRefreshVersion;
     private bool _isServerArenasLoading;
     private string _serverArenasStatus = "Select a server to load active arenas.";
     private string _arenaViewerLabel = "Arena Viewer";
@@ -273,6 +274,9 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
+        var requestedServerId = server.ServerId;
+        var refreshVersion = Interlocked.Increment(ref _serverArenasRefreshVersion);
+
         if (!silent)
         {
             IsServerArenasLoading = true;
@@ -312,7 +316,7 @@ public sealed partial class MainWindowViewModel
 
             if (arenas is null)
             {
-                if (!silent)
+                if (!silent && IsArenaRefreshCurrent(refreshVersion, requestedServerId))
                 {
                     ServerArenasStatus = "Failed to load active arenas from server.";
                 }
@@ -322,8 +326,18 @@ public sealed partial class MainWindowViewModel
                 return;
             }
 
+            if (!IsArenaRefreshCurrent(refreshVersion, requestedServerId))
+            {
+                return;
+            }
+
+            var uniqueArenas = arenas
+                .GroupBy(a => a.ArenaId)
+                .Select(g => g.Last())
+                .ToList();
+
             ServerArenaEntries.Clear();
-            foreach (var arena in arenas)
+            foreach (var arena in uniqueArenas)
             {
                 var arenaId = arena.ArenaId;
                 var viewerUrl = arena.ViewerUrl;
@@ -354,7 +368,7 @@ public sealed partial class MainWindowViewModel
 
             if (_watchedArenaId > 0)
             {
-                var watched = arenas.FirstOrDefault(a => a.ArenaId == _watchedArenaId);
+                var watched = uniqueArenas.FirstOrDefault(a => a.ArenaId == _watchedArenaId);
                 if (watched is not null)
                 {
                     UpdateArenaViewerFromArena(watched);
@@ -368,11 +382,23 @@ public sealed partial class MainWindowViewModel
         }
         finally
         {
-            if (!silent)
+            if (!silent && IsArenaRefreshCurrent(refreshVersion, requestedServerId))
             {
                 IsServerArenasLoading = false;
             }
         }
+    }
+
+    private bool IsArenaRefreshCurrent(int refreshVersion, string requestedServerId)
+    {
+        var active = SelectedServer;
+        if (active is null)
+        {
+            return false;
+        }
+
+        return refreshVersion == _serverArenasRefreshVersion &&
+               string.Equals(active.ServerId, requestedServerId, StringComparison.OrdinalIgnoreCase);
     }
 
     private void StartWatchingArena(int arenaId, string game, string viewerUrl, string pluginEntryUrl, int viewerWidth, int viewerHeight)

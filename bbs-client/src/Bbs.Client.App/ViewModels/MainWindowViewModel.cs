@@ -135,6 +135,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         OpenBotEditorCommand = new RelayCommand<BotSummaryItem>(OpenBotEditorFromCard);
         DeployBotFromCardCommand = new RelayCommand<BotSummaryItem>(DeployBotFromCard, bot => bot is not null && CanDeploySelectedBot());
         ActivateServerCardCommand = new RelayCommand<ServerSummaryItem>(ActivateServerCardFromPanel);
+        OpenServerEditorFromCardCommand = new RelayCommand<ServerSummaryItem>(OpenServerEditorFromCard);
         SaveBotProfileCommand = new RelayCommand(SaveBotProfile);
         StartNewBotCommand = new RelayCommand(StartNewBot);
         DeploySelectedBotCommand = new RelayCommand(DeploySelectedBotToSelectedServer, CanDeploySelectedBot);
@@ -164,11 +165,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         WorkspaceContext.BotDetails => SelectedBot is null ? "Bot Context" : $"{SelectedBot.Name}",
         WorkspaceContext.ServerDetails => SelectedServer is null ? "Server Context" : $"{SelectedServer.Name}",
+        WorkspaceContext.ServerEditor => SelectedServer is null ? "Edit Server" : $"Edit {SelectedServer.Name}",
         WorkspaceContext.ArenaViewer => string.IsNullOrWhiteSpace(ArenaViewerLabel) ? "Arena Viewer" : ArenaViewerLabel,
         _ => "BBS"
     };
     public bool ShowBotEditor => _currentContext == WorkspaceContext.BotDetails;
-    public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerDetails;
+    public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerEditor;
+    public bool ShowServerDetails => _currentContext == WorkspaceContext.ServerDetails;
     public bool ShowArenaViewer => _currentContext == WorkspaceContext.ArenaViewer;
     public bool IsServerDetailLoading
     {
@@ -669,6 +672,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ICommand OpenBotEditorCommand { get; }
     public ICommand DeployBotFromCardCommand { get; }
     public ICommand ActivateServerCardCommand { get; }
+    public ICommand OpenServerEditorFromCardCommand { get; }
     public ICommand SaveBotProfileCommand { get; }
     public ICommand StartNewBotCommand { get; }
     public ICommand DeploySelectedBotCommand { get; }
@@ -919,6 +923,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         SwitchWorkspaceContext(WorkspaceContext.BotDetails);
     }
 
+    private void OpenServerEditorFromCard(ServerSummaryItem? server)
+    {
+        if (server is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedServer, server))
+        {
+            SelectedServer = server;
+        }
+
+        PopulateServerEditor(server);
+        SwitchWorkspaceContext(WorkspaceContext.ServerEditor);
+    }
+
     private void DeployBotFromCard(BotSummaryItem? bot)
     {
         if (bot is null)
@@ -974,6 +994,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     ? "Select a server card to load server context."
                     : $"{SelectedServer.Endpoint} | {SelectedServer.Status} | Plugins: {SelectedServer.PluginCount}";
                 break;
+            case WorkspaceContext.ServerEditor:
+                WorkspaceTitle = SelectedServer is null ? "Server Registration / Edit" : $"Edit Server: {SelectedServer.Name}";
+                WorkspaceDescription = SelectedServer is null
+                    ? "Select a server card and use the edit action to modify its registration details."
+                    : "Update known-server registration fields and save changes from this editor view.";
+                break;
             case WorkspaceContext.ArenaViewer:
                 WorkspaceTitle = string.IsNullOrWhiteSpace(ArenaViewerLabel) ? "Arena Viewer" : ArenaViewerLabel;
                 WorkspaceDescription = string.IsNullOrWhiteSpace(ArenaViewerStatus)
@@ -991,6 +1017,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(WorkspaceDescription));
         OnPropertyChanged(nameof(ShowBotEditor));
         OnPropertyChanged(nameof(ShowServerEditor));
+        OnPropertyChanged(nameof(ShowServerDetails));
         OnPropertyChanged(nameof(ShowArenaViewer));
         OnPropertyChanged(nameof(CurrentTitleText));
         ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
@@ -2493,11 +2520,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         IsServerDetailLoading = true;
         ServerMetadataEntries.Clear();
         ServerPluginCatalogEntries.Clear();
+        ServerArenaEntries.Clear();
 
         var server = SelectedServer;
         if (server is null)
         {
             ServerCatalogStatus = "Select a server to view cached plugin catalog.";
+            ServerArenasStatus = "Select a server to load active arenas.";
             IsServerDetailLoading = false;
             OnPropertyChanged(nameof(HasServerMetadata));
             OnPropertyChanged(nameof(HasServerPluginCatalog));
@@ -2523,6 +2552,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ServerCatalogStatus = server.CachedPlugins.Count == 0
             ? "No cached plugins available."
             : $"Cached plugins: {server.CachedPlugins.Count}";
+        ServerArenasStatus = "Loading active arenas...";
 
         IsServerDetailLoading = false;
         OnPropertyChanged(nameof(HasServerMetadata));

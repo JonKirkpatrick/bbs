@@ -323,7 +323,42 @@
                                                             </StackPanel>
                                                       </Border>
 
-                                                      <Border Grid.Row="6" Margin="0,8,0,0" Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
+                                                      <TextBlock Grid.Row="7" Margin="0,10,0,0" FontSize="15" FontWeight="SemiBold" Text="Known Server Registration / Edit" />
+
+                                                      <StackPanel Grid.Row="8" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Server Name" />
+                                                            <TextBox Text="{Binding ServerEditorName}" Watermark="Local Stadium" />
+                                                      </StackPanel>
+
+                                                      <Grid Grid.Row="9" Margin="0,6,0,0" ColumnDefinitions="2*,*,Auto">
+                                                            <StackPanel Grid.Column="0" Spacing="2">
+                                                                  <TextBlock FontSize="12" Opacity="1" Text="Host" />
+                                                                  <TextBox Text="{Binding ServerEditorHost}" Watermark="127.0.0.1" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="2">
+                                                                  <TextBlock FontSize="12" Opacity="1" Text="Dashboard Port" />
+                                                                  <TextBox Text="{Binding ServerEditorPort}" Watermark="3000" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="2" Margin="8,20,0,0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4">
+                                                                  <CheckBox IsChecked="{Binding ServerEditorUseTls}" />
+                                                                  <TextBlock FontSize="12" Text="TLS" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                      </Grid>
+
+                                                      <StackPanel Grid.Row="10" Margin="0,6,0,0" Spacing="2">
+                                                            <TextBlock FontSize="12" Opacity="1" Text="Metadata (k=v;k2=v2)" />
+                                                            <TextBox Text="{Binding ServerEditorMetadata}" Watermark="region=local;tier=alpha" />
+                                                      </StackPanel>
+
+                                                      <StackPanel Grid.Row="11" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                                                            <Button Command="{Binding SaveServerProfileCommand}" Content="Save Server" />
+                                                      </StackPanel>
+                                                </Grid>
+                                          </Border>
+
+                                          <Border IsVisible="{Binding ShowServerDetails}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                                <StackPanel Spacing="6">
+                                                      <Border Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
                                                             <StackPanel Spacing="6">
                                                                   <TextBlock FontSize="13" FontWeight="SemiBold" Text="Owner-Token Actions" />
                                                                   <TextBlock IsVisible="{Binding ShowOwnerTokenActionsUnavailable}"
@@ -359,42 +394,6 @@
                                                             </StackPanel>
                                                       </Border>
 
-                                                      <TextBlock Grid.Row="7" Margin="0,10,0,0" FontSize="15" FontWeight="SemiBold" Text="Known Server Registration / Edit" />
-
-                                                      <StackPanel Grid.Row="8" Margin="0,6,0,0" Spacing="2">
-                                                            <TextBlock FontSize="12" Opacity="1" Text="Server Name" />
-                                                            <TextBox Text="{Binding ServerEditorName}" Watermark="Local Stadium" />
-                                                      </StackPanel>
-
-                                                      <Grid Grid.Row="9" Margin="0,6,0,0" ColumnDefinitions="2*,*,Auto">
-                                                            <StackPanel Grid.Column="0" Spacing="2">
-                                                                  <TextBlock FontSize="12" Opacity="1" Text="Host" />
-                                                                  <TextBox Text="{Binding ServerEditorHost}" Watermark="127.0.0.1" />
-                                                            </StackPanel>
-                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="2">
-                                                                  <TextBlock FontSize="12" Opacity="1" Text="Dashboard Port" />
-                                                                  <TextBox Text="{Binding ServerEditorPort}" Watermark="3000" />
-                                                            </StackPanel>
-                                                            <StackPanel Grid.Column="2" Margin="8,20,0,0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4">
-                                                                  <CheckBox IsChecked="{Binding ServerEditorUseTls}" />
-                                                                  <TextBlock FontSize="12" Text="TLS" VerticalAlignment="Center" />
-                                                            </StackPanel>
-                                                      </Grid>
-
-                                                      <StackPanel Grid.Row="10" Margin="0,6,0,0" Spacing="2">
-                                                            <TextBlock FontSize="12" Opacity="1" Text="Metadata (k=v;k2=v2)" />
-                                                            <TextBox Text="{Binding ServerEditorMetadata}" Watermark="region=local;tier=alpha" />
-                                                      </StackPanel>
-
-                                                      <StackPanel Grid.Row="11" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
-                                                            <Button Command="{Binding SaveServerProfileCommand}" Content="Save Server" />
-                                                            <Button Command="{Binding StartNewServerCommand}" Content="New Server" />
-                                                      </StackPanel>
-                                                </Grid>
-                                          </Border>
-
-                                          <Border IsVisible="{Binding ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
-                                                <StackPanel Spacing="6">
                                                       <Grid ColumnDefinitions="*,Auto">
                                                             <TextBlock FontSize="15" FontWeight="SemiBold" Text="Active Arenas" />
                                                             <Button Grid.Column="1" Command="{Binding RefreshServerArenasCommand}" Content="Refresh" />
@@ -577,19 +576,38 @@
                                                        SelectedItem="{Binding SelectedServer}">
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:ServerSummaryItem" x:CompileBindings="False">
-                                                <Button Classes="card-hit-target"
-                                                      Command="{Binding #RootWindow.DataContext.ActivateServerCardCommand}"
-                                                        CommandParameter="{Binding}"
-                                                        Padding="0"
-                                                        HorizontalAlignment="Stretch"
-                                                        HorizontalContentAlignment="Stretch">
-                                                      <controls:SummaryCard Title="{Binding Name}"
-                                                                            IsActive="{Binding $parent[ListBoxItem].IsSelected}"
-                                                                            Subtitle="{Binding Endpoint}"
-                                                                            StatusText="{Binding Status}"
-                                                                            AccentBrush="{Binding AccentBrush}"
-                                                                            BackgroundBrush="{Binding BackgroundBrush}" />
-                                                </Button>
+                                                <Grid Margin="0,0,0,8">
+                                                      <Button Classes="card-hit-target"
+                                                            Command="{Binding #RootWindow.DataContext.ActivateServerCardCommand}"
+                                                              CommandParameter="{Binding}"
+                                                              Padding="0"
+                                                              HorizontalAlignment="Stretch"
+                                                              HorizontalContentAlignment="Stretch">
+                                                            <controls:SummaryCard Title="{Binding Name}"
+                                                                                  IsActive="{Binding $parent[ListBoxItem].IsSelected}"
+                                                                                  Subtitle="{Binding Endpoint}"
+                                                                                  StatusText="{Binding Status}"
+                                                                                  AccentBrush="{Binding AccentBrush}"
+                                                                                  BackgroundBrush="{Binding BackgroundBrush}" />
+                                                      </Button>
+
+                                                      <StackPanel Orientation="Vertical"
+                                                                  Spacing="6"
+                                                                  Margin="0,8,8,8"
+                                                                  HorizontalAlignment="Right"
+                                                                  VerticalAlignment="Center">
+                                                            <Button Classes="card-action-icon"
+                                                                    ToolTip.Tip="Edit Server"
+                                                                    Command="{Binding #RootWindow.DataContext.OpenServerEditorFromCardCommand}"
+                                                                    CommandParameter="{Binding}">
+                                                                  <Path Classes="panel-icon"
+                                                                        Data="{StaticResource PencilIcon}"
+                                                                        Width="14"
+                                                                        Height="14"
+                                                                        Stretch="Uniform" />
+                                                            </Button>
+                                                      </StackPanel>
+                                                </Grid>
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
