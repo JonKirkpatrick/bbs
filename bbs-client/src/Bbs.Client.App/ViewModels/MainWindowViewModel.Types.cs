@@ -20,8 +20,6 @@ public sealed record ServerPluginCatalogItem(
 
 public sealed record RegisterHandshakeResult(
     string SessionId,
-    string ServerBotId,
-    string ServerBotSecret,
     string OwnerToken,
     string DashboardEndpoint);
 

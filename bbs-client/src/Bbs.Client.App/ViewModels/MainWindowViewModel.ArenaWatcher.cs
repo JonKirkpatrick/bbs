@@ -379,10 +379,7 @@ public sealed partial class MainWindowViewModel
     {
         _watchedArenaId = arenaId;
         ArenaViewerLabel = $"Arena #{arenaId} ({(string.IsNullOrWhiteSpace(game) ? "unknown" : game)})";
-        ArenaViewerUrl = viewerUrl;
-        ArenaViewerPluginEntryUrl = pluginEntryUrl;
-        ArenaViewerHostWidth = Math.Max(300, viewerWidth > 0 ? viewerWidth : 760);
-        ArenaViewerHostHeight = Math.Max(200, viewerHeight > 0 ? viewerHeight : 340);
+        ApplyArenaViewerProjection(viewerUrl, pluginEntryUrl, viewerWidth, viewerHeight, overwriteUrlsWhenEmpty: true);
         ArenaViewerStatus = "Starting live arena watch...";
         ArenaViewerRawState = string.Empty;
         ArenaViewerLastError = string.Empty;
@@ -463,19 +460,23 @@ public sealed partial class MainWindowViewModel
             : arena.GameState;
         ArenaViewerLastUpdatedUtc = DateTimeOffset.UtcNow.ToString("O");
         ArenaViewerLastError = string.Empty;
+        ApplyArenaViewerProjection(arena.ViewerUrl, arena.PluginEntryUrl, arena.ViewerWidth, arena.ViewerHeight, overwriteUrlsWhenEmpty: false);
+    }
 
-        if (!string.IsNullOrWhiteSpace(arena.ViewerUrl))
+    private void ApplyArenaViewerProjection(string viewerUrl, string pluginEntryUrl, int viewerWidth, int viewerHeight, bool overwriteUrlsWhenEmpty)
+    {
+        if (overwriteUrlsWhenEmpty || !string.IsNullOrWhiteSpace(viewerUrl))
         {
-            ArenaViewerUrl = arena.ViewerUrl;
+            ArenaViewerUrl = viewerUrl;
         }
 
-        if (!string.IsNullOrWhiteSpace(arena.PluginEntryUrl))
+        if (overwriteUrlsWhenEmpty || !string.IsNullOrWhiteSpace(pluginEntryUrl))
         {
-            ArenaViewerPluginEntryUrl = arena.PluginEntryUrl;
+            ArenaViewerPluginEntryUrl = pluginEntryUrl;
         }
 
-        ArenaViewerHostWidth = Math.Max(300, arena.ViewerWidth > 0 ? arena.ViewerWidth : 760);
-        ArenaViewerHostHeight = Math.Max(200, arena.ViewerHeight > 0 ? arena.ViewerHeight : 340);
+        ArenaViewerHostWidth = Math.Max(300, viewerWidth > 0 ? viewerWidth : 760);
+        ArenaViewerHostHeight = Math.Max(200, viewerHeight > 0 ? viewerHeight : 340);
     }
 
     private static bool TryParseArenaList(string payload, out IReadOnlyList<ServerArenaApiDto> arenas)

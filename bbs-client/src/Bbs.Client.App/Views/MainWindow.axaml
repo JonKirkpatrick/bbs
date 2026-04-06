@@ -139,7 +139,7 @@
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedBot}">
                                     <ListBox.ItemTemplate>
-      <DataTemplate>
+      <DataTemplate x:CompileBindings="False">
             <Grid Margin="0,0,0,8">
                   <controls:SummaryCard Title="{Binding Name}"
                                         IsActive="{Binding $parent[ListBoxItem].IsSelected}"
@@ -148,14 +148,32 @@
                                         AccentBrush="{Binding AccentBrush}"
                                         BackgroundBrush="{Binding BackgroundBrush}" />
 
-                  <StackPanel IsVisible="{Binding $parent[ListBoxItem].IsSelected}" 
-                              Orientation="Horizontal" 
-                              Spacing="6" 
-                              Margin="0,0,10,10"
+                  <StackPanel Orientation="Vertical"
+                              Spacing="6"
+                              Margin="0,8,8,8"
                               HorizontalAlignment="Right"
                               VerticalAlignment="Center">
-                  <Button Command="{Binding DeployCommand}"
-                        Content="Deploy" />
+                        <Button Classes="card-action-icon"
+                                ToolTip.Tip="Edit Bot"
+                                Command="{Binding #RootWindow.DataContext.OpenBotEditorCommand}"
+                                CommandParameter="{Binding}">
+                              <Path Classes="panel-icon"
+                                    Data="{StaticResource PencilIcon}"
+                                    Width="14"
+                                    Height="14"
+                                    Stretch="Uniform" />
+                        </Button>
+
+                        <Button Classes="card-action-icon"
+                                ToolTip.Tip="Deploy Bot"
+                                Command="{Binding #RootWindow.DataContext.DeployBotFromCardCommand}"
+                                CommandParameter="{Binding}">
+                              <Path Classes="panel-icon"
+                                    Data="{StaticResource RocketIcon}"
+                                    Width="14"
+                                    Height="14"
+                                    Stretch="Uniform" />
+                        </Button>
                   </StackPanel>
             </Grid>
       </DataTemplate>
@@ -489,9 +507,14 @@
 
                   <Grid Grid.Column="2" Margin="6,0,0,0" ZIndex="0">
                         <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="5,0,0,5" BoxShadow="4 2 20 0 #40000000" ZIndex="0" />
-                        <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ClipToBounds="True" ZIndex="1">
-                              <Grid>
-                                    <TextBlock IsVisible="{Binding IsRightPanelExpanded}" HorizontalAlignment="Center" FontSize="18" FontWeight="SemiBold" Text="Servers" />
+                        <Grid Margin="12" RowDefinitions="Auto,Auto,*" ClipToBounds="True" ZIndex="1">
+                              <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                    <TextBlock Grid.ColumnSpan="3"
+                                               IsVisible="{Binding IsRightPanelExpanded}"
+                                               HorizontalAlignment="Center"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"
+                                               Text="Servers" />
                                     <Button Classes="panel-icon-toggle" HorizontalAlignment="Left" Width="28" Height="28" Padding="4" Command="{Binding ToggleRightPanelCommand}">
                                           <Grid>
                                                 <Path IsVisible="{Binding IsRightPanelExpanded}"
@@ -509,7 +532,40 @@
                                                       Stretch="Uniform" />
                                           </Grid>
                                     </Button>
+
+                                    <StackPanel Grid.Column="2"
+                                                IsVisible="{Binding IsRightPanelExpanded}"
+                                                Orientation="Horizontal"
+                                                Spacing="6"
+                                                HorizontalAlignment="Right">
+                                          <Button Classes="panel-icon-toggle"
+                                                  Width="28"
+                                                  Height="28"
+                                                  Padding="5"
+                                                  Command="{Binding ReprobeServersCommand}"
+                                                  ToolTip.Tip="Reprobe Servers">
+                                                <Path Data="{StaticResource ReprobeIcon}"
+                                                      Classes="panel-icon"
+                                                      Width="14"
+                                                      Height="14"
+                                                      Stretch="Uniform" />
+                                          </Button>
+
+                                          <Button Classes="panel-icon-toggle"
+                                                  Width="28"
+                                                  Height="28"
+                                                  Padding="6"
+                                                  Command="{Binding StartNewServerCommand}"
+                                                  ToolTip.Tip="New Server">
+                                                <Path Data="{StaticResource PlusIcon}"
+                                                      Classes="panel-icon"
+                                                      Width="12"
+                                                      Height="12"
+                                                      Stretch="Uniform" />
+                                          </Button>
+                                    </StackPanel>
                               </Grid>
+
                               <ListBox Grid.Row="2"
                                                        IsVisible="{Binding IsRightPanelExpanded}"
                                                        Margin="0,10,0,0"
@@ -520,34 +576,23 @@
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedServer}">
                                     <ListBox.ItemTemplate>
-                                          <DataTemplate x:DataType="vm:ServerSummaryItem">
-                                                <controls:SummaryCard Title="{Binding Name}"
-                                                                                                                  IsActive="{Binding $parent[ListBoxItem].IsSelected}"
-                                                                                                                  Subtitle="{Binding Endpoint}"
-                                                                                                                  StatusText="{Binding Status}"
-                                                                                                                  AccentBrush="{Binding AccentBrush}"
-                                                                                                                  BackgroundBrush="{Binding BackgroundBrush}" />
+                                          <DataTemplate x:DataType="vm:ServerSummaryItem" x:CompileBindings="False">
+                                                <Button Classes="card-hit-target"
+                                                      Command="{Binding #RootWindow.DataContext.ActivateServerCardCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Padding="0"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Stretch">
+                                                      <controls:SummaryCard Title="{Binding Name}"
+                                                                            IsActive="{Binding $parent[ListBoxItem].IsSelected}"
+                                                                            Subtitle="{Binding Endpoint}"
+                                                                            StatusText="{Binding Status}"
+                                                                            AccentBrush="{Binding AccentBrush}"
+                                                                            BackgroundBrush="{Binding BackgroundBrush}" />
+                                                </Button>
                                           </DataTemplate>
                                     </ListBox.ItemTemplate>
                               </ListBox>
-
-                              <Grid Grid.Row="3"
-                                    IsVisible="{Binding IsRightPanelExpanded}"
-                                    Margin="0,8,0,0"
-                                    ColumnDefinitions="*,*">
-                                    <Button Grid.Column="0"
-                                            Margin="0,0,4,0"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Center"
-                                            Command="{Binding StartNewServerCommand}"
-                                            Content="New Server" />
-                                    <Button Grid.Column="1"
-                                            Margin="4,0,0,0"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Center"
-                                            Command="{Binding ReprobeServersCommand}"
-                                            Content="Reprobe" />
-                              </Grid>
 
                         </Grid>
                   </Grid>

@@ -92,6 +92,8 @@ public sealed partial class MainWindowViewModel
         RefreshSelectedServerDetail();
         TriggerServerAccessRefresh();
         RefreshContextProjection();
+        SetHomeContext();
+        ((RelayCommand)ReprobeServersCommand).RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(IsPersonaLoaded));
         OnPropertyChanged(nameof(CurrentPersonaPath));
     }

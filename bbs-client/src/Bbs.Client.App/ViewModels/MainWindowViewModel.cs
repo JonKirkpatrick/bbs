@@ -132,6 +132,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         SetHomeContextCommand = new RelayCommand(SetHomeContext);
         SetBotContextCommand = new RelayCommand(SetBotContextFromSelection, () => SelectedBot is not null && IsPersonaLoaded);
         SetServerContextCommand = new RelayCommand(SetServerContextFromSelection, () => SelectedServer is not null && IsPersonaLoaded);
+        OpenBotEditorCommand = new RelayCommand<BotSummaryItem>(OpenBotEditorFromCard);
+        DeployBotFromCardCommand = new RelayCommand<BotSummaryItem>(DeployBotFromCard, bot => bot is not null && CanDeploySelectedBot());
+        ActivateServerCardCommand = new RelayCommand<ServerSummaryItem>(ActivateServerCardFromPanel);
         SaveBotProfileCommand = new RelayCommand(SaveBotProfile);
         StartNewBotCommand = new RelayCommand(StartNewBot);
         DeploySelectedBotCommand = new RelayCommand(DeploySelectedBotToSelectedServer, CanDeploySelectedBot);
@@ -619,12 +622,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             OnPropertyChanged();
             ((RelayCommand)SetBotContextCommand).RaiseCanExecuteChanged();
             ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
-            if (value is not null)
-            {
-                PopulateBotEditor(value);
-                _currentContext = WorkspaceContext.BotDetails; 
-                RefreshContextProjection();
-            }
+            ((RelayCommand<BotSummaryItem>)DeployBotFromCardCommand).RaiseCanExecuteChanged();
             RefreshActiveBotSessionsProjection();
             TriggerServerAccessRefresh();
         }
@@ -649,6 +647,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             ((RelayCommand)SetServerContextCommand).RaiseCanExecuteChanged();
             ((RelayCommand)RefreshServerArenasCommand).RaiseCanExecuteChanged();
             ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
+            ((RelayCommand<BotSummaryItem>)DeployBotFromCardCommand).RaiseCanExecuteChanged();
             if (value is not null)
             {
                 StopArenaViewerWatch();
@@ -667,6 +666,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ICommand SetHomeContextCommand { get; }
     public ICommand SetBotContextCommand { get; }
     public ICommand SetServerContextCommand { get; }
+    public ICommand OpenBotEditorCommand { get; }
+    public ICommand DeployBotFromCardCommand { get; }
+    public ICommand ActivateServerCardCommand { get; }
     public ICommand SaveBotProfileCommand { get; }
     public ICommand StartNewBotCommand { get; }
     public ICommand DeploySelectedBotCommand { get; }
@@ -706,7 +708,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private bool CanDeploySelectedBot()
     {
-        if (!IsPersonaLoaded || _currentContext != WorkspaceContext.ServerDetails)
+        if (!IsPersonaLoaded)
         {
             return false;
         }
@@ -878,22 +880,81 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void SetHomeContext()
     {
-        StopArenaViewerWatch();
-        _currentContext = WorkspaceContext.Home;
-        RefreshContextProjection();
+        SwitchWorkspaceContext(WorkspaceContext.Home);
     }
 
     private void SetBotContextFromSelection()
     {
-        StopArenaViewerWatch();
-        _currentContext = WorkspaceContext.BotDetails;
-        RefreshContextProjection();
+        if (SelectedBot is not null)
+        {
+            PopulateBotEditor(SelectedBot);
+        }
+
+        SwitchWorkspaceContext(WorkspaceContext.BotDetails);
     }
 
     private void SetServerContextFromSelection()
     {
+        if (SelectedServer is not null)
+        {
+            PopulateServerEditor(SelectedServer);
+        }
+
+        SwitchWorkspaceContext(WorkspaceContext.ServerDetails);
+    }
+
+    private void OpenBotEditorFromCard(BotSummaryItem? bot)
+    {
+        if (bot is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedBot, bot))
+        {
+            SelectedBot = bot;
+        }
+
+        PopulateBotEditor(bot);
+        SwitchWorkspaceContext(WorkspaceContext.BotDetails);
+    }
+
+    private void DeployBotFromCard(BotSummaryItem? bot)
+    {
+        if (bot is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedBot, bot))
+        {
+            SelectedBot = bot;
+        }
+
+        DeploySelectedBotToSelectedServer();
+    }
+
+    private void ActivateServerCardFromPanel(ServerSummaryItem? server)
+    {
+        if (server is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedServer, server))
+        {
+            SelectedServer = server;
+            return;
+        }
+
+        PopulateServerEditor(server);
+        SwitchWorkspaceContext(WorkspaceContext.ServerDetails);
+    }
+
+    private void SwitchWorkspaceContext(WorkspaceContext context)
+    {
         StopArenaViewerWatch();
-        _currentContext = WorkspaceContext.ServerDetails;
+        _currentContext = context;
         RefreshContextProjection();
     }
 
@@ -1006,7 +1067,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         if (!CanDeploySelectedBot())
         {
-            BotEditorMessage = "Deploy is only available when a live server is selected in Server context.";
+            BotEditorMessage = "Deploy is only available when a live server is selected.";
             return;
         }
 
@@ -1219,16 +1280,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var sessionId = accessReply.SessionId;
-        var serverBotId = accessReply.BotId;
-        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(serverBotId))
+        if (string.IsNullOrWhiteSpace(sessionId))
         {
-            throw new InvalidOperationException("Agent did not return a valid session_id/bot_id after server_connect.");
+            throw new InvalidOperationException("Agent did not return a valid session_id after server_connect.");
         }
 
         return new RegisterHandshakeResult(
             SessionId: sessionId,
-            ServerBotId: serverBotId,
-            ServerBotSecret: accessReply.ControlToken,
             OwnerToken: accessReply.OwnerToken,
             DashboardEndpoint: NormalizeDashboardEndpoint(accessReply.DashboardEndpoint, accessReply.DashboardHost, accessReply.DashboardPort, server.UseTls));
     }
@@ -2039,9 +2097,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (!TryGetRuntimeSession(botId, sessionId, out var runtimeBotId, out _, out _))
+        if (!TryResolveRuntimeSessionForAction(botId, sessionId, "JOIN", out var runtimeBotId))
         {
-            BotEditorMessage = "JOIN failed: runtime session mapping not found.";
             return;
         }
 
@@ -2057,58 +2114,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        try
-        {
-            var reply = SendAgentControlRequest(
-                BuildAgentControlSocketPath(runtimeBotId),
+        if (!TrySendSessionControlRequest(
+                runtimeBotId,
                 "join_session",
                 new Dictionary<string, object>
                 {
                     ["arena_id"] = item.SelectedArena.ArenaId,
                     ["handicap_percent"] = handicapPercent
-                });
-
-            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
-            {
-                BotEditorMessage = $"JOIN failed: {reply.Message}";
-                return;
-            }
-
-            BotEditorMessage = $"JOIN requested for session {sessionId}.";
-        }
-        catch (Exception ex)
+                },
+                "JOIN",
+                out var failureMessage))
         {
-            BotEditorMessage = $"JOIN failed: {ex.Message}";
+            BotEditorMessage = failureMessage;
+            return;
         }
+
+        BotEditorMessage = $"JOIN requested for session {sessionId}.";
     }
 
     private void ExecuteSessionLeave(string botId, string sessionId)
     {
-        if (!TryGetRuntimeSession(botId, sessionId, out var runtimeBotId, out _, out _))
+        if (!TryResolveRuntimeSessionForAction(botId, sessionId, "LEAVE", out var runtimeBotId))
         {
-            BotEditorMessage = "LEAVE failed: runtime session mapping not found.";
             return;
         }
 
-        try
-        {
-            var reply = SendAgentControlRequest(
-                BuildAgentControlSocketPath(runtimeBotId),
+        if (!TrySendSessionControlRequest(
+                runtimeBotId,
                 "leave_session",
-                new Dictionary<string, object>());
-
-            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
-            {
-                BotEditorMessage = $"LEAVE failed: {reply.Message}";
-                return;
-            }
-
-            BotEditorMessage = $"LEAVE requested for session {sessionId}.";
-        }
-        catch (Exception ex)
+                new Dictionary<string, object>(),
+                "LEAVE",
+                out var failureMessage))
         {
-            BotEditorMessage = $"LEAVE failed: {ex.Message}";
+            BotEditorMessage = failureMessage;
+            return;
         }
+
+        BotEditorMessage = $"LEAVE requested for session {sessionId}.";
     }
 
     private void ExecuteSessionQuit(string botId, string sessionId)
@@ -2120,27 +2162,62 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        if (!TrySendSessionControlRequest(
+                runtimeBotId,
+                "quit_session",
+                new Dictionary<string, object>(),
+                "QUIT",
+                out var failureMessage))
+        {
+            BotEditorMessage = failureMessage;
+            return;
+        }
+
+        DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
+        BotEditorMessage = $"QUIT requested for session {sessionId}.";
+        LoadBotsFromStorage();
+        SelectedBot = FindBotById(botId);
+    }
+
+    private bool TryResolveRuntimeSessionForAction(string botId, string sessionId, string actionLabel, out string runtimeBotId)
+    {
+        if (TryGetRuntimeSession(botId, sessionId, out runtimeBotId, out _, out _))
+        {
+            return true;
+        }
+
+        runtimeBotId = string.Empty;
+        BotEditorMessage = $"{actionLabel} failed: runtime session mapping not found.";
+        return false;
+    }
+
+    private bool TrySendSessionControlRequest(
+        string runtimeBotId,
+        string messageType,
+        IReadOnlyDictionary<string, object> payload,
+        string actionLabel,
+        out string failureMessage)
+    {
         try
         {
             var reply = SendAgentControlRequest(
                 BuildAgentControlSocketPath(runtimeBotId),
-                "quit_session",
-                new Dictionary<string, object>());
+                messageType,
+                payload);
 
             if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
             {
-                BotEditorMessage = $"QUIT failed: {reply.Message}";
-                return;
+                failureMessage = $"{actionLabel} failed: {reply.Message}";
+                return false;
             }
 
-            DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
-            BotEditorMessage = $"QUIT requested for session {sessionId}.";
-            LoadBotsFromStorage();
-            SelectedBot = FindBotById(botId);
+            failureMessage = string.Empty;
+            return true;
         }
         catch (Exception ex)
         {
-            BotEditorMessage = $"QUIT failed: {ex.Message}";
+            failureMessage = $"{actionLabel} failed: {ex.Message}";
+            return false;
         }
     }
 
@@ -2271,7 +2348,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void HandleOrchestrationException(string action, string botId, string errorCode, Exception ex)
     {
-        BotEditorMessage = $"Unable to {action} bot ({errorCode}). You can retry without restarting the app.";
+        if (string.Equals(action, "deploy", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(errorCode, "deploy_runtime_unavailable", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(ex.Message))
+        {
+            BotEditorMessage = $"Deploy failed: {ex.Message}";
+        }
+        else
+        {
+            BotEditorMessage = $"Unable to {action} bot ({errorCode}).";
+        }
+
         var topStackFrame = ex.StackTrace?.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? string.Empty;
         var fields = new Dictionary<string, string>
         {
