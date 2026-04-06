@@ -113,14 +113,14 @@ public partial class MainWindow : Window
         await ViewModel.LoadPersonaAsync(file.Path.LocalPath);
     }
 
-    private async void OnUnloadPersonaClicked(object? sender, RoutedEventArgs e)
+    private void OnUnloadPersonaClicked(object? sender, RoutedEventArgs e)
     {
         if (ViewModel is null)
         {
             return;
         }
 
-        await ViewModel.UnloadPersonaAsync();
+        ViewModel.UnloadPersona();
     }
 
     private async void OnDuplicatePersonaClicked(object? sender, RoutedEventArgs e)

@@ -39,7 +39,7 @@ public sealed class PersonaContextManager
     {
         if (IsLoaded)
         {
-            await UnloadPersonaAsync(cancellationToken);
+            UnloadPersona(cancellationToken);
         }
 
         var filePath = await _personaManager.CreatePersonaAsync(personaName, cancellationToken);
@@ -56,7 +56,7 @@ public sealed class PersonaContextManager
 
         if (IsLoaded)
         {
-            await UnloadPersonaAsync(cancellationToken);
+            UnloadPersona(cancellationToken);
         }
 
         var storage = new SqliteClientStorage(filePath);
@@ -81,7 +81,7 @@ public sealed class PersonaContextManager
             });
     }
 
-    public async Task UnloadPersonaAsync(CancellationToken cancellationToken = default)
+    public void UnloadPersona(CancellationToken cancellationToken = default)
     {
         if (!IsLoaded)
         {
@@ -151,7 +151,7 @@ public sealed class PersonaContextManager
     {
         if (IsLoaded && string.Equals(_currentPersonaPath, filePath, StringComparison.OrdinalIgnoreCase))
         {
-            await UnloadPersonaAsync(cancellationToken);
+            UnloadPersona(cancellationToken);
         }
 
         await _personaManager.DeletePersonaAsync(filePath, cancellationToken);

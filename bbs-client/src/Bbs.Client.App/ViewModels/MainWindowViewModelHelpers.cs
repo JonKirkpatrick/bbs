@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace Bbs.Client.App.ViewModels;
 
@@ -61,5 +62,63 @@ internal static class MainWindowViewModelHelpers
         }
 
         return string.Join(';', parts);
+    }
+
+    internal static string? FirstNonEmptyMetadataValue(IReadOnlyDictionary<string, string> metadata, IEnumerable<string> keys)
+    {
+        foreach (var key in keys)
+        {
+            if (metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    internal static int? ParsePositivePort(IReadOnlyDictionary<string, string> metadata, IEnumerable<string> keys)
+    {
+        var raw = FirstNonEmptyMetadataValue(metadata, keys);
+        if (!int.TryParse(raw, out var port) || port is < 1 or > 65535)
+        {
+            return null;
+        }
+
+        return port;
+    }
+
+    internal static string BuildBaseEndpoint(string scheme, string host, int port)
+    {
+        return $"{scheme}://{host}:{port}";
+    }
+
+    internal static bool IsStatusOkObject(JsonElement root)
+    {
+        return root.ValueKind == JsonValueKind.Object &&
+               root.TryGetProperty("status", out var statusNode) &&
+               string.Equals(statusNode.GetString(), "ok", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static string GetStringPropertyOrEmpty(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var node))
+        {
+            return string.Empty;
+        }
+
+        return node.ValueKind switch
+        {
+            JsonValueKind.Null => string.Empty,
+            JsonValueKind.String => node.GetString() ?? string.Empty,
+            _ => node.ToString()
+        };
+    }
+
+    internal static int GetIntPropertyOrDefault(JsonElement element, string propertyName, int defaultValue = 0)
+    {
+        return element.TryGetProperty(propertyName, out var node) && node.TryGetInt32(out var value)
+            ? value
+            : defaultValue;
     }
 }

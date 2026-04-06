@@ -77,7 +77,7 @@ public sealed partial class MainWindowViewModel
         return ReplaceRuntimeForPersonaAsync(filePath);
     }
 
-    public Task UnloadPersonaAsync()
+    public void UnloadPersona()
     {
         if (_orchestration is IDisposable disposable)
         {
@@ -94,7 +94,6 @@ public sealed partial class MainWindowViewModel
         RefreshContextProjection();
         OnPropertyChanged(nameof(IsPersonaLoaded));
         OnPropertyChanged(nameof(CurrentPersonaPath));
-        return Task.CompletedTask;
     }
 
     public async Task DuplicateCurrentPersonaAsync(string newPersonaName)
@@ -120,7 +119,7 @@ public sealed partial class MainWindowViewModel
         EnsureCurrentPersonaLoaded();
 
         var toDelete = _currentPersonaPath!;
-        await UnloadPersonaAsync();
+        UnloadPersona();
         await _personaManager!.DeletePersonaAsync(toDelete);
     }
 

@@ -146,7 +146,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         ConfigureEmbeddedViewerSupport(embeddedViewerAvailable, embeddedViewerMessage);
 
-        _logger.Log(LogLevel.Information, "mainvm_init_mvfix", "MainWindowViewModel constructor initialized (mvfix path).", null);
+        _logger.Log(LogLevel.Information, "mainvm_init", "MainWindowViewModel constructor initialized.", null);
 
         _currentContext = WorkspaceContext.Home;
         // Do NOT load bots/servers here; wait for persona to be loaded
@@ -1166,7 +1166,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 return;
             }
 
-            HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed_mvfix", ex);
+            HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed", ex);
         }
     }
 
@@ -1450,24 +1450,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         using var doc = JsonDocument.Parse(line);
         var root = doc.RootElement;
-        var type = root.TryGetProperty("type", out var typeNode) ? typeNode.GetString() ?? string.Empty : string.Empty;
-        var id = root.TryGetProperty("id", out var idNode) ? idNode.GetString() ?? string.Empty : string.Empty;
+        var type = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(root, "type");
+        var id = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(root, "id");
 
         if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
         {
-            return new AgentControlResponse(type, id, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+            return new AgentControlResponse(type, id, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
         }
 
-        var message = payload.TryGetProperty("message", out var messageNode) ? messageNode.ToString() : string.Empty;
-        var sessionId = payload.TryGetProperty("session_id", out var sessionIdNode) ? sessionIdNode.ToString() : string.Empty;
-        var botId = payload.TryGetProperty("bot_id", out var botIdNode) ? botIdNode.ToString() : string.Empty;
-        var controlToken = payload.TryGetProperty("control_token", out var controlTokenNode) ? controlTokenNode.ToString() : string.Empty;
-        var ownerToken = payload.TryGetProperty("owner_token", out var ownerTokenNode) ? ownerTokenNode.ToString() : string.Empty;
-        var dashboardEndpoint = payload.TryGetProperty("dashboard_endpoint", out var endpointNode) ? endpointNode.ToString() : string.Empty;
-        var dashboardHost = payload.TryGetProperty("dashboard_host", out var hostNode) ? hostNode.ToString() : string.Empty;
-        var dashboardPort = payload.TryGetProperty("dashboard_port", out var portNode) ? portNode.ToString() : string.Empty;
+        var server = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "server");
+        var message = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "message");
+        var sessionId = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "session_id");
+        var botId = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "bot_id");
+        var controlToken = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "control_token");
+        var ownerToken = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "owner_token");
+        var dashboardEndpoint = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "dashboard_endpoint");
+        var dashboardHost = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "dashboard_host");
+        var dashboardPort = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "dashboard_port");
 
-        return new AgentControlResponse(type, id, message, sessionId, botId, controlToken, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort);
+        return new AgentControlResponse(type, id, message, server, sessionId, botId, controlToken, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort);
     }
 
     private static string BuildAgentControlSocketPath(string botId)
@@ -1547,7 +1548,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private static string? ResolveServerGlobalId(ServerSummaryItem server)
     {
-        var raw = FirstNonEmptyMetadataValue(server.Metadata, ServerGlobalIdMetadataKeys);
+        var raw = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(server.Metadata, ServerGlobalIdMetadataKeys);
         return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
     }
 
@@ -1764,7 +1765,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        ReconcileActiveSessionsFromRuntimeProfiles(selectedBot);
         ReconcileActiveSessionsFromRuntimeSockets(selectedBot);
 
         List<(string BotId, string SessionId)> sessions;
@@ -1813,71 +1813,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowActiveBotSessionsEmpty));
     }
 
-    private void ReconcileActiveSessionsFromRuntimeProfiles(BotSummaryItem sourceBot)
-    {
-        var sourceBotId = sourceBot.BotId;
-        var sourceBotName = sourceBot.Name;
-        var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
-        foreach (var profile in profiles)
-        {
-            if (!IsRuntimeInstanceProfile(profile))
-            {
-                continue;
-            }
-
-            var matchesSourceBotId = profile.Metadata.TryGetValue("source_bot_id", out var mappedSourceBotId) &&
-                                     string.Equals(mappedSourceBotId, sourceBotId, StringComparison.OrdinalIgnoreCase);
-            var matchesSourceBotName = profile.Metadata.TryGetValue("source_bot_name", out var mappedSourceBotName) &&
-                                       string.Equals(mappedSourceBotName, sourceBotName, StringComparison.OrdinalIgnoreCase);
-            var matchesRuntimeNamePrefix = profile.Name.StartsWith(sourceBotName + "-", StringComparison.OrdinalIgnoreCase);
-
-            if (!matchesSourceBotId && !matchesSourceBotName && !matchesRuntimeNamePrefix)
-            {
-                continue;
-            }
-
-            var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
-            var runtimeSocketAlive = File.Exists(BuildAgentControlSocketPath(profile.BotId));
-            if ((runtimeState is null || !runtimeState.IsAttached) && !runtimeSocketAlive)
-            {
-                continue;
-            }
-
-            if (runtimeSocketAlive && (runtimeState is null || !runtimeState.IsAttached))
-            {
-                var refreshedRuntimeState = new AgentRuntimeState(
-                    BotId: profile.BotId,
-                    LifecycleState: AgentLifecycleState.ActiveSession,
-                    IsAttached: true,
-                    LastErrorCode: null,
-                    UpdatedAtUtc: DateTimeOffset.UtcNow);
-                _storage.UpsertAgentRuntimeStateAsync(refreshedRuntimeState).GetAwaiter().GetResult();
-            }
-
-            var sessionId = profile.Metadata.TryGetValue(ServerAccessSessionIdMetadataKey, out var mappedSessionId) &&
-                            !string.IsNullOrWhiteSpace(mappedSessionId)
-                ? mappedSessionId
-                : profile.BotId;
-
-            var serverId = profile.Metadata.TryGetValue(ServerAccessServerIdMetadataKey, out var mappedServerId)
-                ? mappedServerId
-                : string.Empty;
-            var ownerToken = profile.Metadata.TryGetValue(ServerAccessOwnerTokenMetadataKey, out var mappedOwnerToken)
-                ? mappedOwnerToken
-                : string.Empty;
-            var dashboardEndpoint = profile.Metadata.TryGetValue(ServerAccessDashboardEndpointMetadataKey, out var mappedDashboard)
-                ? mappedDashboard
-                : string.Empty;
-
-            lock (_deployConnectionLock)
-            {
-                _activeDeployConnections.Add((sourceBotId, sessionId));
-            }
-
-            SetActiveServerAccess(sourceBotId, sessionId, profile.BotId, profile.Name, serverId, ownerToken, dashboardEndpoint);
-        }
-    }
-
     private void ReconcileActiveSessionsFromRuntimeSockets(BotSummaryItem sourceBot)
     {
         var sourceBotId = sourceBot.BotId;
@@ -1911,13 +1846,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 continue;
             }
 
-            var statusReply = ReadRuntimeStatus(runtimeBotId);
-            if (statusReply is null)
+            var accessReply = ReadRuntimeAccess(runtimeBotId);
+            if (accessReply is null)
             {
                 continue;
             }
 
-            var activeSessionId = NormalizeActiveSessionId(statusReply.SessionId);
+            var activeSessionId = NormalizeActiveSessionId(accessReply.SessionId);
             if (string.IsNullOrWhiteSpace(activeSessionId))
             {
                 continue;
@@ -1937,19 +1872,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 _activeDeployConnections.Add((sourceBotId, sessionId));
             }
 
-            // Socket fallback has no guaranteed persisted owner/dashboard metadata.
+            var serverId = ResolveServerIdFromAgentTarget(accessReply.Server);
             SetActiveServerAccess(
                 sourceBotId,
                 sessionId,
                 runtimeBotId,
                 runtimeBotName,
-                SelectedServer?.ServerId ?? string.Empty,
-                string.Empty,
-                string.Empty);
+                serverId,
+                accessReply.OwnerToken,
+                accessReply.DashboardEndpoint);
         }
     }
 
-    private AgentControlResponse? ReadRuntimeStatus(string runtimeBotId)
+    private AgentControlResponse? ReadRuntimeAccess(string runtimeBotId)
     {
         try
         {
@@ -1959,8 +1894,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 return null;
             }
 
-            var reply = SendAgentControlRequest(controlSocketPath, "status", new Dictionary<string, object>());
-            if (!string.Equals(reply.Type, "status", StringComparison.OrdinalIgnoreCase))
+            var reply = SendAgentControlRequest(controlSocketPath, "server_access", new Dictionary<string, object>());
+            if (!string.Equals(reply.Type, "server_access", StringComparison.OrdinalIgnoreCase))
             {
                 return null;
             }
@@ -1993,6 +1928,107 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         return trimmed;
+    }
+
+    private string ResolveServerIdFromAgentTarget(string serverTarget)
+    {
+        if (!TryParseServerTarget(serverTarget, out var targetHost, out var targetPort))
+        {
+            return string.Empty;
+        }
+
+        var normalizedTarget = targetPort > 0
+            ? BuildServerHostPort(targetHost, targetPort)
+            : targetHost;
+
+        var hostOnlyMatches = new List<ServerSummaryItem>();
+        var botPortMatches = new List<ServerSummaryItem>();
+
+        foreach (var server in Servers)
+        {
+            if (string.Equals(server.ServerId, normalizedTarget, StringComparison.OrdinalIgnoreCase))
+            {
+                return server.ServerId;
+            }
+
+            if (string.Equals(BuildServerHostPort(server.Host, server.Port), normalizedTarget, StringComparison.OrdinalIgnoreCase))
+            {
+                return server.ServerId;
+            }
+
+            var serverHostCandidates = BuildHostCandidates(server.Host);
+            var hostMatch = serverHostCandidates.Any(candidate =>
+                string.Equals(candidate, targetHost, StringComparison.OrdinalIgnoreCase));
+
+            if (!hostMatch)
+            {
+                continue;
+            }
+
+            hostOnlyMatches.Add(server);
+
+            if (targetPort > 0)
+            {
+                var expectedBotPort = BotTcpDefaultPort;
+                if (server.Metadata.TryGetValue("bot_port", out var rawBotPort) &&
+                    int.TryParse(rawBotPort, out var parsedBotPort) &&
+                    parsedBotPort is > 0 and <= 65535)
+                {
+                    expectedBotPort = parsedBotPort;
+                }
+
+                if (expectedBotPort == targetPort)
+                {
+                    botPortMatches.Add(server);
+                }
+            }
+        }
+
+        if (botPortMatches.Count == 1)
+        {
+            return botPortMatches[0].ServerId;
+        }
+
+        if (hostOnlyMatches.Count == 1)
+        {
+            return hostOnlyMatches[0].ServerId;
+        }
+
+        return string.Empty;
+    }
+
+    private static bool TryParseServerTarget(string serverTarget, out string host, out int port)
+    {
+        host = string.Empty;
+        port = 0;
+
+        var trimmed = serverTarget.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute))
+        {
+            host = absolute.Host;
+            port = absolute.Port;
+            return !string.IsNullOrWhiteSpace(host);
+        }
+
+        if (Uri.TryCreate("tcp://" + trimmed, UriKind.Absolute, out var implicitUri))
+        {
+            host = implicitUri.Host;
+            port = implicitUri.Port;
+            return !string.IsNullOrWhiteSpace(host);
+        }
+
+        host = trimmed;
+        return true;
+    }
+
+    private static string BuildServerHostPort(string host, int port)
+    {
+        return $"{host}:{port}";
     }
 
     private void ExecuteSessionJoin(string botId, string sessionId)
@@ -2222,25 +2258,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private static string ResolveServerDashboardEndpoint(ServerSummaryItem server)
     {
-        var value = FirstNonEmptyMetadataValue(server.Metadata, DashboardEndpointMetadataKeys);
+        var value = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(server.Metadata, DashboardEndpointMetadataKeys);
         if (!string.IsNullOrWhiteSpace(value))
         {
             return value;
         }
 
-        var dashboardPort = ParseDashboardPort(server.Metadata) ?? DashboardPortFallback;
+        var dashboardPort = MainWindowViewModelHelpers.ParsePositivePort(server.Metadata, DashboardPortMetadataKeys) ?? DashboardPortFallback;
         var scheme = server.UseTls ? "https" : "http";
-        return BuildBaseEndpoint(scheme, server.Host, dashboardPort);
+        return MainWindowViewModelHelpers.BuildBaseEndpoint(scheme, server.Host, dashboardPort);
     }
 
     private void HandleOrchestrationException(string action, string botId, string errorCode, Exception ex)
     {
-        if (string.Equals(action, "deploy", StringComparison.OrdinalIgnoreCase) &&
-            !errorCode.EndsWith("_mvfix", StringComparison.OrdinalIgnoreCase))
-        {
-            errorCode = errorCode + "_mvfix";
-        }
-
         BotEditorMessage = $"Unable to {action} bot ({errorCode}). You can retry without restarting the app.";
         var topStackFrame = ex.StackTrace?.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? string.Empty;
         var fields = new Dictionary<string, string>
@@ -2254,7 +2284,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         };
 
         _logger.Log(LogLevel.Warning, "bot_orchestration_exception", "Bot orchestration command failed.", fields);
-        _logger.Log(LogLevel.Warning, "bot_orchestration_exception_mvfix", "Bot orchestration command failed (mvfix path).", fields);
 
         LoadBotsFromStorage();
         SelectedBot = FindBotById(botId);
@@ -2678,7 +2707,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return ServerAccessMetadata.Invalid("No server selected for access metadata.");
         }
 
-        var ownerToken = FirstNonEmptyMetadataValue(server.Metadata, new[]
+        var ownerToken = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(server.Metadata, new[]
         {
             ClientOwnerTokenMetadataKey,
             ServerAccessOwnerTokenMetadataKey,
@@ -2734,7 +2763,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         lock (_activeAccessCacheLock)
         {
-            // If a specific target server is requested, find the session for that server
             if (!string.IsNullOrWhiteSpace(targetServerId))
             {
                 foreach (var kvp in _activeSessionsByBotAndSession)
@@ -2749,7 +2777,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
             else
             {
-                // If no specific server requested, return the first active session for this bot
                 foreach (var kvp in _activeSessionsByBotAndSession)
                 {
                     if (kvp.Key.BotId == botId)
@@ -2760,6 +2787,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     }
                 }
             }
+
         }
 
         serverId = string.Empty;

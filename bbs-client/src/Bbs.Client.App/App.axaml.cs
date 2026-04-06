@@ -58,7 +58,7 @@ public partial class App : Application
             try
             {
                 // Mirror the behavior that already works: unload persona tears down orchestration/runtime.
-                vm.UnloadPersonaAsync().GetAwaiter().GetResult();
+                vm.UnloadPersona();
                 unloadSucceeded = true;
             }
             catch (Exception ex)

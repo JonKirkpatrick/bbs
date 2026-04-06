@@ -489,13 +489,7 @@ public sealed partial class MainWindowViewModel
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return false;
-            }
-
-            if (!doc.RootElement.TryGetProperty("status", out var statusNode) ||
-                !string.Equals(statusNode.GetString(), "ok", StringComparison.OrdinalIgnoreCase))
+            if (!MainWindowViewModelHelpers.IsStatusOkObject(doc.RootElement))
             {
                 return false;
             }
@@ -522,16 +516,16 @@ public sealed partial class MainWindowViewModel
                 list.Add(new ServerArenaApiDto
                 {
                     ArenaId = arenaId,
-                    Game = arena.TryGetProperty("game", out var gameNode) ? gameNode.GetString() ?? string.Empty : string.Empty,
-                    Status = arena.TryGetProperty("status", out var statusValueNode) ? statusValueNode.GetString() ?? string.Empty : string.Empty,
-                    Player1Name = arena.TryGetProperty("player1_name", out var p1Node) ? p1Node.GetString() ?? string.Empty : string.Empty,
-                    Player2Name = arena.TryGetProperty("player2_name", out var p2Node) ? p2Node.GetString() ?? string.Empty : string.Empty,
-                    MoveCount = arena.TryGetProperty("move_count", out var moveNode) ? moveNode.GetInt32() : 0,
-                    GameState = arena.TryGetProperty("game_state", out var stateNode) ? stateNode.GetString() ?? string.Empty : string.Empty,
-                    ViewerUrl = arena.TryGetProperty("viewer_url", out var viewerNode) ? viewerNode.GetString() ?? string.Empty : string.Empty,
-                    PluginEntryUrl = arena.TryGetProperty("plugin_entry_url", out var pluginNode) ? pluginNode.GetString() ?? string.Empty : string.Empty,
-                    ViewerWidth = arena.TryGetProperty("viewer_width", out var widthNode) ? widthNode.GetInt32() : 760,
-                    ViewerHeight = arena.TryGetProperty("viewer_height", out var heightNode) ? heightNode.GetInt32() : 340
+                    Game = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(arena, "game"),
+                    Status = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(arena, "status"),
+                    Player1Name = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(arena, "player1_name"),
+                    Player2Name = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(arena, "player2_name"),
+                    MoveCount = MainWindowViewModelHelpers.GetIntPropertyOrDefault(arena, "move_count"),
+                    GameState = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(arena, "game_state"),
+                    ViewerUrl = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(arena, "viewer_url"),
+                    PluginEntryUrl = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(arena, "plugin_entry_url"),
+                    ViewerWidth = MainWindowViewModelHelpers.GetIntPropertyOrDefault(arena, "viewer_width", 760),
+                    ViewerHeight = MainWindowViewModelHelpers.GetIntPropertyOrDefault(arena, "viewer_height", 340)
                 });
             }
 

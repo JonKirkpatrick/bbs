@@ -29,6 +29,7 @@ public sealed record AgentControlResponse(
     string Type,
     string Id,
     string Message,
+    string Server,
     string SessionId,
     string BotId,
     string ControlToken,

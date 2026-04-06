@@ -259,19 +259,7 @@ public sealed partial class MainWindowViewModel
         }
 
         using var doc = JsonDocument.Parse(payload);
-        var root = doc.RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
-        {
-            return false;
-        }
-
-        if (!root.TryGetProperty("status", out var statusNode))
-        {
-            return false;
-        }
-
-        var status = statusNode.GetString();
-        return string.Equals(status, "ok", StringComparison.OrdinalIgnoreCase);
+        return MainWindowViewModelHelpers.IsStatusOkObject(doc.RootElement);
     }
 
     private void TriggerSelectedServerCatalogRefresh(ServerSummaryItem server)
@@ -474,12 +462,7 @@ public sealed partial class MainWindowViewModel
 
         using var doc = JsonDocument.Parse(payload);
         var root = doc.RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
-        {
-            return false;
-        }
-
-        if (!root.TryGetProperty("status", out var statusNode) || !string.Equals(statusNode.GetString(), "ok", StringComparison.OrdinalIgnoreCase))
+        if (!MainWindowViewModelHelpers.IsStatusOkObject(root))
         {
             return false;
         }
@@ -499,26 +482,26 @@ public sealed partial class MainWindowViewModel
         var alternateScheme = knownServer.UseTls ? "http" : "https";
         var endpoints = new List<string>();
 
-        var metadataDashboardEndpoint = FirstNonEmptyMetadataValue(knownServer.Metadata, DashboardEndpointMetadataKeys);
+        var metadataDashboardEndpoint = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(knownServer.Metadata, DashboardEndpointMetadataKeys);
         if (Uri.TryCreate(metadataDashboardEndpoint, UriKind.Absolute, out var dashboardUri))
         {
-            endpoints.Add(BuildBaseEndpoint(dashboardUri.Scheme, dashboardUri.Host, dashboardUri.Port));
+            endpoints.Add(MainWindowViewModelHelpers.BuildBaseEndpoint(dashboardUri.Scheme, dashboardUri.Host, dashboardUri.Port));
         }
 
-        var metadataDashboardPort = ParseDashboardPort(knownServer.Metadata);
+        var metadataDashboardPort = MainWindowViewModelHelpers.ParsePositivePort(knownServer.Metadata, DashboardPortMetadataKeys);
         if (metadataDashboardPort is not null)
         {
-            endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, metadataDashboardPort.Value));
-            endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, metadataDashboardPort.Value));
+            endpoints.Add(MainWindowViewModelHelpers.BuildBaseEndpoint(preferredScheme, knownServer.Host, metadataDashboardPort.Value));
+            endpoints.Add(MainWindowViewModelHelpers.BuildBaseEndpoint(alternateScheme, knownServer.Host, metadataDashboardPort.Value));
         }
 
-        endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, knownServer.Port));
-        endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, knownServer.Port));
+        endpoints.Add(MainWindowViewModelHelpers.BuildBaseEndpoint(preferredScheme, knownServer.Host, knownServer.Port));
+        endpoints.Add(MainWindowViewModelHelpers.BuildBaseEndpoint(alternateScheme, knownServer.Host, knownServer.Port));
 
         if (knownServer.Port != DashboardPortFallback)
         {
-            endpoints.Add(BuildBaseEndpoint(preferredScheme, knownServer.Host, DashboardPortFallback));
-            endpoints.Add(BuildBaseEndpoint(alternateScheme, knownServer.Host, DashboardPortFallback));
+            endpoints.Add(MainWindowViewModelHelpers.BuildBaseEndpoint(preferredScheme, knownServer.Host, DashboardPortFallback));
+            endpoints.Add(MainWindowViewModelHelpers.BuildBaseEndpoint(alternateScheme, knownServer.Host, DashboardPortFallback));
         }
 
         return endpoints
@@ -527,32 +510,4 @@ public sealed partial class MainWindowViewModel
             .ToArray();
     }
 
-    private static int? ParseDashboardPort(IReadOnlyDictionary<string, string> metadata)
-    {
-        var raw = FirstNonEmptyMetadataValue(metadata, DashboardPortMetadataKeys);
-        if (!int.TryParse(raw, out var port) || port is < 1 or > 65535)
-        {
-            return null;
-        }
-
-        return port;
-    }
-
-    private static string? FirstNonEmptyMetadataValue(IReadOnlyDictionary<string, string> metadata, IEnumerable<string> keys)
-    {
-        foreach (var key in keys)
-        {
-            if (metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
-            {
-                return value.Trim();
-            }
-        }
-
-        return null;
-    }
-
-    private static string BuildBaseEndpoint(string scheme, string host, int port)
-    {
-        return $"{scheme}://{host}:{port}";
-    }
 }
