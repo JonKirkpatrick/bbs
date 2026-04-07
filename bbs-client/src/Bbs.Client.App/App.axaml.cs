@@ -31,7 +31,7 @@ public partial class App : Application
         {
             var (embeddedViewerAvailable, embeddedViewerMessage) = ProbeEmbeddedViewerAvailability();
 
-            desktop.MainWindow = new MainWindow
+            var mainWindow = new MainWindow
             {
                 DataContext = new MainWindowViewModel(
                     _logger,
@@ -39,6 +39,31 @@ public partial class App : Application
                     embeddedViewerAvailable,
                     embeddedViewerMessage)
             };
+
+            var splashWindow = new SplashWindow();
+            desktop.MainWindow = splashWindow;
+
+            void OnSplashPlaybackCompleted(object? _, EventArgs __)
+            {
+                splashWindow.PlaybackCompleted -= OnSplashPlaybackCompleted;
+
+                if (!mainWindow.IsVisible)
+                {
+                    mainWindow.Show();
+                }
+
+                if (desktop.MainWindow != mainWindow)
+                {
+                    desktop.MainWindow = mainWindow;
+                }
+
+                if (splashWindow.IsVisible)
+                {
+                    splashWindow.Close();
+                }
+            }
+
+            splashWindow.PlaybackCompleted += OnSplashPlaybackCompleted;
 
             desktop.Exit += OnDesktopExit;
         }

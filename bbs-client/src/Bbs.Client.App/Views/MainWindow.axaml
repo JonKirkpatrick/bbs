@@ -8,6 +8,7 @@
         x:DataType="vm:MainWindowViewModel"
         Width="1040"
         Height="720"
+      WindowStartupLocation="CenterScreen"
         MinWidth="980"
         MinHeight="600"
         x:Name="RootWindow"
