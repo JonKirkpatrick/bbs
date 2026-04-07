@@ -32,22 +32,12 @@ public sealed class ServerServiceViewModel : ViewModelBase
 
     private static readonly string[] DashboardEndpointMetadataKeys =
     {
-        "dashboard_endpoint",
-        "server.dashboard_endpoint",
-        "server_access.dashboard_endpoint"
+        "dashboard_endpoint"
     };
 
     private static readonly string[] DashboardPortMetadataKeys =
     {
-        "dashboard_port",
-        "server.dashboard_port"
-    };
-
-    private static readonly string[] ServerGlobalIdMetadataKeys =
-    {
-        "global_server_id",
-        "server.global_server_id",
-        "server_identity.global_server_id"
+        "dashboard_port"
     };
 
     // Dependencies

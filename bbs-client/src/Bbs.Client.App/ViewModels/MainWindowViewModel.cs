@@ -44,22 +44,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private const string ClientOwnerTokenMetadataKey = "client.owner_token";
     private static readonly string[] DashboardEndpointMetadataKeys =
     {
-        "dashboard_endpoint",
-        "server.dashboard_endpoint",
-        "server_access.dashboard_endpoint"
+        "dashboard_endpoint"
     };
 
     private static readonly string[] DashboardPortMetadataKeys =
     {
-        "dashboard_port",
-        "server.dashboard_port"
-    };
-
-    private static readonly string[] ServerGlobalIdMetadataKeys =
-    {
-        "global_server_id",
-        "server.global_server_id",
-        "server_identity.global_server_id"
+        "dashboard_port"
     };
 
     private readonly IClientLogger _logger;
@@ -92,7 +82,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Timeout = TimeSpan.FromMilliseconds(ServerCatalogFetchTimeoutMs)
         };
 
-        // Initialize ServerServiceViewModel with dependencies
         _serverService = new ServerServiceViewModel(_storage, _logger, _serverCatalogHttpClient);
         _arenaService.SetPluginCatalog(_serverService.ServerPluginCatalogEntries);
         _serverService.ServerPluginCatalogEntries.CollectionChanged += OnServerPluginCatalogEntriesChanged;
@@ -100,8 +89,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Bots = new ObservableCollection<BotSummaryItem>();
         ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
 
-        // Subscribe to UIState property changes and forward visibility/panel properties to MainWindowViewModel
-        // This ensures code-behind and XAML bindings see the changes properly
         _uiState.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(UIStateViewModel.ShowBotEditor) ||
@@ -120,7 +107,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
-        // Subscribe to ServerService property changes and forward server state
         _serverService.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(ServerServiceViewModel.SelectedServer))
@@ -168,7 +154,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
-        // Subscribe to ArenaService property changes and forward them
         _arenaService.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(ArenaServiceViewModel.OwnerArenaSelectedPlugin) ||
@@ -182,7 +167,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
-        // Subscribe to SessionService property changes and forward them
         _sessionService.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(SessionServiceViewModel.HasActiveBotSessions) ||
@@ -192,7 +176,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
-        // Subscribe to ServerAccessService property changes and forward access UI state
         _serverAccessService.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(ServerAccessServiceViewModel.ServerAccessMetadata) ||
@@ -210,7 +193,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
-        // UI state commands delegated to UIStateViewModel
         ToggleLeftPanelCommand = _uiState.ToggleLeftPanelCommand;
         ToggleRightPanelCommand = _uiState.ToggleRightPanelCommand;
         SetHomeContextCommand = _uiState.SetHomeContextCommand;
@@ -235,14 +217,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ConfigureEmbeddedViewerSupport(embeddedViewerAvailable, embeddedViewerMessage);
 
         _logger.Log(LogLevel.Information, "mainvm_init", "MainWindowViewModel constructor initialized.", null);
-
-        // UIStateViewModel initialized to Home context by default
-        // Do NOT load bots/servers here; wait for persona to be loaded
     }
 
-    /// <summary>
-    /// UI state coordinator (context, panel expansion, visibility).
-    /// </summary>
     public UIStateViewModel UIState => _uiState;
 
     public BotServiceViewModel BotService => _botService;
@@ -352,25 +328,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public bool IsServerProbeInProgress => _serverService.IsServerProbeInProgress;
 
-    // Delegation: Panel state properties forward to UIState
-    /// <summary>
-    /// Whether bot editor is visible (show when context is BotDetails).
-    /// </summary>
     public bool ShowBotEditor => _uiState.ShowBotEditor;
-
-    /// <summary>
-    /// Whether server editor is visible (show when context is ServerEditor).
-    /// </summary>
     public bool ShowServerEditor => _uiState.ShowServerEditor;
-
-    /// <summary>
-    /// Whether server details view is visible (show when context is ServerDetails).
-    /// </summary>
     public bool ShowServerDetails => _uiState.ShowServerDetails;
-
-    /// <summary>
-    /// Whether arena viewer is visible (show when context is ArenaViewer).
-    /// </summary>
     public bool ShowArenaViewer => _uiState.ShowArenaViewer;
 
     public ObservableCollection<BotSummaryItem> Bots { get; }
@@ -452,8 +412,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ICommand JoinArenaCommand { get; }
     public ICommand RefreshServerArenasCommand { get; }
     public ICommand OpenArenaViewerInBrowserCommand { get; }
-
-
 
     private void ReprobeServers()
     {
@@ -840,513 +798,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             });
     }
 
-    private void DeploySelectedBotToSelectedServer()
-    {
-        if (!CanDeploySelectedBot())
-        {
-            _botService.BotEditorMessage = "Deploy is only available when a live server is selected.";
-            return;
-        }
-
-        var bot = SelectedBot;
-        var server = SelectedServer;
-        if (bot is null)
-        {
-            _botService.BotEditorMessage = "Select a bot before deploy.";
-            return;
-        }
-
-        if (server is null)
-        {
-            _botService.BotEditorMessage = "Deploy requires a selected server.";
-            return;
-        }
-
-        try
-        {
-            var sourceProfile = bot.ToProfile();
-            var runtimeProfile = BuildRuntimeInstanceProfile(sourceProfile);
-            var controlSocketPath = BuildAgentControlSocketPath(runtimeProfile.BotId);
-
-            void EnsureRuntimeReady()
-            {
-                var launchResult = _orchestration.LaunchBotAsync(runtimeProfile).GetAwaiter().GetResult();
-                if (!launchResult.Succeeded || !launchResult.RuntimeState.IsAttached)
-                {
-                    throw new InvalidOperationException($"Deploy failed while starting bot: {launchResult.Message}");
-                }
-
-                WaitForControlSocketReady(controlSocketPath, DeployControlSocketReadyTimeoutMs);
-
-                LoadBotsFromStorage();
-                SelectedBot = FindBotById(sourceProfile.BotId);
-            }
-
-            // Deploy always creates a fresh runtime instance for multi-session support.
-            EnsureRuntimeReady();
-
-            RegisterHandshakeResult? registerResponse = null;
-            var registered = false;
-            Exception? lastRegisterFailure = null;
-            for (var attempt = 1; attempt <= 3 && !registered; attempt++)
-            {
-                try
-                {
-                    registerResponse = RegisterBotSessionViaAgentControl(server, runtimeProfile);
-                    registered = true;
-                }
-                catch (Exception ex) when (TryResolveSocketErrorCode(ex, out _))
-                {
-                    lastRegisterFailure = ex;
-                    // Relaunch for subsequent attempts to recover from stale or short-lived runtime/socket state.
-                    EnsureRuntimeReady();
-                    Thread.Sleep(150 * attempt);
-                }
-            }
-
-            if (!registered)
-            {
-                throw new InvalidOperationException("Deploy failed: unable to complete control handshake after retries.", lastRegisterFailure);
-            }
-            if (registerResponse is null)
-            {
-                throw new InvalidOperationException("Deploy failed: handshake retries completed without response payload.");
-            }
-
-            var runtimeMetadata = new Dictionary<string, string>(runtimeProfile.Metadata, StringComparer.OrdinalIgnoreCase)
-            {
-                [ServerAccessServerIdMetadataKey] = server.ServerId,
-                [ServerAccessSessionIdMetadataKey] = registerResponse.SessionId
-            };
-
-            if (!string.IsNullOrWhiteSpace(registerResponse.OwnerToken))
-            {
-                runtimeMetadata[ServerAccessOwnerTokenMetadataKey] = registerResponse.OwnerToken;
-            }
-
-            if (!string.IsNullOrWhiteSpace(registerResponse.DashboardEndpoint))
-            {
-                runtimeMetadata[ServerAccessDashboardEndpointMetadataKey] = registerResponse.DashboardEndpoint;
-            }
-
-            var runtimeAttachedProfile = BotProfile.Create(
-                botId: runtimeProfile.BotId,
-                name: runtimeProfile.Name,
-                launchPath: runtimeProfile.LaunchPath,
-                avatarImagePath: runtimeProfile.AvatarImagePath,
-                launchArgs: runtimeProfile.LaunchArgs,
-                metadata: runtimeMetadata,
-                createdAtUtc: runtimeProfile.CreatedAtUtc,
-                updatedAtUtc: DateTimeOffset.UtcNow);
-
-            var runtimeSessionState = new AgentRuntimeState(
-                BotId: runtimeProfile.BotId,
-                LifecycleState: AgentLifecycleState.ActiveSession,
-                IsAttached: true,
-                LastErrorCode: null,
-                UpdatedAtUtc: DateTimeOffset.UtcNow);
-
-            var activeSessionState = new AgentRuntimeState(
-                BotId: sourceProfile.BotId,
-                LifecycleState: AgentLifecycleState.ActiveSession,
-                IsAttached: true,
-                LastErrorCode: null,
-                UpdatedAtUtc: DateTimeOffset.UtcNow);
-
-            _storage.UpsertBotProfileAsync(runtimeAttachedProfile).GetAwaiter().GetResult();
-            _storage.UpsertAgentRuntimeStateAsync(runtimeSessionState).GetAwaiter().GetResult();
-            _storage.UpsertAgentRuntimeStateAsync(activeSessionState).GetAwaiter().GetResult();
-
-            _sessionService.AddActiveDeployConnection(sourceProfile.BotId, registerResponse.SessionId);
-
-            SetActiveServerAccess(
-                sourceProfile.BotId,
-                registerResponse.SessionId,
-                runtimeProfile.BotId,
-                runtimeProfile.Name,
-                server.ServerId,
-                registerResponse.OwnerToken,
-                registerResponse.DashboardEndpoint);
-
-            LoadBotsFromStorage();
-            SelectedBot = FindBotById(sourceProfile.BotId);
-            RefreshActiveBotSessionsProjection();
-            TriggerServerAccessRefresh();
-            _botService.BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; active session established.";
-
-            _logger.Log(LogLevel.Information, "bot_deploy_attached", "Bot deploy completed server register handshake and attached active session metadata.",
-                new Dictionary<string, string>
-                {
-                    ["bot_id"] = sourceProfile.BotId,
-                    ["runtime_bot_id"] = runtimeProfile.BotId,
-                    ["runtime_bot_name"] = runtimeProfile.Name,
-                    ["server_id"] = server.ServerId,
-                    ["session_id"] = registerResponse.SessionId,
-                    ["dashboard_endpoint"] = registerResponse.DashboardEndpoint
-                });
-        }
-        catch (SocketException socketException)
-        {
-            HandleOrchestrationException("deploy", bot.BotId, $"socket_{socketException.SocketErrorCode}".ToLowerInvariant(), socketException);
-        }
-        catch (InvalidOperationException invalidOperationException)
-        {
-            HandleOrchestrationException("deploy", bot.BotId, "deploy_runtime_unavailable", invalidOperationException);
-        }
-        catch (Exception ex)
-        {
-            if (TryResolveSocketErrorCode(ex, out var socketErrorCode))
-            {
-                HandleOrchestrationException("deploy", bot.BotId, socketErrorCode, ex);
-                return;
-            }
-
-            HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed", ex);
-        }
-    }
-
-    private RegisterHandshakeResult RegisterBotSessionViaAgentControl(ServerSummaryItem server, BotProfile profile)
-    {
-        var controlSocketPath = BuildAgentControlSocketPath(profile.BotId);
-        var agentTargets = BuildAgentServerTargetEndpointCandidates(server);
-        AgentControlResponse? connectReply = null;
-        string? lastConnectError = null;
-
-        foreach (var agentTarget in agentTargets)
-        {
-            var candidateReply = SendAgentControlRequest(
-                controlSocketPath,
-                "server_connect",
-                new Dictionary<string, object>
-                {
-                    ["server"] = agentTarget
-                });
-
-            if (string.Equals(candidateReply.Type, "server_connect", StringComparison.OrdinalIgnoreCase))
-            {
-                connectReply = candidateReply;
-                break;
-            }
-
-            if (string.Equals(candidateReply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
-            {
-                lastConnectError = candidateReply.Message;
-                continue;
-            }
-
-            lastConnectError = $"Unexpected control reply type {candidateReply.Type} from agent.";
-        }
-
-        if (connectReply is null)
-        {
-            throw new InvalidOperationException($"Failed server_connect via agent. {lastConnectError ?? "No response"}");
-        }
-
-        var accessReply = SendAgentControlRequest(controlSocketPath, "server_access", new Dictionary<string, object>());
-        if (string.Equals(accessReply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(accessReply.Message);
-        }
-
-        if (!string.Equals(accessReply.Type, "server_access", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"Unexpected server_access reply type {accessReply.Type}.");
-        }
-
-        var sessionId = accessReply.SessionId;
-        if (string.IsNullOrWhiteSpace(sessionId))
-        {
-            throw new InvalidOperationException("Agent did not return a valid session_id after server_connect.");
-        }
-
-        return new RegisterHandshakeResult(
-            SessionId: sessionId,
-            OwnerToken: accessReply.OwnerToken,
-            DashboardEndpoint: ServerServiceViewModel.NormalizeDashboardEndpoint(accessReply.DashboardEndpoint, accessReply.DashboardHost, accessReply.DashboardPort, server.UseTls));
-    }
-
-    private static IReadOnlyList<string> BuildAgentServerTargetEndpointCandidates(ServerSummaryItem server)
-    {
-        var botPort = BotTcpDefaultPort;
-        if (server.Metadata.TryGetValue("bot_port", out var rawBotPort) && int.TryParse(rawBotPort, out var parsedPort) && parsedPort is > 0 and <= 65535)
-        {
-            botPort = parsedPort;
-        }
-
-        var candidates = new List<string>();
-        var hostCandidates = BuildHostCandidates(server.Host);
-
-        if (hostCandidates.Count == 0)
-        {
-            hostCandidates.Add(server.Host.Trim());
-        }
-
-        foreach (var host in hostCandidates)
-        {
-            if (!string.IsNullOrWhiteSpace(host))
-            {
-                candidates.Add($"{host}:{botPort}");
-            }
-        }
-
-        return candidates
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    private static List<string> BuildHostCandidates(string rawHost)
-    {
-        var candidates = new List<string>();
-        var trimmed = rawHost.Trim();
-        if (trimmed.Length == 0)
-        {
-            return candidates;
-        }
-
-        candidates.Add(trimmed);
-
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute) && !string.IsNullOrWhiteSpace(absolute.Host))
-        {
-            candidates.Add(absolute.Host);
-        }
-
-        if (!trimmed.Contains("://", StringComparison.Ordinal) &&
-            Uri.TryCreate($"tcp://{trimmed}", UriKind.Absolute, out var implicitUri) &&
-            !string.IsNullOrWhiteSpace(implicitUri.Host))
-        {
-            candidates.Add(implicitUri.Host);
-        }
-
-        if (trimmed.StartsWith("[", StringComparison.Ordinal) && trimmed.EndsWith("]", StringComparison.Ordinal))
-        {
-            candidates.Add(trimmed[1..^1]);
-        }
-
-        if (IPAddress.TryParse(trimmed, out var parsedIp))
-        {
-            candidates.Add(parsedIp.ToString());
-        }
-
-        if (TryNormalizeThreePartLoopback(trimmed, out var normalizedLoopback))
-        {
-            candidates.Add(normalizedLoopback);
-        }
-
-        if (IsLikelyLoopback(trimmed))
-        {
-            candidates.Add("127.0.0.1");
-            candidates.Add("localhost");
-        }
-
-        return candidates
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    private static bool TryNormalizeThreePartLoopback(string value, out string normalized)
-    {
-        normalized = string.Empty;
-        var parts = value.Split('.', StringSplitOptions.TrimEntries);
-        if (parts.Length != 3)
-        {
-            return false;
-        }
-
-        if (!string.Equals(parts[0], "127", StringComparison.Ordinal) || !string.Equals(parts[1], "0", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (!int.TryParse(parts[2], out var finalOctet) || finalOctet is < 0 or > 255)
-        {
-            return false;
-        }
-
-        normalized = $"127.0.0.{finalOctet}";
-        return true;
-    }
-
-    private static bool IsLikelyLoopback(string host)
-    {
-        var value = host.Trim();
-        return value.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("127.", StringComparison.Ordinal);
-    }
-
-    private static AgentControlResponse SendAgentControlRequest(string controlSocketPath, string messageType, IReadOnlyDictionary<string, object> payload)
-    {
-        const int maxAttempts = 12;
-        Exception? lastFailure = null;
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                if (!File.Exists(controlSocketPath))
-                {
-                    lastFailure = new IOException($"Control socket not found: {controlSocketPath}");
-                    Thread.Sleep(100 * attempt);
-                    continue;
-                }
-
-                using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                socket.ReceiveTimeout = DeployHandshakeTimeoutMs;
-                socket.SendTimeout = DeployHandshakeTimeoutMs;
-                socket.Connect(new UnixDomainSocketEndPoint(controlSocketPath));
-
-                using var stream = new NetworkStream(socket, ownsSocket: true);
-                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-                using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true)
-                {
-                    AutoFlush = true,
-                    NewLine = "\n"
-                };
-
-                // The first control line is a greeting and may arrive before request/response exchange.
-                _ = TryReadControlEnvelope(reader);
-
-                var requestId = Guid.NewGuid().ToString("N");
-                var request = new Dictionary<string, object?>
-                {
-                    ["v"] = "0.2",
-                    ["id"] = requestId,
-                    ["type"] = messageType,
-                    ["payload"] = payload
-                };
-
-                writer.WriteLine(JsonSerializer.Serialize(request));
-
-                while (true)
-                {
-                    var line = reader.ReadLine();
-                    if (string.IsNullOrWhiteSpace(line))
-                    {
-                        throw new InvalidOperationException($"Agent control socket returned empty response for {messageType}.");
-                    }
-
-                    var envelope = ParseControlEnvelope(line);
-                    if (!string.Equals(envelope.Id, requestId, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    return envelope;
-                }
-            }
-            catch (SocketException ex)
-            {
-                lastFailure = ex;
-                if (attempt == maxAttempts)
-                {
-                    throw;
-                }
-
-                Thread.Sleep(100 * attempt);
-            }
-            catch (IOException ex) when (FindSocketException(ex) is not null)
-            {
-                lastFailure = ex;
-                if (attempt == maxAttempts)
-                {
-                    throw;
-                }
-
-                Thread.Sleep(100 * attempt);
-            }
-        }
-
-        throw new InvalidOperationException($"Failed {messageType} control request after retries.", lastFailure);
-    }
-
-    private static AgentControlResponse? TryReadControlEnvelope(StreamReader reader)
-    {
-        try
-        {
-            var line = reader.ReadLine();
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                return null;
-            }
-
-            return ParseControlEnvelope(line);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static AgentControlResponse ParseControlEnvelope(string line)
-    {
-        using var doc = JsonDocument.Parse(line);
-        var root = doc.RootElement;
-        var type = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(root, "type");
-        var id = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(root, "id");
-
-        if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
-        {
-            return new AgentControlResponse(type, id, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
-        }
-
-        var server = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "server");
-        var message = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "message");
-        var sessionId = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "session_id");
-        var botId = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "bot_id");
-        var controlToken = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "control_token");
-        var ownerToken = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "owner_token");
-        var dashboardEndpoint = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "dashboard_endpoint");
-        var dashboardHost = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "dashboard_host");
-        var dashboardPort = MainWindowViewModelHelpers.GetStringPropertyOrEmpty(payload, "dashboard_port");
-
-        return new AgentControlResponse(type, id, message, server, sessionId, botId, controlToken, ownerToken, dashboardEndpoint, dashboardHost, dashboardPort);
-    }
-
-    private static string BuildAgentControlSocketPath(string botId)
-    {
-        var safe = new StringBuilder(botId.Length);
-        foreach (var ch in botId)
-        {
-            if (char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.')
-            {
-                safe.Append(ch);
-            }
-            else
-            {
-                safe.Append('_');
-            }
-        }
-
-        if (safe.Length == 0)
-        {
-            safe.Append("bot");
-        }
-
-        var socketPath = Path.Combine(Path.GetTempPath(), $"bbs-agent-{safe}.sock");
-        return socketPath + ".control";
-    }
-
-    private static void WaitForControlSocketReady(string controlSocketPath, int timeoutMs)
-    {
-        if (File.Exists(controlSocketPath))
-        {
-            return;
-        }
-
-        var timeout = TimeSpan.FromMilliseconds(Math.Max(0, timeoutMs));
-        var start = DateTime.UtcNow;
-        while (DateTime.UtcNow - start < timeout)
-        {
-            if (File.Exists(controlSocketPath))
-            {
-                return;
-            }
-
-            Thread.Sleep(50);
-        }
-    }
-
     public int ShutdownRuntimeSessionsForExit()
     {
         StopArenaViewerWatch();
@@ -1372,12 +823,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         return sessions.Count;
-    }
-
-    private static string? ResolveServerGlobalId(ServerSummaryItem server)
-    {
-        var raw = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(server.Metadata, ServerGlobalIdMetadataKeys);
-        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
     }
 
     private static SocketException? FindSocketException(Exception ex)
@@ -1467,547 +912,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return false;
     }
 
-    private bool HasActiveDeployConnection(string botId)
-    {
-        return _sessionService.GetActiveDeployConnectionsForBot(botId).Count > 0;
-    }
-
-    private void DisconnectActiveDeploymentConnection(string botId, string sessionId, bool sendQuit)
-    {
-        if (sendQuit)
-        {
-            TrySendQuitSession(botId, sessionId);
-        }
-
-        _sessionService.RemoveActiveDeployConnection(botId, sessionId);
-
-        ClearActiveServerAccess(botId, sessionId);
-        RefreshActiveBotSessionsProjection();
-        TriggerServerAccessRefresh();
-    }
-
-    private void DisconnectAllActiveDeploymentConnectionsForBot(string botId, bool sendQuit)
-    {
-        var sessionsToRemove = _sessionService.GetActiveDeployConnectionsForBot(botId)
-            .Select(session => session.SessionId)
-            .ToList();
-
-        foreach (var sessionId in sessionsToRemove)
-        {
-            DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit);
-        }
-    }
-
-    private void TrySendQuitSession(string sourceBotId, string sessionId)
-    {
-        try
-        {
-            if (!TryGetRuntimeSession(sourceBotId, sessionId, out var runtimeBotId, out _, out _))
-            {
-                return;
-            }
-
-            var controlSocketPath = BuildAgentControlSocketPath(runtimeBotId);
-            if (!File.Exists(controlSocketPath))
-            {
-                return;
-            }
-
-            var reply = SendAgentControlRequest(controlSocketPath, "quit_session", new Dictionary<string, object>());
-            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.Log(LogLevel.Warning, "session_quit_control_error", "Failed to quit active session via control socket.",
-                    new Dictionary<string, string>
-                    {
-                        ["bot_id"] = sourceBotId,
-                        ["runtime_bot_id"] = runtimeBotId,
-                        ["session_id"] = sessionId,
-                        ["message"] = reply.Message
-                    });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Log(LogLevel.Warning, "session_quit_failed", "Failed to quit active session via control socket.",
-                new Dictionary<string, string>
-                {
-                    ["bot_id"] = sourceBotId,
-                    ["session_id"] = sessionId,
-                    ["error"] = ex.GetType().Name
-                });
-        }
-    }
-
-    private void RefreshActiveBotSessionsProjection()
-    {
-        PruneStaleActiveSessionCaches();
-
-        var selectedBot = SelectedBot;
-        var selectedBotId = selectedBot?.BotId;
-        _sessionService.ClearSessions();
-
-        if (selectedBot is null || string.IsNullOrWhiteSpace(selectedBotId))
-        {
-            return;
-        }
-
-        ReconcileActiveSessionsFromRuntimeSockets(selectedBot);
-
-        var sessions = _sessionService.GetActiveDeployConnectionsForBot(selectedBotId);
-
-        foreach (var session in sessions)
-        {
-            var serverId = string.Empty;
-            var runtimeBotId = session.BotId;
-            var runtimeBotName = session.BotId;
-            var access = ServerAccessMetadata.Invalid("Owner token is not available for this server yet.");
-            if (_sessionService.TryGetRuntimeSession(session.BotId, session.SessionId, out var cachedRuntimeBotId, out var cachedRuntimeBotName, out var cachedServerId))
-            {
-                runtimeBotId = cachedRuntimeBotId;
-                runtimeBotName = cachedRuntimeBotName;
-                serverId = cachedServerId;
-                if (_sessionService.TryGetActiveServerAccess(session.BotId, cachedServerId, out var cachedAccessServerId, out var cachedAccess))
-                {
-                    serverId = cachedAccessServerId;
-                    access = cachedAccess;
-                }
-            }
-
-            var serverName = ResolveServerName(serverId);
-            var arenaOptions = BuildArenaOptionsForServer(serverId);
-            ActiveBotSessions.Add(new ActiveBotSessionItem
-            {
-                RuntimeBotId = runtimeBotId,
-                SessionId = session.SessionId,
-                ServerId = serverId,
-                ServerName = string.IsNullOrWhiteSpace(runtimeBotName) ? serverName : $"{serverName} ({runtimeBotName})",
-                OwnerTokenMasked = access.IsValid ? MainWindowViewModelHelpers.MaskToken(access.OwnerToken) : "-",
-                ArenaOptions = arenaOptions,
-                JoinCommand = new RelayCommand(() => ExecuteSessionJoin(session.BotId, session.SessionId)),
-                LeaveCommand = new RelayCommand(() => ExecuteSessionLeave(session.BotId, session.SessionId)),
-                QuitCommand = new RelayCommand(() => ExecuteSessionQuit(session.BotId, session.SessionId))
-            });
-        }
-
-        _sessionService.NotifySessionsChanged();
-    }
-
-    private void ReconcileActiveSessionsFromRuntimeSockets(BotSummaryItem sourceBot)
-    {
-        var sourceBotId = sourceBot.BotId;
-        var sourceBotName = sourceBot.Name;
-        var runtimeIdPrefix = sourceBotId + "-";
-        var socketPrefix = "bbs-agent-" + runtimeIdPrefix;
-        var socketSuffix = ".sock.control";
-
-        string[] controlSockets;
-        try
-        {
-            controlSockets = Directory.GetFiles(Path.GetTempPath(), socketPrefix + "*" + socketSuffix);
-        }
-        catch
-        {
-            return;
-        }
-
-        foreach (var controlSocketPath in controlSockets)
-        {
-            var fileName = Path.GetFileName(controlSocketPath);
-            if (!fileName.StartsWith("bbs-agent-", StringComparison.Ordinal) ||
-                !fileName.EndsWith(socketSuffix, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var runtimeBotId = fileName.Substring("bbs-agent-".Length, fileName.Length - "bbs-agent-".Length - socketSuffix.Length);
-            if (!runtimeBotId.StartsWith(runtimeIdPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var accessReply = ReadRuntimeAccess(runtimeBotId);
-            if (accessReply is null)
-            {
-                continue;
-            }
-
-            var activeSessionId = NormalizeActiveSessionId(accessReply.SessionId);
-            if (string.IsNullOrWhiteSpace(activeSessionId))
-            {
-                continue;
-            }
-
-            var runtimeSuffix = runtimeBotId[runtimeIdPrefix.Length..];
-            if (string.IsNullOrWhiteSpace(runtimeSuffix))
-            {
-                continue;
-            }
-
-            var sessionId = activeSessionId;
-            var runtimeBotName = sourceBotName + "-" + runtimeSuffix;
-
-            _sessionService.AddActiveDeployConnection(sourceBotId, sessionId);
-
-            var serverId = ResolveServerIdFromAgentTarget(accessReply.Server);
-            SetActiveServerAccess(
-                sourceBotId,
-                sessionId,
-                runtimeBotId,
-                runtimeBotName,
-                serverId,
-                accessReply.OwnerToken,
-                accessReply.DashboardEndpoint);
-        }
-    }
-
-    private AgentControlResponse? ReadRuntimeAccess(string runtimeBotId)
-    {
-        try
-        {
-            var controlSocketPath = BuildAgentControlSocketPath(runtimeBotId);
-            if (!File.Exists(controlSocketPath))
-            {
-                return null;
-            }
-
-            var reply = SendAgentControlRequest(controlSocketPath, "server_access", new Dictionary<string, object>());
-            if (!string.Equals(reply.Type, "server_access", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            return reply;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string NormalizeActiveSessionId(string rawSessionId)
-    {
-        var trimmed = rawSessionId.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed))
-        {
-            return string.Empty;
-        }
-
-        if (int.TryParse(trimmed, out var numericSessionId) && numericSessionId <= 0)
-        {
-            return string.Empty;
-        }
-
-        if (string.Equals(trimmed, "null", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(trimmed, "none", StringComparison.OrdinalIgnoreCase))
-        {
-            return string.Empty;
-        }
-
-        return trimmed;
-    }
-
-    private string ResolveServerIdFromAgentTarget(string serverTarget)
-    {
-        if (!TryParseServerTarget(serverTarget, out var targetHost, out var targetPort))
-        {
-            return string.Empty;
-        }
-
-        var normalizedTarget = targetPort > 0
-            ? BuildServerHostPort(targetHost, targetPort)
-            : targetHost;
-
-        var hostOnlyMatches = new List<ServerSummaryItem>();
-        var botPortMatches = new List<ServerSummaryItem>();
-
-        foreach (var server in Servers)
-        {
-            if (string.Equals(server.ServerId, normalizedTarget, StringComparison.OrdinalIgnoreCase))
-            {
-                return server.ServerId;
-            }
-
-            if (string.Equals(BuildServerHostPort(server.Host, server.Port), normalizedTarget, StringComparison.OrdinalIgnoreCase))
-            {
-                return server.ServerId;
-            }
-
-            var serverHostCandidates = BuildHostCandidates(server.Host);
-            var hostMatch = serverHostCandidates.Any(candidate =>
-                string.Equals(candidate, targetHost, StringComparison.OrdinalIgnoreCase));
-
-            if (!hostMatch)
-            {
-                continue;
-            }
-
-            hostOnlyMatches.Add(server);
-
-            if (targetPort > 0)
-            {
-                var expectedBotPort = BotTcpDefaultPort;
-                if (server.Metadata.TryGetValue("bot_port", out var rawBotPort) &&
-                    int.TryParse(rawBotPort, out var parsedBotPort) &&
-                    parsedBotPort is > 0 and <= 65535)
-                {
-                    expectedBotPort = parsedBotPort;
-                }
-
-                if (expectedBotPort == targetPort)
-                {
-                    botPortMatches.Add(server);
-                }
-            }
-        }
-
-        if (botPortMatches.Count == 1)
-        {
-            return botPortMatches[0].ServerId;
-        }
-
-        if (hostOnlyMatches.Count == 1)
-        {
-            return hostOnlyMatches[0].ServerId;
-        }
-
-        return string.Empty;
-    }
-
-    private static bool TryParseServerTarget(string serverTarget, out string host, out int port)
-    {
-        host = string.Empty;
-        port = 0;
-
-        var trimmed = serverTarget.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed))
-        {
-            return false;
-        }
-
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute))
-        {
-            host = absolute.Host;
-            port = absolute.Port;
-            return !string.IsNullOrWhiteSpace(host);
-        }
-
-        if (Uri.TryCreate("tcp://" + trimmed, UriKind.Absolute, out var implicitUri))
-        {
-            host = implicitUri.Host;
-            port = implicitUri.Port;
-            return !string.IsNullOrWhiteSpace(host);
-        }
-
-        host = trimmed;
-        return true;
-    }
-
-    private static string BuildServerHostPort(string host, int port)
-    {
-        return $"{host}:{port}";
-    }
-
-    private void ExecuteSessionJoin(string botId, string sessionId)
-    {
-        var item = ActiveBotSessions.FirstOrDefault(x => x.SessionId == sessionId);
-        if (item is null)
-        {
-            return;
-        }
-
-        if (!TryResolveRuntimeSessionForAction(botId, sessionId, "JOIN", out var runtimeBotId))
-        {
-            return;
-        }
-
-        if (item.SelectedArena is null || item.SelectedArena.ArenaId <= 0)
-        {
-            _botService.BotEditorMessage = "Select an arena before JOIN.";
-            return;
-        }
-
-        if (!int.TryParse(item.JoinHandicapPercent.Trim(), out var handicapPercent))
-        {
-            _botService.BotEditorMessage = "JOIN handicap must be an integer.";
-            return;
-        }
-
-        if (!TrySendSessionControlRequest(
-                runtimeBotId,
-                "join_session",
-                new Dictionary<string, object>
-                {
-                    ["arena_id"] = item.SelectedArena.ArenaId,
-                    ["handicap_percent"] = handicapPercent
-                },
-                "JOIN",
-                out var failureMessage))
-        {
-            _botService.BotEditorMessage = failureMessage;
-            return;
-        }
-
-        _botService.BotEditorMessage = $"JOIN requested for session {sessionId}.";
-    }
-
-    private void ExecuteSessionLeave(string botId, string sessionId)
-    {
-        if (!TryResolveRuntimeSessionForAction(botId, sessionId, "LEAVE", out var runtimeBotId))
-        {
-            return;
-        }
-
-        if (!TrySendSessionControlRequest(
-                runtimeBotId,
-                "leave_session",
-                new Dictionary<string, object>(),
-                "LEAVE",
-                out var failureMessage))
-        {
-            _botService.BotEditorMessage = failureMessage;
-            return;
-        }
-
-        _botService.BotEditorMessage = $"LEAVE requested for session {sessionId}.";
-    }
-
-    private void ExecuteSessionQuit(string botId, string sessionId)
-    {
-        if (!TryGetRuntimeSession(botId, sessionId, out var runtimeBotId, out _, out _))
-        {
-            DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
-            _botService.BotEditorMessage = $"Removed stale session {sessionId}.";
-            return;
-        }
-
-        if (!TrySendSessionControlRequest(
-                runtimeBotId,
-                "quit_session",
-                new Dictionary<string, object>(),
-                "QUIT",
-                out var failureMessage))
-        {
-            _botService.BotEditorMessage = failureMessage;
-            return;
-        }
-
-        DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
-        _botService.BotEditorMessage = $"QUIT requested for session {sessionId}.";
-        LoadBotsFromStorage();
-        SelectedBot = FindBotById(botId);
-    }
-
-    private bool TryResolveRuntimeSessionForAction(string botId, string sessionId, string actionLabel, out string runtimeBotId)
-    {
-        if (TryGetRuntimeSession(botId, sessionId, out runtimeBotId, out _, out _))
-        {
-            return true;
-        }
-
-        runtimeBotId = string.Empty;
-        _botService.BotEditorMessage = $"{actionLabel} failed: runtime session mapping not found.";
-        return false;
-    }
-
-    private bool TrySendSessionControlRequest(
-        string runtimeBotId,
-        string messageType,
-        IReadOnlyDictionary<string, object> payload,
-        string actionLabel,
-        out string failureMessage)
-    {
-        try
-        {
-            var reply = SendAgentControlRequest(
-                BuildAgentControlSocketPath(runtimeBotId),
-                messageType,
-                payload);
-
-            if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
-            {
-                failureMessage = $"{actionLabel} failed: {reply.Message}";
-                return false;
-            }
-
-            failureMessage = string.Empty;
-            return true;
-        }
-        catch (Exception ex)
-        {
-            failureMessage = $"{actionLabel} failed: {ex.Message}";
-            return false;
-        }
-    }
-
-    private ObservableCollection<ServerArenaOptionItem> BuildArenaOptionsForServer(string serverId)
-    {
-        var options = new ObservableCollection<ServerArenaOptionItem>();
-        if (string.IsNullOrWhiteSpace(serverId))
-        {
-            return options;
-        }
-
-        if (!string.Equals(SelectedServer?.ServerId, serverId, StringComparison.OrdinalIgnoreCase))
-        {
-            return options;
-        }
-
-        foreach (var arena in ServerArenaEntries)
-        {
-            options.Add(new ServerArenaOptionItem($"#{arena.ArenaId} - {arena.Game}", arena.ArenaId));
-        }
-
-        return options;
-    }
-
-    private void RefreshActiveSessionArenaOptions()
-    {
-        if (ActiveBotSessions.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var session in ActiveBotSessions)
-        {
-            var selectedArenaId = session.SelectedArena?.ArenaId;
-            var options = BuildArenaOptionsForServer(session.ServerId);
-
-            session.ArenaOptions.Clear();
-            foreach (var option in options)
-            {
-                session.ArenaOptions.Add(option);
-            }
-
-            if (selectedArenaId is > 0)
-            {
-                session.SelectedArena = session.ArenaOptions.FirstOrDefault(x => x.ArenaId == selectedArenaId);
-            }
-            else if (session.ArenaOptions.Count == 1)
-            {
-                session.SelectedArena = session.ArenaOptions[0];
-            }
-            else if (session.SelectedArena is not null && session.ArenaOptions.Count == 0)
-            {
-                session.SelectedArena = null;
-            }
-        }
-    }
-
-    private string ResolveServerName(string serverId)
-    {
-        if (string.IsNullOrWhiteSpace(serverId))
-        {
-            return "Unknown server";
-        }
-
-        var server = FindServerById(serverId);
-        return server is null ? serverId : server.Name;
-    }
-
-    private void PruneStaleActiveSessionCaches()
-    {
-        _sessionService.PruneStaleActiveSessionCaches(runtimeBotId => File.Exists(BuildAgentControlSocketPath(runtimeBotId)));
-    }
 
     private static BotProfile BuildRuntimeInstanceProfile(BotProfile sourceProfile)
     {
@@ -2184,11 +1088,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private void EnsureOwnerArenaPluginSelection()
     {
         _arenaService.EnsureValidPluginSelection(_serverService.ServerPluginCatalogEntries);
-    }
-
-    private void SyncOwnerArenaArgsFromSelectedPlugin()
-    {
-        // Delegated to ArenaService; called from ArenaServiceViewModel property setter
     }
 
     private void OnServerPluginCatalogEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -2376,9 +1275,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var ownerToken = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(server.Metadata, new[]
         {
             ClientOwnerTokenMetadataKey,
-            ServerAccessOwnerTokenMetadataKey,
-            "owner_token",
-            "server.owner_token"
+            ServerAccessOwnerTokenMetadataKey
         });
 
         if (string.IsNullOrWhiteSpace(ownerToken))
@@ -2400,23 +1297,4 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Source: "known-server-metadata");
     }
 
-    private void SetActiveServerAccess(string botId, string sessionId, string runtimeBotId, string runtimeBotName, string serverId, string ownerToken, string dashboardEndpoint)
-    {
-        _sessionService.SetActiveServerAccess(botId, sessionId, runtimeBotId, runtimeBotName, serverId, ownerToken, dashboardEndpoint);
-    }
-
-    private void ClearActiveServerAccess(string botId, string sessionId)
-    {
-        _sessionService.ClearActiveServerAccess(botId, sessionId);
-    }
-
-    private bool TryGetActiveServerAccess(string botId, string? targetServerId, out string serverId, out ServerAccessMetadata access)
-    {
-        return _sessionService.TryGetActiveServerAccess(botId, targetServerId, out serverId, out access);
-    }
-
-    private bool TryGetRuntimeSession(string sourceBotId, string sessionId, out string runtimeBotId, out string runtimeBotName, out string serverId)
-    {
-        return _sessionService.TryGetRuntimeSession(sourceBotId, sessionId, out runtimeBotId, out runtimeBotName, out serverId);
-    }
 }
