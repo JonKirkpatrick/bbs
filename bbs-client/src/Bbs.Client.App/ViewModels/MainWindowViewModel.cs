@@ -72,16 +72,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly ServerServiceViewModel _serverService = new();
     private readonly ArenaServiceViewModel _arenaService = new();
     private readonly SessionServiceViewModel _sessionService = new();
+    private readonly ServerAccessServiceViewModel _serverAccessService = new();
     private BotSummaryItem? _selectedBot;
     private ServerSummaryItem? _selectedServer;
     private bool _isServerProbeInProgress;
     private bool _isServerDetailLoading;
-    private bool _isServerAccessLoading;
     private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
-    private string _serverAccessStatus = "Select a server to load server access metadata.";
-    private string _ownerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
-    private string _serverAccessOwnerToken = "-";
-    private string _serverAccessDashboardEndpoint = "-";
     private int _serverAccessRefreshVersion;
     private readonly Dictionary<string, DateTimeOffset> _serverCatalogLastRefreshUtc = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _serverCatalogRefreshInFlight = new(StringComparer.OrdinalIgnoreCase);
@@ -156,6 +152,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
+        _serverAccessService.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(ServerAccessServiceViewModel.ServerAccessMetadata) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.IsServerAccessLoading) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.ServerAccessStatus) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.ServerAccessOwnerToken) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.ServerAccessDashboardEndpoint) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.OwnerTokenActionStatus) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.HasValidServerAccess) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.ShowOwnerTokenActions) ||
+                e.PropertyName == nameof(ServerAccessServiceViewModel.ShowOwnerTokenActionsUnavailable))
+            {
+                OnPropertyChanged(e.PropertyName);
+                RefreshOwnerTokenActionProjection();
+            }
+        };
+
         // UI state commands delegated to UIStateViewModel
         ToggleLeftPanelCommand = _uiState.ToggleLeftPanelCommand;
         ToggleRightPanelCommand = _uiState.ToggleRightPanelCommand;
@@ -224,20 +237,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public bool IsServerAccessLoading
     {
-        get => _isServerAccessLoading;
-        private set
-        {
-            if (_isServerAccessLoading == value)
-            {
-                return;
-            }
-
-            _isServerAccessLoading = value;
-            OnPropertyChanged();
-            ((RelayCommand)CreateArenaCommand).RaiseCanExecuteChanged();
-            ((RelayCommand)JoinArenaCommand).RaiseCanExecuteChanged();
-            ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
-        }
+        get => _serverAccessService.IsServerAccessLoading;
+        private set => _serverAccessService.IsServerAccessLoading = value;
     }
 
     public bool HasSelectedServer => SelectedServer is not null;
@@ -245,69 +246,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public bool HasServerPluginCatalog => ServerPluginCatalogEntries.Count > 0;
     public bool ShowServerMetadataEmpty => !IsServerDetailLoading && !HasServerMetadata;
     public bool ShowServerPluginCatalogEmpty => !IsServerDetailLoading && !HasServerPluginCatalog;
-    public bool HasValidServerAccess => ServerAccessMetadata.IsValid;
-    public bool ShowOwnerTokenActions => HasValidServerAccess;
-    public bool ShowOwnerTokenActionsUnavailable => !ShowOwnerTokenActions;
+    public bool HasValidServerAccess => _serverAccessService.HasValidServerAccess;
+    public bool ShowOwnerTokenActions => _serverAccessService.ShowOwnerTokenActions;
+    public bool ShowOwnerTokenActionsUnavailable => _serverAccessService.ShowOwnerTokenActionsUnavailable;
     public string ServerDetailEndpoint => SelectedServer?.Endpoint ?? "-";
     public string ServerDetailProbeStatus => SelectedServer?.Status ?? "Status: not available";
     public string ServerAccessStatus
     {
-        get => _serverAccessStatus;
-        private set
-        {
-            if (_serverAccessStatus == value)
-            {
-                return;
-            }
-
-            _serverAccessStatus = value;
-            OnPropertyChanged();
-        }
+        get => _serverAccessService.ServerAccessStatus;
+        private set => _serverAccessService.ServerAccessStatus = value;
     }
 
     public string ServerAccessOwnerToken
     {
-        get => _serverAccessOwnerToken;
-        private set
-        {
-            if (_serverAccessOwnerToken == value)
-            {
-                return;
-            }
-
-            _serverAccessOwnerToken = value;
-            OnPropertyChanged();
-        }
+        get => _serverAccessService.ServerAccessOwnerToken;
+        private set => _serverAccessService.ServerAccessOwnerToken = value;
     }
 
     public string ServerAccessDashboardEndpoint
     {
-        get => _serverAccessDashboardEndpoint;
-        private set
-        {
-            if (_serverAccessDashboardEndpoint == value)
-            {
-                return;
-            }
+        get => _serverAccessService.ServerAccessDashboardEndpoint;
+        private set => _serverAccessService.ServerAccessDashboardEndpoint = value;
+    }
 
-            _serverAccessDashboardEndpoint = value;
-            OnPropertyChanged();
-        }
+    public ServerAccessMetadata ServerAccessMetadata
+    {
+        get => _serverAccessService.ServerAccessMetadata;
+        private set => _serverAccessService.ServerAccessMetadata = value;
     }
 
     public string OwnerTokenActionStatus
     {
-        get => _ownerTokenActionStatus;
-        private set
-        {
-            if (_ownerTokenActionStatus == value)
-            {
-                return;
-            }
-
-            _ownerTokenActionStatus = value;
-            OnPropertyChanged();
-        }
+        get => _serverAccessService.OwnerTokenActionStatus;
+        private set => _serverAccessService.OwnerTokenActionStatus = value;
     }
 
     public string OwnerArenaSelectedPlugin
@@ -346,7 +317,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         set => _arenaService.OwnerJoinHandicapPercent = value;
     }
 
-    public ServerAccessMetadata ServerAccessMetadata { get; private set; } = ServerAccessMetadata.Invalid("No metadata loaded.");
     public string ServerCatalogStatus
     {
         get => _serverCatalogStatus;
@@ -494,7 +464,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private bool CanExecuteOwnerTokenAction()
     {
-        return HasValidServerAccess && !IsServerAccessLoading && SelectedServer is not null;
+        return _serverAccessService.HasValidServerAccess && !_serverAccessService.IsServerAccessLoading && SelectedServer is not null;
     }
 
     private bool CanDeploySelectedBot()
