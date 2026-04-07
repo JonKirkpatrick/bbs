@@ -18,12 +18,17 @@ Completed and validated:
 - Arena editor/state extraction is in place (ArenaServiceViewModel integration).
 - Session/access concerns are partially extracted (SessionServiceViewModel and ServerAccessServiceViewModel are integrated).
 - Major UI regressions discovered during integration (server form visibility, server list rebinding, owner-token action gating, arena refresh command behavior, and plugin-default args hydration) were patched and revalidated in the app.
+- Additional quality-of-life and stability hardening landed after integration:
+  - Persona load now uses persona-name selection (no raw file-extension workflow).
+  - Arena list stale-display window on rapid server switching was removed.
+  - Full bbs-client test suite now passes (56/56).
 
-Current blocker to a "fully green" refactor checkpoint:
-- Full bbs-client suite run shows 4 failing tests in MainWindowViewModelActiveSessionResolutionTests (reflection-based field wiring assumptions no longer match current composition).
+Checkpoint status:
+- Refactor checkpoint is now green (build + full suite).
+- Prior test blocker (MainWindowViewModelActiveSessionResolutionTests legacy reflection assumptions) has been resolved.
 
 Realigned immediate objective:
-- Stabilize/modernize the failing active-session resolution tests so test coverage matches the new service-composition architecture.
+- Shift from stabilization to completion planning for remaining decomposition scope (optional DeploymentService extraction and MainWindowViewModel slimming).
 
 ---
 
@@ -579,12 +584,14 @@ public class BotServiceViewModel : ViewModelBase
 
 ## Recommendation
 
-**Realigned next step**: Complete test-suite realignment for active-session resolution scenarios.
+**Realigned next step**: Decide whether to execute optional Phase 3 (DeploymentService extraction) now, or defer and lock this as a stable baseline.
 
 **Why this now?**
-1. ✅ Architecture extraction is already in place; test debt is now the gating risk.
-2. ✅ The 4 failing tests are concentrated in one test class with reflection assumptions, making scope bounded.
-3. ✅ Green tests are needed before additional decomposition (especially DeploymentService extraction) to avoid compounding uncertainty.
-4. ✅ Fixing these tests creates a stable baseline for any final MainWindowViewModel slimming.
+1. ✅ Core extraction/hardening objectives are complete and validated.
+2. ✅ Full suite is green, so risk for additional refactor is measurable and controlled.
+3. ✅ Remaining work is strategic (scope/timing), not emergency stabilization.
+4. ✅ You can choose to preserve velocity for upcoming graphical UI work instead of over-optimizing internals now.
 
-**Success metric**: bbs-client solution tests pass fully, then proceed to optional Phase 3 extraction with confidence.
+**Success metric**: Either
+1. complete Phase 3 with no behavioral regressions and full suite green, or
+2. explicitly freeze current architecture as the baseline for the upcoming graphical UI track.

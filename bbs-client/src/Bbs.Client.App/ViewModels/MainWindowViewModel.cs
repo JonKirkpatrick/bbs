@@ -2174,6 +2174,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // Prevent stale arena cards from a previously selected server while new refresh is in-flight.
+        ServerArenaEntries.Clear();
         ServerArenasStatus = "Loading active arenas...";
         _ = RefreshSelectedServerArenasAsync();
         _arenaService.EnsureValidPluginSelection(_serverService.ServerPluginCatalogEntries);

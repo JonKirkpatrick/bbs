@@ -91,26 +91,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Load Persona",
-            AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("SQLite persona")
-                {
-                    Patterns = new[] { "*.sqlite3", "*.db", "*.sqlite" }
-                }
-            }
-        });
-
-        var file = files.Count > 0 ? files[0] : null;
-        if (file is null)
+        var personas = await ViewModel.ListAvailablePersonasAsync();
+        if (personas.Count == 0)
         {
             return;
         }
 
-        await ViewModel.LoadPersonaAsync(file.Path.LocalPath);
+        var selectedPersonaPath = await PersonaPickerWindow.ShowAsync(this, personas);
+        if (string.IsNullOrWhiteSpace(selectedPersonaPath))
+        {
+            return;
+        }
+
+        await ViewModel.LoadPersonaAsync(selectedPersonaPath);
     }
 
     private void OnUnloadPersonaClicked(object? sender, RoutedEventArgs e)

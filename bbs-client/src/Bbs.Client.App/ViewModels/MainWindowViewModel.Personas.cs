@@ -77,6 +77,12 @@ public sealed partial class MainWindowViewModel
         return ReplaceRuntimeForPersonaAsync(filePath);
     }
 
+    public async Task<IReadOnlyList<PersonaMetadata>> ListAvailablePersonasAsync()
+    {
+        EnsurePersonaManager();
+        return await _personaManager!.ListAvailableAsync();
+    }
+
     public void UnloadPersona()
     {
         if (_orchestration is IDisposable disposable)
