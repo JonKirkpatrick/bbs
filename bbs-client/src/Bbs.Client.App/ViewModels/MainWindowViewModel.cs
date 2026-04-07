@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -69,20 +70,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly HttpClient _serverCatalogHttpClient;
     private readonly UIStateViewModel _uiState = new();
     private readonly BotServiceViewModel _botService = new();
-    private readonly ServerServiceViewModel _serverService = new();
+    private ServerServiceViewModel _serverService = null!;  // Initialized in constructor with dependencies
     private readonly ArenaServiceViewModel _arenaService = new();
     private readonly SessionServiceViewModel _sessionService = new();
     private readonly ServerAccessServiceViewModel _serverAccessService = new();
     private BotSummaryItem? _selectedBot;
-    private ServerSummaryItem? _selectedServer;
-    private bool _isServerProbeInProgress;
-    private bool _isServerDetailLoading;
-    private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
     private int _serverAccessRefreshVersion;
-    private readonly Dictionary<string, DateTimeOffset> _serverCatalogLastRefreshUtc = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _serverCatalogRefreshInFlight = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _serverProbeLock = new();
-    private readonly object _serverCatalogRefreshLock = new();
 
     private MainWindowViewModel(
         IClientLogger logger,
@@ -98,10 +91,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             Timeout = TimeSpan.FromMilliseconds(ServerCatalogFetchTimeoutMs)
         };
+
+        // Initialize ServerServiceViewModel with dependencies
+        _serverService = new ServerServiceViewModel(_storage, _logger, _serverCatalogHttpClient);
+        _arenaService.SetPluginCatalog(_serverService.ServerPluginCatalogEntries);
+        _serverService.ServerPluginCatalogEntries.CollectionChanged += OnServerPluginCatalogEntriesChanged;
+
         Bots = new ObservableCollection<BotSummaryItem>();
-        Servers = new ObservableCollection<ServerSummaryItem>();
-        ServerMetadataEntries = new ObservableCollection<ServerMetadataEntryItem>();
-        ServerPluginCatalogEntries = new ObservableCollection<ServerPluginCatalogItem>();
         ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
 
         // Subscribe to UIState property changes and forward visibility/panel properties to MainWindowViewModel
@@ -119,6 +115,54 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 e.PropertyName == nameof(UIStateViewModel.LeftPanelWidth) ||
                 e.PropertyName == nameof(UIStateViewModel.RightPanelWidth) ||
                 e.PropertyName == nameof(UIStateViewModel.CurrentContextLabel))
+            {
+                OnPropertyChanged(e.PropertyName);
+            }
+        };
+
+        // Subscribe to ServerService property changes and forward server state
+        _serverService.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(ServerServiceViewModel.SelectedServer))
+            {
+                OnPropertyChanged(nameof(SelectedServer));
+                OnPropertyChanged(nameof(HasSelectedServer));
+                OnPropertyChanged(nameof(ServerDetailEndpoint));
+                OnPropertyChanged(nameof(ServerDetailProbeStatus));
+
+                RefreshSelectedServerDetail();
+                TriggerServerAccessRefresh();
+                RefreshContextProjection();
+
+                if (SetServerContextCommand is RelayCommand setServerContextCommand)
+                {
+                    setServerContextCommand.RaiseCanExecuteChanged();
+                }
+
+                if (RefreshServerArenasCommand is RelayCommand refreshServerArenasCommand)
+                {
+                    refreshServerArenasCommand.RaiseCanExecuteChanged();
+                }
+
+                if (DeploySelectedBotCommand is RelayCommand deploySelectedBotCommand)
+                {
+                    deploySelectedBotCommand.RaiseCanExecuteChanged();
+                }
+
+                if (DeployBotFromCardCommand is RelayCommand<BotSummaryItem> deployBotFromCardCommand)
+                {
+                    deployBotFromCardCommand.RaiseCanExecuteChanged();
+                }
+            }
+
+            if (e.PropertyName == nameof(ServerServiceViewModel.IsServerProbeInProgress) ||
+                e.PropertyName == nameof(ServerServiceViewModel.IsServerDetailLoading) ||
+                e.PropertyName == nameof(ServerServiceViewModel.ServerCatalogStatus) ||
+                e.PropertyName == nameof(ServerServiceViewModel.HasSelectedServer) ||
+                e.PropertyName == nameof(ServerServiceViewModel.HasServerMetadata) ||
+                e.PropertyName == nameof(ServerServiceViewModel.HasServerPluginCatalog) ||
+                e.PropertyName == nameof(ServerServiceViewModel.ShowServerMetadataEmpty) ||
+                e.PropertyName == nameof(ServerServiceViewModel.ShowServerPluginCatalogEmpty))
             {
                 OnPropertyChanged(e.PropertyName);
             }
@@ -185,7 +229,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         RefreshServerAccessCommand = new RelayCommand(RefreshServerAccessMetadata);
         CreateArenaCommand = new RelayCommand(ExecuteCreateArena, CanExecuteOwnerTokenAction);
         JoinArenaCommand = new RelayCommand(ExecuteJoinArena, CanExecuteOwnerTokenAction);
-        RefreshServerArenasCommand = new RelayCommand(RefreshServerArenas, () => SelectedServer is not null && IsPersonaLoaded);
+        RefreshServerArenasCommand = new RelayCommand(RefreshServerArenas, CanRefreshServerArenas);
         OpenArenaViewerInBrowserCommand = new RelayCommand(OpenArenaViewerInBrowser, () => !string.IsNullOrWhiteSpace(ArenaViewerUrl));
 
         ConfigureEmbeddedViewerSupport(embeddedViewerAvailable, embeddedViewerMessage);
@@ -219,17 +263,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     };
     public bool IsServerDetailLoading
     {
-        get => _isServerDetailLoading;
-        private set
-        {
-            if (_isServerDetailLoading == value)
-            {
-                return;
-            }
-
-            _isServerDetailLoading = value;
-            OnPropertyChanged();
-        }
+        get => _serverService.IsServerDetailLoading;
     }
 
     public bool IsServerAccessLoading
@@ -239,10 +273,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     public bool HasSelectedServer => SelectedServer is not null;
-    public bool HasServerMetadata => ServerMetadataEntries.Count > 0;
-    public bool HasServerPluginCatalog => ServerPluginCatalogEntries.Count > 0;
-    public bool ShowServerMetadataEmpty => !IsServerDetailLoading && !HasServerMetadata;
-    public bool ShowServerPluginCatalogEmpty => !IsServerDetailLoading && !HasServerPluginCatalog;
+    public bool HasServerMetadata => _serverService.ServerMetadataEntries.Count > 0;
+    public bool HasServerPluginCatalog => _serverService.ServerPluginCatalogEntries.Count > 0;
+    public bool ShowServerMetadataEmpty => _serverService.ShowServerMetadataEmpty;
+    public bool ShowServerPluginCatalogEmpty => _serverService.ShowServerPluginCatalogEmpty;
     public bool HasValidServerAccess => _serverAccessService.HasValidServerAccess;
     public bool ShowOwnerTokenActions => _serverAccessService.ShowOwnerTokenActions;
     public bool ShowOwnerTokenActionsUnavailable => _serverAccessService.ShowOwnerTokenActionsUnavailable;
@@ -314,37 +348,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         set => _arenaService.OwnerJoinHandicapPercent = value;
     }
 
-    public string ServerCatalogStatus
-    {
-        get => _serverCatalogStatus;
-        private set
-        {
-            if (_serverCatalogStatus == value)
-            {
-                return;
-            }
+    public string ServerCatalogStatus => _serverService.ServerCatalogStatus;
 
-            _serverCatalogStatus = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(ShowServerMetadataEmpty));
-            OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
-        }
-    }
-    public bool IsServerProbeInProgress
-    {
-        get => _isServerProbeInProgress;
-        private set
-        {
-            if (_isServerProbeInProgress == value)
-            {
-                return;
-            }
-
-            _isServerProbeInProgress = value;
-            OnPropertyChanged();
-            ((RelayCommand)ReprobeServersCommand).RaiseCanExecuteChanged();
-        }
-    }
+    public bool IsServerProbeInProgress => _serverService.IsServerProbeInProgress;
 
     // Delegation: Panel state properties forward to UIState
     /// <summary>
@@ -368,9 +374,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public bool ShowArenaViewer => _uiState.ShowArenaViewer;
 
     public ObservableCollection<BotSummaryItem> Bots { get; }
-    public ObservableCollection<ServerSummaryItem> Servers { get; }
-    public ObservableCollection<ServerMetadataEntryItem> ServerMetadataEntries { get; }
-    public ObservableCollection<ServerPluginCatalogItem> ServerPluginCatalogEntries { get; }
+    public ObservableCollection<ServerSummaryItem> Servers => _serverService.Servers;
+    public ObservableCollection<ServerMetadataEntryItem> ServerMetadataEntries => _serverService.ServerMetadataEntries;
+    public ObservableCollection<ServerPluginCatalogItem> ServerPluginCatalogEntries => _serverService.ServerPluginCatalogEntries;
     public ObservableCollection<ServerArenaItem> ServerArenaEntries { get; }
 
     public BotSummaryItem? SelectedBot
@@ -395,15 +401,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public ServerSummaryItem? SelectedServer
     {
-        get => _selectedServer;
+        get => _serverService.SelectedServer;
         set
         {
-            if (_selectedServer == value)
+            if (_serverService.SelectedServer == value)
             {
                 return;
             }
 
-            _selectedServer = value;
+            _serverService.SelectedServer = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasSelectedServer));
             OnPropertyChanged(nameof(ShowServerMetadataEmpty));
@@ -451,7 +457,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void ReprobeServers()
     {
-        _ = RunServerProbeCycleAsync(trigger: "manual", updateEditorStatus: true);
+        _serverService.TriggerManualProbe();
     }
 
     private void RefreshServerAccessMetadata()
@@ -462,6 +468,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool CanExecuteOwnerTokenAction()
     {
         return _serverAccessService.HasValidServerAccess && !_serverAccessService.IsServerAccessLoading && SelectedServer is not null;
+    }
+
+    private bool CanRefreshServerArenas()
+    {
+        return IsPersonaLoaded &&
+               !IsServerArenasLoading &&
+               SelectedServer?.VisualState == ServerCardVisualState.Live;
     }
 
     private bool CanDeploySelectedBot()
@@ -782,7 +795,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         StopArenaViewerWatch();
         SelectedServer = null;
-        _uiState.SwitchContext(WorkspaceContext.ServerDetails);
+        _uiState.SwitchContext(WorkspaceContext.ServerEditor);
         _serverService.PrepareForNewServer();
         RefreshContextProjection();
     }
@@ -1049,7 +1062,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return new RegisterHandshakeResult(
             SessionId: sessionId,
             OwnerToken: accessReply.OwnerToken,
-            DashboardEndpoint: NormalizeDashboardEndpoint(accessReply.DashboardEndpoint, accessReply.DashboardHost, accessReply.DashboardPort, server.UseTls));
+            DashboardEndpoint: ServerServiceViewModel.NormalizeDashboardEndpoint(accessReply.DashboardEndpoint, accessReply.DashboardHost, accessReply.DashboardPort, server.UseTls));
     }
 
     private static IReadOnlyList<string> BuildAgentServerTargetEndpointCandidates(ServerSummaryItem server)
@@ -1452,35 +1465,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         socketErrorCode = string.Empty;
         return false;
-    }
-
-    private static string NormalizeDashboardEndpoint(string rawEndpoint, string rawHost, string rawPort, bool useTls)
-    {
-        var scheme = useTls ? "https" : "http";
-        if (Uri.TryCreate(rawEndpoint, UriKind.Absolute, out var absolute))
-        {
-            return absolute.ToString();
-        }
-
-        if (!string.IsNullOrWhiteSpace(rawEndpoint))
-        {
-            var withScheme = $"{scheme}://{rawEndpoint}";
-            if (Uri.TryCreate(withScheme, UriKind.Absolute, out absolute))
-            {
-                return absolute.ToString();
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(rawHost) && !string.IsNullOrWhiteSpace(rawPort))
-        {
-            var withScheme = $"{scheme}://{rawHost}:{rawPort}";
-            if (Uri.TryCreate(withScheme, UriKind.Absolute, out absolute))
-            {
-                return absolute.ToString();
-            }
-        }
-
-        return string.Empty;
     }
 
     private bool HasActiveDeployConnection(string botId)
@@ -2144,18 +2128,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void LoadServersFromStorage()
     {
-        var servers = _storage.ListKnownServersAsync().GetAwaiter().GetResult();
-
-        Servers.Clear();
-        foreach (var server in servers)
-        {
-            var cache = _storage.GetServerPluginCacheAsync(server.ServerId).GetAwaiter().GetResult();
-            Servers.Add(ServerSummaryItem.FromKnownServer(server, cache));
-        }
-
+        _serverService.LoadServersFromStorage();
         OnPropertyChanged(nameof(Servers));
         ((RelayCommand)ReprobeServersCommand).RaiseCanExecuteChanged();
-        RefreshSelectedServerDetail();
         RefreshActiveBotSessionsProjection();
     }
 
@@ -2174,15 +2149,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private ServerSummaryItem? FindServerById(string serverId)
     {
-        foreach (var server in Servers)
-        {
-            if (server.ServerId == serverId)
-            {
-                return server;
-            }
-        }
-
-        return null;
+        return _serverService.FindServerById(serverId);
     }
 
     private void PopulateBotEditor(BotSummaryItem bot)
@@ -2197,65 +2164,34 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void RefreshSelectedServerDetail()
     {
-        IsServerDetailLoading = true;
-        ServerMetadataEntries.Clear();
-        ServerPluginCatalogEntries.Clear();
-        ServerArenaEntries.Clear();
-
+        // Delegated to ServerService; now just handle arena refresh and plugin selection
         var server = SelectedServer;
+        _serverService.RefreshSelectedServerDetail(server);
         if (server is null)
         {
-            ServerCatalogStatus = "Select a server to view cached plugin catalog.";
+            ServerArenaEntries.Clear();
             ServerArenasStatus = "Select a server to load active arenas.";
-            IsServerDetailLoading = false;
-            OnPropertyChanged(nameof(HasServerMetadata));
-            OnPropertyChanged(nameof(HasServerPluginCatalog));
-            OnPropertyChanged(nameof(ShowServerMetadataEmpty));
-            OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
-            OnPropertyChanged(nameof(ServerDetailEndpoint));
-            OnPropertyChanged(nameof(ServerDetailProbeStatus));
             return;
         }
 
-        foreach (var metadata in server.Metadata)
-        {
-            ServerMetadataEntries.Add(new ServerMetadataEntryItem(metadata.Key, metadata.Value));
-        }
-
-        foreach (var plugin in server.CachedPlugins)
-        {
-            ServerPluginCatalogEntries.Add(new ServerPluginCatalogItem(plugin.Name, plugin.DisplayName, plugin.Version, plugin.Metadata));
-        }
-
-        EnsureOwnerArenaPluginSelection();
-
-        ServerCatalogStatus = server.CachedPlugins.Count == 0
-            ? "No cached plugins available."
-            : $"Cached plugins: {server.CachedPlugins.Count}";
         ServerArenasStatus = "Loading active arenas...";
-
-        IsServerDetailLoading = false;
-        OnPropertyChanged(nameof(HasServerMetadata));
-        OnPropertyChanged(nameof(HasServerPluginCatalog));
-        OnPropertyChanged(nameof(ShowServerMetadataEmpty));
-        OnPropertyChanged(nameof(ShowServerPluginCatalogEmpty));
-        OnPropertyChanged(nameof(ServerDetailEndpoint));
-        OnPropertyChanged(nameof(ServerDetailProbeStatus));
-
-        TriggerSelectedServerCatalogRefresh(server);
         _ = RefreshSelectedServerArenasAsync();
-
-        _arenaService.EnsureValidPluginSelection(ServerPluginCatalogEntries);
+        _arenaService.EnsureValidPluginSelection(_serverService.ServerPluginCatalogEntries);
     }
 
     private void EnsureOwnerArenaPluginSelection()
     {
-        _arenaService.EnsureValidPluginSelection(ServerPluginCatalogEntries);
+        _arenaService.EnsureValidPluginSelection(_serverService.ServerPluginCatalogEntries);
     }
 
     private void SyncOwnerArenaArgsFromSelectedPlugin()
     {
         // Delegated to ArenaService; called from ArenaServiceViewModel property setter
+    }
+
+    private void OnServerPluginCatalogEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        EnsureOwnerArenaPluginSelection();
     }
 
     private void SaveServerProfile()

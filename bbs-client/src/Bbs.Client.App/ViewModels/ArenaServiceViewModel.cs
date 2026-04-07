@@ -13,6 +13,7 @@ namespace Bbs.Client.App.ViewModels;
 /// </summary>
 public sealed class ArenaServiceViewModel : ViewModelBase
 {
+    private ObservableCollection<ServerPluginCatalogItem>? _pluginCatalog;
     private string _ownerArenaSelectedPlugin = string.Empty;
     private string _ownerArenaArgs = string.Empty;
     private string _ownerArenaTimeMs = string.Empty;
@@ -32,7 +33,7 @@ public sealed class ArenaServiceViewModel : ViewModelBase
 
             _ownerArenaSelectedPlugin = value;
             OnPropertyChanged();
-            SyncArgsFromSelectedPlugin();
+            SyncArgsFromSelectedPlugin(_pluginCatalog);
         }
     }
 
@@ -132,6 +133,8 @@ public sealed class ArenaServiceViewModel : ViewModelBase
     /// <param name="pluginCatalog">Collection of available server plugins.</param>
     public void EnsureValidPluginSelection(ObservableCollection<ServerPluginCatalogItem> pluginCatalog)
     {
+        _pluginCatalog = pluginCatalog;
+
         if (pluginCatalog.Count == 0)
         {
             OwnerArenaSelectedPlugin = string.Empty;
@@ -147,6 +150,11 @@ public sealed class ArenaServiceViewModel : ViewModelBase
         }
 
         SyncArgsFromSelectedPlugin(pluginCatalog);
+    }
+
+    public void SetPluginCatalog(ObservableCollection<ServerPluginCatalogItem> pluginCatalog)
+    {
+        _pluginCatalog = pluginCatalog;
     }
 
     /// <summary>

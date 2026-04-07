@@ -42,6 +42,7 @@ public sealed partial class MainWindowViewModel
 
             _isServerArenasLoading = value;
             OnPropertyChanged();
+            ((RelayCommand)RefreshServerArenasCommand).RaiseCanExecuteChanged();
         }
     }
 
@@ -285,7 +286,7 @@ public sealed partial class MainWindowViewModel
         try
         {
             var knownServer = ToKnownServer(server);
-            var endpointCandidates = BuildServerBaseEndpointCandidates(knownServer);
+            var endpointCandidates = ServerServiceViewModel.BuildServerBaseEndpointCandidates(knownServer);
 
             IReadOnlyList<ServerArenaApiDto>? arenas = null;
             foreach (var endpoint in endpointCandidates)
@@ -319,6 +320,7 @@ public sealed partial class MainWindowViewModel
                 if (!silent && IsArenaRefreshCurrent(refreshVersion, requestedServerId))
                 {
                     ServerArenasStatus = "Failed to load active arenas from server.";
+                    ServerArenaEntries.Clear();
                 }
 
                 ArenaViewerLastError = "Failed to query /api/arenas from all endpoint candidates.";
