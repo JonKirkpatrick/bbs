@@ -8,6 +8,23 @@
 
 **Key Benefit**: Reduced cognitive load, testability, independent evolution, and clear separation of concerns.
 
+### Status Checkpoint (2026-04-07)
+
+Refactor progress is materially ahead of the original week-1 plan.
+
+Completed and validated:
+- UI state extraction is in place (UIStateViewModel integration).
+- Server management extraction is in place (ServerServiceViewModel integration).
+- Arena editor/state extraction is in place (ArenaServiceViewModel integration).
+- Session/access concerns are partially extracted (SessionServiceViewModel and ServerAccessServiceViewModel are integrated).
+- Major UI regressions discovered during integration (server form visibility, server list rebinding, owner-token action gating, arena refresh command behavior, and plugin-default args hydration) were patched and revalidated in the app.
+
+Current blocker to a "fully green" refactor checkpoint:
+- Full bbs-client suite run shows 4 failing tests in MainWindowViewModelActiveSessionResolutionTests (reflection-based field wiring assumptions no longer match current composition).
+
+Realigned immediate objective:
+- Stabilize/modernize the failing active-session resolution tests so test coverage matches the new service-composition architecture.
+
 ---
 
 ## Part 1: Current Responsibilities Inventory
@@ -562,13 +579,12 @@ public class BotServiceViewModel : ViewModelBase
 
 ## Recommendation
 
-**Start with Phase 1, Step 1 this week**: Extract UIStateViewModel.
+**Realigned next step**: Complete test-suite realignment for active-session resolution scenarios.
 
-**Why this first?**
-1. ✅ Lowest risk (no logic changes, just UI state movement)
-2. ✅ Benefits immediately visible (MainWindowViewModel ~200 LOC smaller)
-3. ✅ Establishes pattern for remaining extractions
-4. ✅ Zero breaking changes; build + tests pass unchanged
-5. ✅ You can do this in parallel with other work
+**Why this now?**
+1. ✅ Architecture extraction is already in place; test debt is now the gating risk.
+2. ✅ The 4 failing tests are concentrated in one test class with reflection assumptions, making scope bounded.
+3. ✅ Green tests are needed before additional decomposition (especially DeploymentService extraction) to avoid compounding uncertainty.
+4. ✅ Fixing these tests creates a stable baseline for any final MainWindowViewModel slimming.
 
-**Success metric**: MainWindowViewModel drops from 2900 → 2700 LOC, all tests pass, no UI regression.
+**Success metric**: bbs-client solution tests pass fully, then proceed to optional Phase 3 extraction with confidence.

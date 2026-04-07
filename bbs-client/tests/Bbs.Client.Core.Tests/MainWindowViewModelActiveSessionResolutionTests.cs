@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Net.Http;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia.Media;
 using Bbs.Client.App.ViewModels;
 using Bbs.Client.Core.Domain;
+using Bbs.Client.Core.Logging;
+using Bbs.Client.Core.Storage;
 
 namespace Bbs.Client.Core.Tests;
 
@@ -128,11 +133,41 @@ public sealed class MainWindowViewModelActiveSessionResolutionTests
         var vm = (MainWindowViewModel)FormatterServices.GetUninitializedObject(typeof(MainWindowViewModel));
 #pragma warning restore SYSLIB0050
 
-        SetField(vm, "<Servers>k__BackingField", new ObservableCollection<ServerSummaryItem>(servers ?? Array.Empty<ServerSummaryItem>()));
+        var serverService = new ServerServiceViewModel(new StubClientStorage(), new StubClientLogger(), new HttpClient());
+        foreach (var server in servers ?? Array.Empty<ServerSummaryItem>())
+        {
+            serverService.Servers.Add(server);
+        }
+
+        serverService.SelectedServer = selectedServer;
+
+        SetField(vm, "_serverService", serverService);
         SetField(vm, "<ServerArenaEntries>k__BackingField", new ObservableCollection<ServerArenaItem>(arenas ?? Array.Empty<ServerArenaItem>()));
-        SetField(vm, "_selectedServer", selectedServer);
 
         return vm;
+    }
+
+    private sealed class StubClientStorage : IClientStorage
+    {
+        public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult(1);
+        public Task<ClientIdentity?> GetClientIdentityAsync(CancellationToken cancellationToken = default) => Task.FromResult((ClientIdentity?)null);
+        public Task SaveClientIdentityAsync(ClientIdentity identity, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<BotProfile>> ListBotProfilesAsync(CancellationToken cancellationToken = default) => Task.FromResult((IReadOnlyList<BotProfile>)Array.Empty<BotProfile>());
+        public Task UpsertBotProfileAsync(BotProfile profile, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<KnownServer>> ListKnownServersAsync(CancellationToken cancellationToken = default) => Task.FromResult((IReadOnlyList<KnownServer>)Array.Empty<KnownServer>());
+        public Task UpsertKnownServerAsync(KnownServer server, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<ServerPluginCache?> GetServerPluginCacheAsync(string serverId, CancellationToken cancellationToken = default) => Task.FromResult((ServerPluginCache?)null);
+        public Task UpsertServerPluginCacheAsync(ServerPluginCache cache, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<AgentRuntimeState?> GetAgentRuntimeStateAsync(string botId, CancellationToken cancellationToken = default) => Task.FromResult((AgentRuntimeState?)null);
+        public Task UpsertAgentRuntimeStateAsync(AgentRuntimeState state, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class StubClientLogger : IClientLogger
+    {
+        public void Log(LogLevel level, string eventName, string message, IReadOnlyDictionary<string, string>? fields = null)
+        {
+        }
     }
 
     private static ServerSummaryItem CreateServerSummaryItem(string serverId, string host, int port, IReadOnlyDictionary<string, string> metadata)
