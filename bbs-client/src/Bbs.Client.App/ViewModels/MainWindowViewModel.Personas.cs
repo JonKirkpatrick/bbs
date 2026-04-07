@@ -16,11 +16,11 @@ public sealed partial class MainWindowViewModel
 {
     private bool _isDeveloperViewEnabled = true;
 
-    public ObservableCollection<ActiveBotSessionItem> ActiveBotSessions { get; } = new();
+    public ObservableCollection<ActiveBotSessionItem> ActiveBotSessions => _sessionService.ActiveBotSessions;
 
-    public bool HasActiveBotSessions => ActiveBotSessions.Count > 0;
+    public bool HasActiveBotSessions => _sessionService.HasActiveBotSessions;
 
-    public bool ShowActiveBotSessionsEmpty => !HasActiveBotSessions;
+    public bool ShowActiveBotSessionsEmpty => _sessionService.ShowActiveBotSessionsEmpty;
 
     public bool IsDeveloperViewEnabled
     {

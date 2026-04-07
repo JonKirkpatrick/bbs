@@ -70,6 +70,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly UIStateViewModel _uiState = new();
     private readonly BotServiceViewModel _botService = new();
     private readonly ServerServiceViewModel _serverService = new();
+    private readonly ArenaServiceViewModel _arenaService = new();
+    private readonly SessionServiceViewModel _sessionService = new();
     private BotSummaryItem? _selectedBot;
     private ServerSummaryItem? _selectedServer;
     private bool _isServerProbeInProgress;
@@ -78,12 +80,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private string _serverCatalogStatus = "Select a server to view cached plugin catalog.";
     private string _serverAccessStatus = "Select a server to load server access metadata.";
     private string _ownerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
-    private string _ownerArenaSelectedPlugin = string.Empty;
-    private string _ownerArenaArgs = string.Empty;
-    private string _ownerArenaTimeMs = string.Empty;
-    private bool _ownerArenaAllowHandicap = true;
-    private string _ownerJoinArenaId = string.Empty;
-    private string _ownerJoinHandicapPercent = "0";
     private string _serverAccessOwnerToken = "-";
     private string _serverAccessDashboardEndpoint = "-";
     private int _serverAccessRefreshVersion;
@@ -136,6 +132,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 }
             };
 
+        // Subscribe to ArenaService property changes and forward them
+        _arenaService.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(ArenaServiceViewModel.OwnerArenaSelectedPlugin) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.OwnerArenaArgs) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.OwnerArenaTimeMs) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.OwnerArenaAllowHandicap) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.OwnerJoinArenaId) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.OwnerJoinHandicapPercent))
+            {
+                OnPropertyChanged(e.PropertyName);
+            }
+        };
+
+        // Subscribe to SessionService property changes and forward them
+        _sessionService.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(SessionServiceViewModel.HasActiveBotSessions) ||
+                e.PropertyName == nameof(SessionServiceViewModel.ShowActiveBotSessionsEmpty))
+            {
+                OnPropertyChanged(e.PropertyName);
+            }
+        };
+
         // UI state commands delegated to UIStateViewModel
         ToggleLeftPanelCommand = _uiState.ToggleLeftPanelCommand;
         ToggleRightPanelCommand = _uiState.ToggleRightPanelCommand;
@@ -173,6 +193,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public BotServiceViewModel BotService => _botService;
     public ServerServiceViewModel ServerService => _serverService;
+    public ArenaServiceViewModel ArenaService => _arenaService;
+    public SessionServiceViewModel SessionService => _sessionService;
 
     public string WorkspaceTitle { get; private set; } = "";
     public string WorkspaceDescription { get; private set; } = "";
@@ -290,93 +312,38 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public string OwnerArenaSelectedPlugin
     {
-        get => _ownerArenaSelectedPlugin;
-        set
-        {
-            if (string.Equals(_ownerArenaSelectedPlugin, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _ownerArenaSelectedPlugin = value;
-            OnPropertyChanged();
-            SyncOwnerArenaArgsFromSelectedPlugin();
-        }
+        get => _arenaService.OwnerArenaSelectedPlugin;
+        set => _arenaService.OwnerArenaSelectedPlugin = value;
     }
 
     public string OwnerArenaArgs
     {
-        get => _ownerArenaArgs;
-        set
-        {
-            if (string.Equals(_ownerArenaArgs, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _ownerArenaArgs = value;
-            OnPropertyChanged();
-        }
+        get => _arenaService.OwnerArenaArgs;
+        set => _arenaService.OwnerArenaArgs = value;
     }
 
     public string OwnerArenaTimeMs
     {
-        get => _ownerArenaTimeMs;
-        set
-        {
-            if (string.Equals(_ownerArenaTimeMs, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _ownerArenaTimeMs = value;
-            OnPropertyChanged();
-        }
+        get => _arenaService.OwnerArenaTimeMs;
+        set => _arenaService.OwnerArenaTimeMs = value;
     }
 
     public bool OwnerArenaAllowHandicap
     {
-        get => _ownerArenaAllowHandicap;
-        set
-        {
-            if (_ownerArenaAllowHandicap == value)
-            {
-                return;
-            }
-
-            _ownerArenaAllowHandicap = value;
-            OnPropertyChanged();
-        }
+        get => _arenaService.OwnerArenaAllowHandicap;
+        set => _arenaService.OwnerArenaAllowHandicap = value;
     }
 
     public string OwnerJoinArenaId
     {
-        get => _ownerJoinArenaId;
-        set
-        {
-            if (string.Equals(_ownerJoinArenaId, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _ownerJoinArenaId = value;
-            OnPropertyChanged();
-        }
+        get => _arenaService.OwnerJoinArenaId;
+        set => _arenaService.OwnerJoinArenaId = value;
     }
 
     public string OwnerJoinHandicapPercent
     {
-        get => _ownerJoinHandicapPercent;
-        set
-        {
-            if (string.Equals(_ownerJoinHandicapPercent, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _ownerJoinHandicapPercent = value;
-            OnPropertyChanged();
-        }
+        get => _arenaService.OwnerJoinHandicapPercent;
+        set => _arenaService.OwnerJoinHandicapPercent = value;
     }
 
     public ServerAccessMetadata ServerAccessMetadata { get; private set; } = ServerAccessMetadata.Invalid("No metadata loaded.");
@@ -1644,12 +1611,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         var selectedBot = SelectedBot;
         var selectedBotId = selectedBot?.BotId;
-        ActiveBotSessions.Clear();
+        _sessionService.ClearSessions();
 
         if (selectedBot is null || string.IsNullOrWhiteSpace(selectedBotId))
         {
-            OnPropertyChanged(nameof(HasActiveBotSessions));
-            OnPropertyChanged(nameof(ShowActiveBotSessionsEmpty));
             return;
         }
 
@@ -1697,8 +1662,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             });
         }
 
-        OnPropertyChanged(nameof(HasActiveBotSessions));
-        OnPropertyChanged(nameof(ShowActiveBotSessionsEmpty));
+        _sessionService.NotifySessionsChanged();
     }
 
     private void ReconcileActiveSessionsFromRuntimeSockets(BotSummaryItem sourceBot)
@@ -2358,87 +2322,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         TriggerSelectedServerCatalogRefresh(server);
         _ = RefreshSelectedServerArenasAsync();
+
+        _arenaService.EnsureValidPluginSelection(ServerPluginCatalogEntries);
     }
 
     private void EnsureOwnerArenaPluginSelection()
     {
-        if (ServerPluginCatalogEntries.Count == 0)
-        {
-            OwnerArenaSelectedPlugin = string.Empty;
-            OwnerArenaArgs = string.Empty;
-            return;
-        }
-
-        var exists = ServerPluginCatalogEntries.Any(p => string.Equals(p.Name, OwnerArenaSelectedPlugin, StringComparison.OrdinalIgnoreCase));
-        if (!exists)
-        {
-            OwnerArenaSelectedPlugin = ServerPluginCatalogEntries[0].Name;
-            return;
-        }
-
-        SyncOwnerArenaArgsFromSelectedPlugin();
+        _arenaService.EnsureValidPluginSelection(ServerPluginCatalogEntries);
     }
 
     private void SyncOwnerArenaArgsFromSelectedPlugin()
     {
-        if (string.IsNullOrWhiteSpace(OwnerArenaSelectedPlugin))
-        {
-            OwnerArenaArgs = string.Empty;
-            return;
-        }
-
-        var selectedPlugin = ServerPluginCatalogEntries
-            .FirstOrDefault(p => string.Equals(p.Name, OwnerArenaSelectedPlugin, StringComparison.OrdinalIgnoreCase));
-        if (selectedPlugin is null)
-        {
-            OwnerArenaArgs = string.Empty;
-            return;
-        }
-
-        if (!selectedPlugin.Metadata.TryGetValue("args_json", out var argsJson) || string.IsNullOrWhiteSpace(argsJson))
-        {
-            return;
-        }
-
-        try
-        {
-            using var doc = JsonDocument.Parse(argsJson);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array)
-            {
-                return;
-            }
-
-            var parts = new List<string>();
-            foreach (var arg in doc.RootElement.EnumerateArray())
-            {
-                if (arg.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-
-                var key = arg.TryGetProperty("key", out var keyElement)
-                    ? keyElement.GetString()
-                    : null;
-                var defaultValue = arg.TryGetProperty("default_value", out var defaultElement)
-                    ? defaultElement.GetString()
-                    : null;
-
-                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(defaultValue))
-                {
-                    continue;
-                }
-
-                parts.Add($"{key.Trim()}={defaultValue.Trim()}");
-            }
-
-            if (parts.Count > 0)
-            {
-                OwnerArenaArgs = string.Join(' ', parts);
-            }
-        }
-        catch (JsonException)
-        {
-        }
+        // Delegated to ArenaService; called from ArenaServiceViewModel property setter
     }
 
     private void SaveServerProfile()

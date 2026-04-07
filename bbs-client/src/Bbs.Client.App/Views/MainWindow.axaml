@@ -375,17 +375,17 @@
                                                                                         Margin="8,0,0,0"
                                                                                         ItemsSource="{Binding ServerPluginCatalogEntries}"
                                                                                         SelectedValueBinding="{Binding Name}"
-                                                                                        SelectedValue="{Binding OwnerArenaSelectedPlugin}"
+                                                                                        SelectedValue="{Binding ArenaService.OwnerArenaSelectedPlugin}"
                                                                                         DisplayMemberBinding="{Binding DisplayName}" />
 
                                                                               <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,0,0" FontSize="12" VerticalAlignment="Center" Text="Args" />
-                                                                              <TextBox Grid.Row="1" Grid.Column="1" Margin="8,6,0,0" Text="{Binding OwnerArenaArgs}" Watermark="key=value key2=value2" />
+                                                                              <TextBox Grid.Row="1" Grid.Column="1" Margin="8,6,0,0" Text="{Binding ArenaService.OwnerArenaArgs}" Watermark="key=value key2=value2" />
 
                                                                               <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,6,0,0" FontSize="12" VerticalAlignment="Center" Text="Time ms" />
-                                                                              <TextBox Grid.Row="2" Grid.Column="1" Margin="8,6,0,0" Text="{Binding OwnerArenaTimeMs}" Watermark="default game value" />
+                                                                              <TextBox Grid.Row="2" Grid.Column="1" Margin="8,6,0,0" Text="{Binding ArenaService.OwnerArenaTimeMs}" Watermark="default game value" />
 
                                                                               <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,6,0,0" FontSize="12" VerticalAlignment="Center" Text="Allow handicap" />
-                                                                              <CheckBox Grid.Row="3" Grid.Column="1" Margin="8,6,0,0" IsChecked="{Binding OwnerArenaAllowHandicap}" />
+                                                                              <CheckBox Grid.Row="3" Grid.Column="1" Margin="8,6,0,0" IsChecked="{Binding ArenaService.OwnerArenaAllowHandicap}" />
                                                                         </Grid>
 
                                                                         <Button Command="{Binding CreateArenaCommand}" Content="Create Arena" />
