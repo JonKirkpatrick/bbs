@@ -83,10 +83,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly HashSet<string> _serverCatalogRefreshInFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _serverProbeLock = new();
     private readonly object _serverCatalogRefreshLock = new();
-    private readonly object _deployConnectionLock = new();
-    private readonly HashSet<(string BotId, string SessionId)> _activeDeployConnections = new();
-    private readonly object _activeAccessCacheLock = new();
-    private readonly Dictionary<(string BotId, string SessionId), (string RuntimeBotId, string RuntimeBotName, string ServerId, ServerAccessMetadata Access)> _activeSessionsByBotAndSession = new();
 
     private MainWindowViewModel(
         IClientLogger logger,
@@ -108,25 +104,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ServerPluginCatalogEntries = new ObservableCollection<ServerPluginCatalogItem>();
         ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
 
-            // Subscribe to UIState property changes and forward visibility/panel properties to MainWindowViewModel
-            // This ensures code-behind and XAML bindings see the changes properly
-            _uiState.PropertyChanged += (s, e) =>
+        // Subscribe to UIState property changes and forward visibility/panel properties to MainWindowViewModel
+        // This ensures code-behind and XAML bindings see the changes properly
+        _uiState.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(UIStateViewModel.ShowBotEditor) ||
+                e.PropertyName == nameof(UIStateViewModel.ShowServerEditor) ||
+                e.PropertyName == nameof(UIStateViewModel.ShowServerDetails) ||
+                e.PropertyName == nameof(UIStateViewModel.ShowArenaViewer) ||
+                e.PropertyName == nameof(UIStateViewModel.IsLeftPanelExpanded) ||
+                e.PropertyName == nameof(UIStateViewModel.IsRightPanelExpanded) ||
+                e.PropertyName == nameof(UIStateViewModel.IsLeftPanelCollapsed) ||
+                e.PropertyName == nameof(UIStateViewModel.IsRightPanelCollapsed) ||
+                e.PropertyName == nameof(UIStateViewModel.LeftPanelWidth) ||
+                e.PropertyName == nameof(UIStateViewModel.RightPanelWidth) ||
+                e.PropertyName == nameof(UIStateViewModel.CurrentContextLabel))
             {
-                if (e.PropertyName == nameof(UIStateViewModel.ShowBotEditor) ||
-                    e.PropertyName == nameof(UIStateViewModel.ShowServerEditor) ||
-                    e.PropertyName == nameof(UIStateViewModel.ShowServerDetails) ||
-                    e.PropertyName == nameof(UIStateViewModel.ShowArenaViewer) ||
-                    e.PropertyName == nameof(UIStateViewModel.IsLeftPanelExpanded) ||
-                    e.PropertyName == nameof(UIStateViewModel.IsRightPanelExpanded) ||
-                    e.PropertyName == nameof(UIStateViewModel.IsLeftPanelCollapsed) ||
-                    e.PropertyName == nameof(UIStateViewModel.IsRightPanelCollapsed) ||
-                    e.PropertyName == nameof(UIStateViewModel.LeftPanelWidth) ||
-                    e.PropertyName == nameof(UIStateViewModel.RightPanelWidth) ||
-                    e.PropertyName == nameof(UIStateViewModel.CurrentContextLabel))
-                {
-                    OnPropertyChanged(e.PropertyName);
-                }
-            };
+                OnPropertyChanged(e.PropertyName);
+            }
+        };
 
         // Subscribe to ArenaService property changes and forward them
         _arenaService.PropertyChanged += (s, e) =>
@@ -152,6 +148,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
+        // Subscribe to ServerAccessService property changes and forward access UI state
         _serverAccessService.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(ServerAccessServiceViewModel.ServerAccessMetadata) ||
@@ -947,10 +944,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _storage.UpsertAgentRuntimeStateAsync(runtimeSessionState).GetAwaiter().GetResult();
             _storage.UpsertAgentRuntimeStateAsync(activeSessionState).GetAwaiter().GetResult();
 
-            lock (_deployConnectionLock)
-            {
-                _activeDeployConnections.Add((sourceProfile.BotId, registerResponse.SessionId));
-            }
+            _sessionService.AddActiveDeployConnection(sourceProfile.BotId, registerResponse.SessionId);
 
             SetActiveServerAccess(
                 sourceProfile.BotId,
@@ -1344,11 +1338,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         StopArenaViewerWatch();
 
-        List<(string BotId, string SessionId)> sessions;
-        lock (_deployConnectionLock)
-        {
-            sessions = _activeDeployConnections.ToList();
-        }
+        var sessions = _sessionService.GetAllActiveDeployConnections();
 
         foreach (var session in sessions)
         {
@@ -1495,10 +1485,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private bool HasActiveDeployConnection(string botId)
     {
-        lock (_deployConnectionLock)
-        {
-            return _activeDeployConnections.Any(session => session.BotId == botId);
-        }
+        return _sessionService.GetActiveDeployConnectionsForBot(botId).Count > 0;
     }
 
     private void DisconnectActiveDeploymentConnection(string botId, string sessionId, bool sendQuit)
@@ -1508,10 +1495,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             TrySendQuitSession(botId, sessionId);
         }
 
-        lock (_deployConnectionLock)
-        {
-            _activeDeployConnections.Remove((botId, sessionId));
-        }
+        _sessionService.RemoveActiveDeployConnection(botId, sessionId);
 
         ClearActiveServerAccess(botId, sessionId);
         RefreshActiveBotSessionsProjection();
@@ -1520,14 +1504,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void DisconnectAllActiveDeploymentConnectionsForBot(string botId, bool sendQuit)
     {
-        List<string> sessionsToRemove;
-        lock (_deployConnectionLock)
-        {
-            sessionsToRemove = _activeDeployConnections
-                .Where(session => session.BotId == botId)
-                .Select(session => session.SessionId)
-                .ToList();
-        }
+        var sessionsToRemove = _sessionService.GetActiveDeployConnectionsForBot(botId)
+            .Select(session => session.SessionId)
+            .ToList();
 
         foreach (var sessionId in sessionsToRemove)
         {
@@ -1590,14 +1569,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         ReconcileActiveSessionsFromRuntimeSockets(selectedBot);
 
-        List<(string BotId, string SessionId)> sessions;
-        lock (_deployConnectionLock)
-        {
-            sessions = _activeDeployConnections
-                .Where(s => string.Equals(s.BotId, selectedBotId, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(s => s.SessionId, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
+        var sessions = _sessionService.GetActiveDeployConnectionsForBot(selectedBotId);
 
         foreach (var session in sessions)
         {
@@ -1605,14 +1577,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             var runtimeBotId = session.BotId;
             var runtimeBotName = session.BotId;
             var access = ServerAccessMetadata.Invalid("Owner token is not available for this server yet.");
-            lock (_activeAccessCacheLock)
+            if (_sessionService.TryGetRuntimeSession(session.BotId, session.SessionId, out var cachedRuntimeBotId, out var cachedRuntimeBotName, out var cachedServerId))
             {
-                if (_activeSessionsByBotAndSession.TryGetValue((session.BotId, session.SessionId), out var cached))
+                runtimeBotId = cachedRuntimeBotId;
+                runtimeBotName = cachedRuntimeBotName;
+                serverId = cachedServerId;
+                if (_sessionService.TryGetActiveServerAccess(session.BotId, cachedServerId, out var cachedAccessServerId, out var cachedAccess))
                 {
-                    runtimeBotId = cached.RuntimeBotId;
-                    runtimeBotName = cached.RuntimeBotName;
-                    serverId = cached.ServerId;
-                    access = cached.Access;
+                    serverId = cachedAccessServerId;
+                    access = cachedAccess;
                 }
             }
 
@@ -1689,10 +1662,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             var sessionId = activeSessionId;
             var runtimeBotName = sourceBotName + "-" + runtimeSuffix;
 
-            lock (_deployConnectionLock)
-            {
-                _activeDeployConnections.Add((sourceBotId, sessionId));
-            }
+            _sessionService.AddActiveDeployConnection(sourceBotId, sessionId);
 
             var serverId = ResolveServerIdFromAgentTarget(accessReply.Server);
             SetActiveServerAccess(
@@ -2052,25 +2022,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void PruneStaleActiveSessionCaches()
     {
-        List<(string BotId, string SessionId)> stale;
-
-        lock (_activeAccessCacheLock)
-        {
-            stale = _activeSessionsByBotAndSession
-                .Where(s => !File.Exists(BuildAgentControlSocketPath(s.Value.RuntimeBotId)))
-                .Select(s => s.Key)
-                .ToList();
-        }
-
-        foreach (var session in stale)
-        {
-            lock (_deployConnectionLock)
-            {
-                _activeDeployConnections.Remove((session.BotId, session.SessionId));
-            }
-
-            ClearActiveServerAccess(session.BotId, session.SessionId);
-        }
+        _sessionService.PruneStaleActiveSessionCaches(runtimeBotId => File.Exists(BuildAgentControlSocketPath(runtimeBotId)));
     }
 
     private static BotProfile BuildRuntimeInstanceProfile(BotProfile sourceProfile)
@@ -2512,81 +2464,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void SetActiveServerAccess(string botId, string sessionId, string runtimeBotId, string runtimeBotName, string serverId, string ownerToken, string dashboardEndpoint)
     {
-        var access = string.IsNullOrWhiteSpace(ownerToken)
-            ? ServerAccessMetadata.Invalid("Owner token is not available for this runtime session yet.")
-            : new ServerAccessMetadata(
-                IsValid: true,
-                OwnerToken: ownerToken,
-                DashboardEndpoint: dashboardEndpoint,
-                StatusMessage: "Server access metadata loaded from active runtime session.",
-                Source: "active-session-cache");
-
-        lock (_activeAccessCacheLock)
-        {
-            _activeSessionsByBotAndSession[(botId, sessionId)] = (runtimeBotId, runtimeBotName, serverId, access);
-        }
+        _sessionService.SetActiveServerAccess(botId, sessionId, runtimeBotId, runtimeBotName, serverId, ownerToken, dashboardEndpoint);
     }
 
     private void ClearActiveServerAccess(string botId, string sessionId)
     {
-        lock (_activeAccessCacheLock)
-        {
-            _activeSessionsByBotAndSession.Remove((botId, sessionId));
-        }
+        _sessionService.ClearActiveServerAccess(botId, sessionId);
     }
 
     private bool TryGetActiveServerAccess(string botId, string? targetServerId, out string serverId, out ServerAccessMetadata access)
     {
-        lock (_activeAccessCacheLock)
-        {
-            if (!string.IsNullOrWhiteSpace(targetServerId))
-            {
-                foreach (var kvp in _activeSessionsByBotAndSession)
-                {
-                    if (kvp.Key.BotId == botId && kvp.Value.ServerId == targetServerId)
-                    {
-                        serverId = kvp.Value.ServerId;
-                        access = kvp.Value.Access;
-                        return true;
-                    }
-                }
-            }
-            else
-            {
-                foreach (var kvp in _activeSessionsByBotAndSession)
-                {
-                    if (kvp.Key.BotId == botId)
-                    {
-                        serverId = kvp.Value.ServerId;
-                        access = kvp.Value.Access;
-                        return true;
-                    }
-                }
-            }
-
-        }
-
-        serverId = string.Empty;
-        access = ServerAccessMetadata.Invalid("No active session metadata cached.");
-        return false;
+        return _sessionService.TryGetActiveServerAccess(botId, targetServerId, out serverId, out access);
     }
 
     private bool TryGetRuntimeSession(string sourceBotId, string sessionId, out string runtimeBotId, out string runtimeBotName, out string serverId)
     {
-        lock (_activeAccessCacheLock)
-        {
-            if (_activeSessionsByBotAndSession.TryGetValue((sourceBotId, sessionId), out var session))
-            {
-                runtimeBotId = session.RuntimeBotId;
-                runtimeBotName = session.RuntimeBotName;
-                serverId = session.ServerId;
-                return true;
-            }
-        }
-
-        runtimeBotId = string.Empty;
-        runtimeBotName = string.Empty;
-        serverId = string.Empty;
-        return false;
+        return _sessionService.TryGetRuntimeSession(sourceBotId, sessionId, out runtimeBotId, out runtimeBotName, out serverId);
     }
 }
