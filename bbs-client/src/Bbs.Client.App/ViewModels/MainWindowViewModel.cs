@@ -69,14 +69,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly HttpClient _serverCatalogHttpClient;
     private readonly UIStateViewModel _uiState = new();
     private readonly BotServiceViewModel _botService = new();
+    private readonly ServerServiceViewModel _serverService = new();
     private BotSummaryItem? _selectedBot;
     private ServerSummaryItem? _selectedServer;
-    private string _serverEditorName = string.Empty;
-    private string _serverEditorHost = string.Empty;
-    private string _serverEditorPort = "3000";
-    private bool _serverEditorUseTls;
-    private string _serverEditorMetadata = string.Empty;
-    private string _serverEditorMessage = "Fill out the server form and save.";
     private bool _isServerProbeInProgress;
     private bool _isServerDetailLoading;
     private bool _isServerAccessLoading;
@@ -177,6 +172,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public UIStateViewModel UIState => _uiState;
 
     public BotServiceViewModel BotService => _botService;
+    public ServerServiceViewModel ServerService => _serverService;
 
     public string WorkspaceTitle { get; private set; } = "";
     public string WorkspaceDescription { get; private set; } = "";
@@ -442,96 +438,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<ServerMetadataEntryItem> ServerMetadataEntries { get; }
     public ObservableCollection<ServerPluginCatalogItem> ServerPluginCatalogEntries { get; }
     public ObservableCollection<ServerArenaItem> ServerArenaEntries { get; }
-
-    public string ServerEditorName
-    {
-        get => _serverEditorName;
-        set
-        {
-            if (_serverEditorName == value)
-            {
-                return;
-            }
-
-            _serverEditorName = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string ServerEditorHost
-    {
-        get => _serverEditorHost;
-        set
-        {
-            if (_serverEditorHost == value)
-            {
-                return;
-            }
-
-            _serverEditorHost = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string ServerEditorPort
-    {
-        get => _serverEditorPort;
-        set
-        {
-            if (_serverEditorPort == value)
-            {
-                return;
-            }
-
-            _serverEditorPort = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public bool ServerEditorUseTls
-    {
-        get => _serverEditorUseTls;
-        set
-        {
-            if (_serverEditorUseTls == value)
-            {
-                return;
-            }
-
-            _serverEditorUseTls = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string ServerEditorMetadata
-    {
-        get => _serverEditorMetadata;
-        set
-        {
-            if (_serverEditorMetadata == value)
-            {
-                return;
-            }
-
-            _serverEditorMetadata = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string ServerEditorMessage
-    {
-        get => _serverEditorMessage;
-        private set
-        {
-            if (_serverEditorMessage == value)
-            {
-                return;
-            }
-
-            _serverEditorMessage = value;
-            OnPropertyChanged();
-        }
-    }
 
     public BotSummaryItem? SelectedBot
     {
@@ -943,12 +849,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         StopArenaViewerWatch();
         SelectedServer = null;
         _uiState.SwitchContext(WorkspaceContext.ServerDetails);
-        ServerEditorName = string.Empty;
-        ServerEditorHost = string.Empty;
-        ServerEditorPort = "3000";
-        ServerEditorUseTls = false;
-        ServerEditorMetadata = string.Empty;
-        ServerEditorMessage = "Creating a new known server.";
+        _serverService.PrepareForNewServer();
         RefreshContextProjection();
     }
 
@@ -2405,12 +2306,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void PopulateServerEditor(ServerSummaryItem server)
     {
-        ServerEditorName = server.Name;
-        ServerEditorHost = server.Host;
-        ServerEditorPort = server.Port.ToString();
-        ServerEditorUseTls = server.UseTls;
-        ServerEditorMetadata = MainWindowViewModelHelpers.FormatMetadata(server.Metadata);
-        ServerEditorMessage = $"Editing known server: {server.Name}";
+        _serverService.PopulateEditor(server);
     }
 
     private void RefreshSelectedServerDetail()
@@ -2547,9 +2443,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void SaveServerProfile()
     {
-        if (!int.TryParse(ServerEditorPort.Trim(), out var parsedPort))
+        if (!int.TryParse(_serverService.ServerEditorPort.Trim(), out var parsedPort))
         {
-            ServerEditorMessage = "Cannot save server: server_port_invalid";
+            _serverService.ServerEditorMessage = "Cannot save server: server_port_invalid";
             return;
         }
 
@@ -2559,18 +2455,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         var server = KnownServer.Create(
             serverId: serverId,
-            name: ServerEditorName.Trim(),
-            host: ServerEditorHost.Trim(),
+            name: _serverService.ServerEditorName.Trim(),
+            host: _serverService.ServerEditorHost.Trim(),
             port: parsedPort,
-            useTls: ServerEditorUseTls,
-            metadata: MainWindowViewModelHelpers.ParseMetadata(ServerEditorMetadata),
+            useTls: _serverService.ServerEditorUseTls,
+            metadata: MainWindowViewModelHelpers.ParseMetadata(_serverService.ServerEditorMetadata),
             createdAtUtc: createdAt,
             updatedAtUtc: updatedAt);
 
         var serverErrors = server.Validate();
         if (serverErrors.Count > 0)
         {
-            ServerEditorMessage = $"Cannot save server: {string.Join(", ", serverErrors)}";
+            _serverService.ServerEditorMessage = $"Cannot save server: {string.Join(", ", serverErrors)}";
             return;
         }
 
@@ -2581,7 +2477,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var dashboardPortHint = server.Port == BotTcpDefaultPort
             ? " Saved, but 8080 is commonly the bot TCP port; dashboard is often 3000."
             : string.Empty;
-        ServerEditorMessage = $"Saved known server: {server.Name}.{dashboardPortHint}";
+        _serverService.ServerEditorMessage = $"Saved known server: {server.Name}.{dashboardPortHint}";
         _logger.Log(LogLevel.Information, "known_server_saved", "Known server and plugin cache persisted.",
             new Dictionary<string, string>
             {

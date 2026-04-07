@@ -24,7 +24,7 @@ public sealed partial class MainWindowViewModel
         {
             if (updateEditorStatus)
             {
-                ServerEditorMessage = "Probe already in progress.";
+                _serverService.ServerEditorMessage = "Probe already in progress.";
             }
 
             return;
@@ -32,7 +32,7 @@ public sealed partial class MainWindowViewModel
 
         if (updateEditorStatus)
         {
-            ServerEditorMessage = "Probing known servers...";
+            _serverService.ServerEditorMessage = "Probing known servers...";
         }
 
         try
@@ -40,7 +40,7 @@ public sealed partial class MainWindowViewModel
             var result = await ProbeKnownServersAsync(CancellationToken.None);
             if (updateEditorStatus)
             {
-                ServerEditorMessage = $"Probe complete: {result.ReachableCount} reachable, {result.UnreachableCount} unreachable.";
+                _serverService.ServerEditorMessage = $"Probe complete: {result.ReachableCount} reachable, {result.UnreachableCount} unreachable.";
             }
 
             _logger.Log(LogLevel.Information, "server_probe_cycle_completed", "Known server probe cycle completed.",
@@ -55,7 +55,7 @@ public sealed partial class MainWindowViewModel
         {
             if (updateEditorStatus)
             {
-                ServerEditorMessage = "Probe failed. See logs for details.";
+                _serverService.ServerEditorMessage = "Probe failed. See logs for details.";
             }
 
             _logger.Log(LogLevel.Warning, "server_probe_cycle_failed", "Known server probe cycle failed.",

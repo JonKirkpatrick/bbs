@@ -328,27 +328,27 @@
 
                                                       <StackPanel Grid.Row="8" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Server Name" />
-                                                            <TextBox Text="{Binding ServerEditorName}" Watermark="Local Stadium" />
+                                                            <TextBox Text="{Binding ServerService.ServerEditorName}" Watermark="Local Stadium" />
                                                       </StackPanel>
 
                                                       <Grid Grid.Row="9" Margin="0,6,0,0" ColumnDefinitions="2*,*,Auto">
                                                             <StackPanel Grid.Column="0" Spacing="2">
                                                                   <TextBlock FontSize="12" Opacity="1" Text="Host" />
-                                                                  <TextBox Text="{Binding ServerEditorHost}" Watermark="127.0.0.1" />
+                                                                  <TextBox Text="{Binding ServerService.ServerEditorHost}" Watermark="127.0.0.1" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="2">
                                                                   <TextBlock FontSize="12" Opacity="1" Text="Dashboard Port" />
-                                                                  <TextBox Text="{Binding ServerEditorPort}" Watermark="3000" />
+                                                                  <TextBox Text="{Binding ServerService.ServerEditorPort}" Watermark="3000" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2" Margin="8,20,0,0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4">
-                                                                  <CheckBox IsChecked="{Binding ServerEditorUseTls}" />
+                                                                  <CheckBox IsChecked="{Binding ServerService.ServerEditorUseTls}" />
                                                                   <TextBlock FontSize="12" Text="TLS" VerticalAlignment="Center" />
                                                             </StackPanel>
                                                       </Grid>
 
                                                       <StackPanel Grid.Row="10" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Metadata (k=v;k2=v2)" />
-                                                            <TextBox Text="{Binding ServerEditorMetadata}" Watermark="region=local;tier=alpha" />
+                                                            <TextBox Text="{Binding ServerService.ServerEditorMetadata}" Watermark="region=local;tier=alpha" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="11" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
@@ -491,7 +491,7 @@
                                                      Margin="0,6,0,0"
                                                      FontSize="12"
                                                      Opacity="1"
-                                                     Text="{Binding ServerEditorMessage}" />
+                                                     Text="{Binding ServerService.ServerEditorMessage}" />
                                     </StackPanel>
                                     </ScrollViewer>
                               </Border>
