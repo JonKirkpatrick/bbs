@@ -67,16 +67,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private IClientStorage _storage;
     private IBotOrchestrationService _orchestration;
     private readonly HttpClient _serverCatalogHttpClient;
-    private WorkspaceContext _currentContext;
+    private readonly UIStateViewModel _uiState = new();
+    private readonly BotServiceViewModel _botService = new();
     private BotSummaryItem? _selectedBot;
     private ServerSummaryItem? _selectedServer;
-    private bool _isLeftPanelExpanded = true;
-    private bool _isRightPanelExpanded = true;
-    private string _botEditorName = string.Empty;
-    private string _botEditorLaunchPath = string.Empty;
-    private string _botEditorArgs = string.Empty;
-    private string _botEditorMetadata = string.Empty;
-    private string _botEditorMessage = "Fill out the bot form and save.";
     private string _serverEditorName = string.Empty;
     private string _serverEditorHost = string.Empty;
     private string _serverEditorPort = "3000";
@@ -127,9 +121,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ServerPluginCatalogEntries = new ObservableCollection<ServerPluginCatalogItem>();
         ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
 
-        ToggleLeftPanelCommand = new RelayCommand(ToggleLeftPanel);
-        ToggleRightPanelCommand = new RelayCommand(ToggleRightPanel);
-        SetHomeContextCommand = new RelayCommand(SetHomeContext);
+            // Subscribe to UIState property changes and forward visibility/panel properties to MainWindowViewModel
+            // This ensures code-behind and XAML bindings see the changes properly
+            _uiState.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(UIStateViewModel.ShowBotEditor) ||
+                    e.PropertyName == nameof(UIStateViewModel.ShowServerEditor) ||
+                    e.PropertyName == nameof(UIStateViewModel.ShowServerDetails) ||
+                    e.PropertyName == nameof(UIStateViewModel.ShowArenaViewer) ||
+                    e.PropertyName == nameof(UIStateViewModel.IsLeftPanelExpanded) ||
+                    e.PropertyName == nameof(UIStateViewModel.IsRightPanelExpanded) ||
+                    e.PropertyName == nameof(UIStateViewModel.IsLeftPanelCollapsed) ||
+                    e.PropertyName == nameof(UIStateViewModel.IsRightPanelCollapsed) ||
+                    e.PropertyName == nameof(UIStateViewModel.LeftPanelWidth) ||
+                    e.PropertyName == nameof(UIStateViewModel.RightPanelWidth) ||
+                    e.PropertyName == nameof(UIStateViewModel.CurrentContextLabel))
+                {
+                    OnPropertyChanged(e.PropertyName);
+                }
+            };
+
+        // UI state commands delegated to UIStateViewModel
+        ToggleLeftPanelCommand = _uiState.ToggleLeftPanelCommand;
+        ToggleRightPanelCommand = _uiState.ToggleRightPanelCommand;
+        SetHomeContextCommand = _uiState.SetHomeContextCommand;
         SetBotContextCommand = new RelayCommand(SetBotContextFromSelection, () => SelectedBot is not null && IsPersonaLoaded);
         SetServerContextCommand = new RelayCommand(SetServerContextFromSelection, () => SelectedServer is not null && IsPersonaLoaded);
         OpenBotEditorCommand = new RelayCommand<BotSummaryItem>(OpenBotEditorFromCard);
@@ -152,16 +167,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         _logger.Log(LogLevel.Information, "mainvm_init", "MainWindowViewModel constructor initialized.", null);
 
-        _currentContext = WorkspaceContext.Home;
+        // UIStateViewModel initialized to Home context by default
         // Do NOT load bots/servers here; wait for persona to be loaded
     }
+
+    /// <summary>
+    /// UI state coordinator (context, panel expansion, visibility).
+    /// </summary>
+    public UIStateViewModel UIState => _uiState;
+
+    public BotServiceViewModel BotService => _botService;
 
     public string WorkspaceTitle { get; private set; } = "";
     public string WorkspaceDescription { get; private set; } = "";
 
-    public string CurrentContextLabel => $"Context: {_currentContext}";
-
-    public string CurrentTitleText => _currentContext switch
+    public string CurrentTitleText => _uiState.CurrentContext switch
     {
         WorkspaceContext.BotDetails => SelectedBot is null ? "Bot Context" : $"{SelectedBot.Name}",
         WorkspaceContext.ServerDetails => SelectedServer is null ? "Server Context" : $"{SelectedServer.Name}",
@@ -169,10 +189,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         WorkspaceContext.ArenaViewer => string.IsNullOrWhiteSpace(ArenaViewerLabel) ? "Arena Viewer" : ArenaViewerLabel,
         _ => "BBS"
     };
-    public bool ShowBotEditor => _currentContext == WorkspaceContext.BotDetails;
-    public bool ShowServerEditor => _currentContext == WorkspaceContext.ServerEditor;
-    public bool ShowServerDetails => _currentContext == WorkspaceContext.ServerDetails;
-    public bool ShowArenaViewer => _currentContext == WorkspaceContext.ArenaViewer;
     public bool IsServerDetailLoading
     {
         get => _isServerDetailLoading;
@@ -400,126 +416,32 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public bool IsLeftPanelExpanded
-    {
-        get => _isLeftPanelExpanded;
-        private set
-        {
-            if (_isLeftPanelExpanded == value)
-            {
-                return;
-            }
+    // Delegation: Panel state properties forward to UIState
+    /// <summary>
+    /// Whether bot editor is visible (show when context is BotDetails).
+    /// </summary>
+    public bool ShowBotEditor => _uiState.ShowBotEditor;
 
-            _isLeftPanelExpanded = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(IsLeftPanelCollapsed));
-            OnPropertyChanged(nameof(LeftPanelWidth));
-        }
-    }
+    /// <summary>
+    /// Whether server editor is visible (show when context is ServerEditor).
+    /// </summary>
+    public bool ShowServerEditor => _uiState.ShowServerEditor;
 
-    public bool IsRightPanelExpanded
-    {
-        get => _isRightPanelExpanded;
-        private set
-        {
-            if (_isRightPanelExpanded == value)
-            {
-                return;
-            }
+    /// <summary>
+    /// Whether server details view is visible (show when context is ServerDetails).
+    /// </summary>
+    public bool ShowServerDetails => _uiState.ShowServerDetails;
 
-            _isRightPanelExpanded = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(IsRightPanelCollapsed));
-            OnPropertyChanged(nameof(RightPanelWidth));
-        }
-    }
-
-    public bool IsLeftPanelCollapsed => !IsLeftPanelExpanded;
-    public bool IsRightPanelCollapsed => !IsRightPanelExpanded;
-
-    public GridLength LeftPanelWidth => IsLeftPanelExpanded ? new GridLength(280) : new GridLength(56);
-    public GridLength RightPanelWidth => IsRightPanelExpanded ? new GridLength(280) : new GridLength(56);
+    /// <summary>
+    /// Whether arena viewer is visible (show when context is ArenaViewer).
+    /// </summary>
+    public bool ShowArenaViewer => _uiState.ShowArenaViewer;
 
     public ObservableCollection<BotSummaryItem> Bots { get; }
     public ObservableCollection<ServerSummaryItem> Servers { get; }
     public ObservableCollection<ServerMetadataEntryItem> ServerMetadataEntries { get; }
     public ObservableCollection<ServerPluginCatalogItem> ServerPluginCatalogEntries { get; }
     public ObservableCollection<ServerArenaItem> ServerArenaEntries { get; }
-
-    public string BotEditorName
-    {
-        get => _botEditorName;
-        set
-        {
-            if (_botEditorName == value)
-            {
-                return;
-            }
-
-            _botEditorName = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string BotEditorLaunchPath
-    {
-        get => _botEditorLaunchPath;
-        set
-        {
-            if (_botEditorLaunchPath == value)
-            {
-                return;
-            }
-
-            _botEditorLaunchPath = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string BotEditorArgs
-    {
-        get => _botEditorArgs;
-        set
-        {
-            if (_botEditorArgs == value)
-            {
-                return;
-            }
-
-            _botEditorArgs = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string BotEditorMetadata
-    {
-        get => _botEditorMetadata;
-        set
-        {
-            if (_botEditorMetadata == value)
-            {
-                return;
-            }
-
-            _botEditorMetadata = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public string BotEditorMessage
-    {
-        get => _botEditorMessage;
-        private set
-        {
-            if (_botEditorMessage == value)
-            {
-                return;
-            }
-
-            _botEditorMessage = value;
-            OnPropertyChanged();
-        }
-    }
 
     public string ServerEditorName
     {
@@ -654,7 +576,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             if (value is not null)
             {
                 StopArenaViewerWatch();
-                _currentContext = WorkspaceContext.ServerDetails;
+                _uiState.SwitchContext(WorkspaceContext.ServerDetails);
                 PopulateServerEditor(value);
                 RefreshContextProjection();
             }
@@ -685,15 +607,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ICommand RefreshServerArenasCommand { get; }
     public ICommand OpenArenaViewerInBrowserCommand { get; }
 
-    private void ToggleLeftPanel()
-    {
-        IsLeftPanelExpanded = !IsLeftPanelExpanded;
-    }
 
-    private void ToggleRightPanel()
-    {
-        IsRightPanelExpanded = !IsRightPanelExpanded;
-    }
 
     private void ReprobeServers()
     {
@@ -882,10 +796,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return responseHtml.Trim();
     }
 
-    private void SetHomeContext()
-    {
-        SwitchWorkspaceContext(WorkspaceContext.Home);
-    }
+
 
     private void SetBotContextFromSelection()
     {
@@ -974,13 +885,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private void SwitchWorkspaceContext(WorkspaceContext context)
     {
         StopArenaViewerWatch();
-        _currentContext = context;
+        _uiState.SwitchContext(context);
         RefreshContextProjection();
     }
 
     private void RefreshContextProjection()
     {
-        switch (_currentContext)
+        switch (_uiState.CurrentContext)
         {
             case WorkspaceContext.BotDetails:
                 WorkspaceTitle = SelectedBot is null ? "Bot Registration" : $"Bot: {SelectedBot.Name}";
@@ -1012,13 +923,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 break;
         }
 
-        OnPropertyChanged(nameof(CurrentContextLabel));
         OnPropertyChanged(nameof(WorkspaceTitle));
         OnPropertyChanged(nameof(WorkspaceDescription));
-        OnPropertyChanged(nameof(ShowBotEditor));
-        OnPropertyChanged(nameof(ShowServerEditor));
-        OnPropertyChanged(nameof(ShowServerDetails));
-        OnPropertyChanged(nameof(ShowArenaViewer));
         OnPropertyChanged(nameof(CurrentTitleText));
         ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
         ((RelayCommand)OpenArenaViewerInBrowserCommand).RaiseCanExecuteChanged();
@@ -1027,12 +933,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private void StartNewBot()
     {
         SelectedBot = null;
-        _currentContext = WorkspaceContext.BotDetails;
-        BotEditorName = string.Empty;
-        BotEditorLaunchPath = string.Empty;
-        BotEditorArgs = string.Empty;
-        BotEditorMetadata = string.Empty;
-        BotEditorMessage = "Creating a new bot profile.";
+        _uiState.SwitchContext(WorkspaceContext.BotDetails);
+        _botService.PrepareForNewBot();
         RefreshContextProjection();
     }
 
@@ -1040,7 +942,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         StopArenaViewerWatch();
         SelectedServer = null;
-        _currentContext = WorkspaceContext.ServerDetails;
+        _uiState.SwitchContext(WorkspaceContext.ServerDetails);
         ServerEditorName = string.Empty;
         ServerEditorHost = string.Empty;
         ServerEditorPort = "3000";
@@ -1058,18 +960,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         var profile = BotProfile.Create(
             botId: botId,
-            name: BotEditorName.Trim(),
-            launchPath: BotEditorLaunchPath.Trim(),
+            name: _botService.BotEditorName.Trim(),
+            launchPath: _botService.BotEditorLaunchPath.Trim(),
             avatarImagePath: SelectedBot?.AvatarImagePath,
-            launchArgs: MainWindowViewModelHelpers.ParseArgs(BotEditorArgs),
-            metadata: MainWindowViewModelHelpers.ParseMetadata(BotEditorMetadata),
+            launchArgs: MainWindowViewModelHelpers.ParseArgs(_botService.BotEditorArgs),
+            metadata: MainWindowViewModelHelpers.ParseMetadata(_botService.BotEditorMetadata),
             createdAtUtc: createdAt,
             updatedAtUtc: updatedAt);
 
         var errors = profile.Validate();
         if (errors.Count > 0)
         {
-            BotEditorMessage = $"Cannot save bot: {string.Join(", ", errors)}";
+            _botService.BotEditorMessage = $"Cannot save bot: {string.Join(", ", errors)}";
             _logger.Log(LogLevel.Warning, "bot_profile_validation_failed", "Bot profile save validation failed.",
                 new Dictionary<string, string>
                 {
@@ -1081,7 +983,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _storage.UpsertBotProfileAsync(profile).GetAwaiter().GetResult();
         LoadBotsFromStorage();
         SelectedBot = FindBotById(botId);
-        BotEditorMessage = $"Saved bot profile: {profile.Name}";
+        _botService.BotEditorMessage = $"Saved bot profile: {profile.Name}";
         _logger.Log(LogLevel.Information, "bot_profile_saved", "Bot profile persisted.",
             new Dictionary<string, string>
             {
@@ -1094,7 +996,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         if (!CanDeploySelectedBot())
         {
-            BotEditorMessage = "Deploy is only available when a live server is selected.";
+            _botService.BotEditorMessage = "Deploy is only available when a live server is selected.";
             return;
         }
 
@@ -1102,13 +1004,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var server = SelectedServer;
         if (bot is null)
         {
-            BotEditorMessage = "Select a bot before deploy.";
+            _botService.BotEditorMessage = "Select a bot before deploy.";
             return;
         }
 
         if (server is null)
         {
-            BotEditorMessage = "Deploy requires a selected server.";
+            _botService.BotEditorMessage = "Deploy requires a selected server.";
             return;
         }
 
@@ -1225,7 +1127,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             SelectedBot = FindBotById(sourceProfile.BotId);
             RefreshActiveBotSessionsProjection();
             TriggerServerAccessRefresh();
-            BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; active session established.";
+            _botService.BotEditorMessage = $"Deployed {sourceProfile.Name} to {server.Name}; active session established.";
 
             _logger.Log(LogLevel.Information, "bot_deploy_attached", "Bot deploy completed server register handshake and attached active session metadata.",
                 new Dictionary<string, string>
@@ -2131,13 +2033,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         if (item.SelectedArena is null || item.SelectedArena.ArenaId <= 0)
         {
-            BotEditorMessage = "Select an arena before JOIN.";
+            _botService.BotEditorMessage = "Select an arena before JOIN.";
             return;
         }
 
         if (!int.TryParse(item.JoinHandicapPercent.Trim(), out var handicapPercent))
         {
-            BotEditorMessage = "JOIN handicap must be an integer.";
+            _botService.BotEditorMessage = "JOIN handicap must be an integer.";
             return;
         }
 
@@ -2152,11 +2054,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 "JOIN",
                 out var failureMessage))
         {
-            BotEditorMessage = failureMessage;
+            _botService.BotEditorMessage = failureMessage;
             return;
         }
 
-        BotEditorMessage = $"JOIN requested for session {sessionId}.";
+        _botService.BotEditorMessage = $"JOIN requested for session {sessionId}.";
     }
 
     private void ExecuteSessionLeave(string botId, string sessionId)
@@ -2173,11 +2075,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 "LEAVE",
                 out var failureMessage))
         {
-            BotEditorMessage = failureMessage;
+            _botService.BotEditorMessage = failureMessage;
             return;
         }
 
-        BotEditorMessage = $"LEAVE requested for session {sessionId}.";
+        _botService.BotEditorMessage = $"LEAVE requested for session {sessionId}.";
     }
 
     private void ExecuteSessionQuit(string botId, string sessionId)
@@ -2185,7 +2087,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         if (!TryGetRuntimeSession(botId, sessionId, out var runtimeBotId, out _, out _))
         {
             DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
-            BotEditorMessage = $"Removed stale session {sessionId}.";
+            _botService.BotEditorMessage = $"Removed stale session {sessionId}.";
             return;
         }
 
@@ -2196,12 +2098,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 "QUIT",
                 out var failureMessage))
         {
-            BotEditorMessage = failureMessage;
+            _botService.BotEditorMessage = failureMessage;
             return;
         }
 
         DisconnectActiveDeploymentConnection(botId, sessionId, sendQuit: false);
-        BotEditorMessage = $"QUIT requested for session {sessionId}.";
+        _botService.BotEditorMessage = $"QUIT requested for session {sessionId}.";
         LoadBotsFromStorage();
         SelectedBot = FindBotById(botId);
     }
@@ -2214,7 +2116,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         runtimeBotId = string.Empty;
-        BotEditorMessage = $"{actionLabel} failed: runtime session mapping not found.";
+        _botService.BotEditorMessage = $"{actionLabel} failed: runtime session mapping not found.";
         return false;
     }
 
@@ -2379,11 +2281,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             string.Equals(errorCode, "deploy_runtime_unavailable", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(ex.Message))
         {
-            BotEditorMessage = $"Deploy failed: {ex.Message}";
+            _botService.BotEditorMessage = $"Deploy failed: {ex.Message}";
         }
         else
         {
-            BotEditorMessage = $"Unable to {action} bot ({errorCode}).";
+            _botService.BotEditorMessage = $"Unable to {action} bot ({errorCode}).";
         }
 
         var topStackFrame = ex.StackTrace?.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? string.Empty;
@@ -2498,11 +2400,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void PopulateBotEditor(BotSummaryItem bot)
     {
-        BotEditorName = bot.Name;
-        BotEditorLaunchPath = bot.LaunchPath;
-        BotEditorArgs = string.Join(" ", bot.LaunchArgs);
-        BotEditorMetadata = MainWindowViewModelHelpers.FormatMetadata(bot.Metadata);
-        BotEditorMessage = $"Editing bot profile: {bot.Name}";
+        _botService.PopulateEditor(bot);
     }
 
     private void PopulateServerEditor(ServerSummaryItem server)
@@ -2765,7 +2663,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         if (!string.IsNullOrWhiteSpace(selectedServerId))
         {
             var knownServerAccess = ResolveKnownServerAccessMetadata(selectedServerId);
-            if (knownServerAccess.IsValid || _currentContext == WorkspaceContext.ServerDetails)
+            if (knownServerAccess.IsValid || _uiState.CurrentContext == WorkspaceContext.ServerDetails)
             {
                 return knownServerAccess;
             }

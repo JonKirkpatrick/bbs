@@ -81,9 +81,9 @@
 
             <Grid Grid.Row="1" Margin="0,12,0,0">
                   <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="{Binding LeftPanelWidth}" />
+                        <ColumnDefinition Width="{Binding UIState.LeftPanelWidth}" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="{Binding RightPanelWidth}" />
+                        <ColumnDefinition Width="{Binding UIState.RightPanelWidth}" />
                   </Grid.ColumnDefinitions>
 
                   <Grid Grid.Column="0" Margin="0,0,6,0" ZIndex="0">
@@ -95,7 +95,7 @@
                                           Width="28" Height="28" Padding="6"
                                           Command="{Binding StartNewBotCommand}"
                                           ToolTip.Tip="New Bot"
-                                          IsVisible="{Binding IsLeftPanelExpanded}">
+                                          IsVisible="{Binding UIState.IsLeftPanelExpanded}">
                                     <Path Data="{StaticResource PlusIcon}"
                                           Classes="panel-icon"
                                           Width="12" Height="12"
@@ -103,7 +103,7 @@
                               </Button>
 
                               <TextBlock Text="Bots" 
-                                          IsVisible="{Binding IsLeftPanelExpanded}" 
+                                          IsVisible="{Binding UIState.IsLeftPanelExpanded}" 
                                           HorizontalAlignment="Center" 
                                           VerticalAlignment="Center"
                                           FontSize="18" 
@@ -112,16 +112,16 @@
                               <Button Classes="panel-icon-toggle" 
                                           HorizontalAlignment="Right" 
                                           Width="28" Height="28" Padding="4" 
-                                          Command="{Binding ToggleLeftPanelCommand}">
+                                          Command="{Binding UIState.ToggleLeftPanelCommand}">
                                     <Grid>
-                                          <Path IsVisible="{Binding IsLeftPanelExpanded}"
+                                          <Path IsVisible="{Binding UIState.IsLeftPanelExpanded}"
                                                 Data="{StaticResource LeftAngleIcon}"
                                                 Classes="panel-icon"
                                                 ToolTip.Tip="Collapse"
                                                 Width="10" Height="14"
                                                 Stretch="Uniform" />
 
-                                          <Path IsVisible="{Binding IsLeftPanelCollapsed}"
+                                          <Path IsVisible="{Binding UIState.IsLeftPanelCollapsed}"
                                                 Data="{StaticResource RightAngleIcon}"
                                                 Classes="panel-icon"
                                                 ToolTip.Tip="Expand"
@@ -131,7 +131,7 @@
                               </Button>
                               </Grid>
                               <ListBox Grid.Row="2"
-                                                       IsVisible="{Binding IsLeftPanelExpanded}"
+                                                       IsVisible="{Binding UIState.IsLeftPanelExpanded}"
                                                        Background="Transparent"
                                                        Margin="0,10,0,0"
                                                        BorderThickness="0"
@@ -193,7 +193,7 @@
                                           Width="28" Height="28" 
                                           Padding="4" 
                                           ToolTip.Tip="Back to Home"
-                                          Command="{Binding SetHomeContextCommand}">
+                                          Command="{Binding UIState.SetHomeContextCommand}">
                                           <Path Classes="panel-icon"
                                                 Width="12"
                                                 Height="12"
@@ -212,28 +212,28 @@
                                           Padding="16">
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <StackPanel Spacing="8">
-                                          <Border IsVisible="{Binding ShowBotEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                          <Border IsVisible="{Binding UIState.ShowBotEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                                       <TextBlock FontSize="15" FontWeight="SemiBold" Text="Bot Registration / Edit" />
 
                                                       <StackPanel Grid.Row="1" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Bot Name" />
-                                                            <TextBox Text="{Binding BotEditorName}" Watermark="Counter Bot" />
+                                                            <TextBox Text="{Binding BotService.BotEditorName}" Watermark="Counter Bot" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="2" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Launch Path" />
-                                                            <TextBox Text="{Binding BotEditorLaunchPath}" Watermark="/opt/bots/mybot.py" />
+                                                            <TextBox Text="{Binding BotService.BotEditorLaunchPath}" Watermark="/opt/bots/mybot.py" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="3" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Launch Args (space-separated)" />
-                                                            <TextBox Text="{Binding BotEditorArgs}" Watermark="--mode ranked" />
+                                                            <TextBox Text="{Binding BotService.BotEditorArgs}" Watermark="--mode ranked" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="4" Margin="0,6,0,0" Spacing="2">
                                                             <TextBlock FontSize="12" Opacity="1" Text="Metadata (k=v;k2=v2)" />
-                                                            <TextBox Text="{Binding BotEditorMetadata}" Watermark="lang=python;tier=alpha" />
+                                                            <TextBox Text="{Binding BotService.BotEditorMetadata}" Watermark="lang=python;tier=alpha" />
                                                       </StackPanel>
 
                                                       <StackPanel Grid.Row="5" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
@@ -280,11 +280,11 @@
                                                             </StackPanel>
                                                       </Border>
 
-                                                      <TextBlock Grid.Row="7" Margin="0,6,0,0" FontSize="12" Opacity="1" Text="{Binding BotEditorMessage}" />
+                                                      <TextBlock Grid.Row="7" Margin="0,6,0,0" FontSize="12" Opacity="1" Text="{Binding BotService.BotEditorMessage}" />
                                                 </Grid>
                                           </Border>
 
-                                          <Border IsVisible="{Binding ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                          <Border IsVisible="{Binding UIState.ShowServerEditor}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                                       <Border Grid.Row="4" Margin="0,8,0,0" Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
                                                             <StackPanel Spacing="6">
@@ -357,7 +357,7 @@
                                                 </Grid>
                                           </Border>
 
-                                          <Border IsVisible="{Binding ShowServerDetails}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                          <Border IsVisible="{Binding UIState.ShowServerDetails}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <StackPanel Spacing="6">
                                                       <Border Padding="10" BorderThickness="1" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="6" Background="{DynamicResource Palette.NestedPanelBackgroundBrush}">
                                                             <StackPanel Spacing="6">
@@ -425,7 +425,7 @@
                                                 </StackPanel>
                                           </Border>
 
-                                          <Border IsVisible="{Binding ShowArenaViewer}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
+                                          <Border IsVisible="{Binding UIState.ShowArenaViewer}" Margin="0,6,0,0" Padding="12" BorderThickness="0" BorderBrush="{DynamicResource Palette.BorderBrush}" CornerRadius="0" Background="{DynamicResource Palette.EditorCardBackgroundBrush}">
                                                 <StackPanel Spacing="8">
                                                       <Grid ColumnDefinitions="*,Auto">
                                                             <TextBlock FontSize="15" FontWeight="SemiBold" Text="Live Arena Watch" />
@@ -487,7 +487,7 @@
                                                 </StackPanel>
                                           </Border>
 
-                                          <TextBlock IsVisible="{Binding ShowServerEditor}"
+                                          <TextBlock IsVisible="{Binding UIState.ShowServerEditor}"
                                                      Margin="0,6,0,0"
                                                      FontSize="12"
                                                      Opacity="1"
@@ -510,21 +510,21 @@
                         <Grid Margin="12" RowDefinitions="Auto,Auto,*" ClipToBounds="True" ZIndex="1">
                               <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                                     <TextBlock Grid.ColumnSpan="3"
-                                               IsVisible="{Binding IsRightPanelExpanded}"
+                                               IsVisible="{Binding UIState.IsRightPanelExpanded}"
                                                HorizontalAlignment="Center"
                                                FontSize="18"
                                                FontWeight="SemiBold"
                                                Text="Servers" />
-                                    <Button Classes="panel-icon-toggle" HorizontalAlignment="Left" Width="28" Height="28" Padding="4" Command="{Binding ToggleRightPanelCommand}">
+                                    <Button Classes="panel-icon-toggle" HorizontalAlignment="Left" Width="28" Height="28" Padding="4" Command="{Binding UIState.ToggleRightPanelCommand}">
                                           <Grid>
-                                                <Path IsVisible="{Binding IsRightPanelExpanded}"
+                                                <Path IsVisible="{Binding UIState.IsRightPanelExpanded}"
                                                       Data="{StaticResource RightAngleIcon}"
                                                       Classes="panel-icon"
                                                       Width="10"
                                                       Height="14"
                                                       Stretch="Uniform" />
 
-                                                <Path IsVisible="{Binding IsRightPanelCollapsed}"
+                                                <Path IsVisible="{Binding UIState.IsRightPanelCollapsed}"
                                                       Data="{StaticResource LeftAngleIcon}"
                                                       Classes="panel-icon"
                                                       Width="10"
@@ -534,7 +534,7 @@
                                     </Button>
 
                                     <StackPanel Grid.Column="2"
-                                                IsVisible="{Binding IsRightPanelExpanded}"
+                                                IsVisible="{Binding UIState.IsRightPanelExpanded}"
                                                 Orientation="Horizontal"
                                                 Spacing="6"
                                                 HorizontalAlignment="Right">
@@ -567,7 +567,7 @@
                               </Grid>
 
                               <ListBox Grid.Row="2"
-                                                       IsVisible="{Binding IsRightPanelExpanded}"
+                                                       IsVisible="{Binding UIState.IsRightPanelExpanded}"
                                                        Margin="0,10,0,0"
                                                        Background="Transparent"
                                                        BorderThickness="0"

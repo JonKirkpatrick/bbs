@@ -373,7 +373,7 @@ public sealed partial class MainWindowViewModel
                 {
                     UpdateArenaViewerFromArena(watched);
                 }
-                else if (_currentContext == WorkspaceContext.ArenaViewer)
+                else if (_uiState.CurrentContext == WorkspaceContext.ArenaViewer)
                 {
                     ArenaViewerStatus = $"Arena {_watchedArenaId} is no longer active.";
                     ArenaViewerLastError = $"Arena {_watchedArenaId} no longer appears in active arena list.";
@@ -410,7 +410,7 @@ public sealed partial class MainWindowViewModel
         ArenaViewerRawState = string.Empty;
         ArenaViewerLastError = string.Empty;
 
-        _currentContext = WorkspaceContext.ArenaViewer;
+        _uiState.SwitchContext(WorkspaceContext.ArenaViewer);
         RefreshContextProjection();
 
         if (!IsEmbeddedViewerSupported)
