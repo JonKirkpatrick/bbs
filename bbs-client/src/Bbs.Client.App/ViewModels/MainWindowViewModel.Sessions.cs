@@ -23,7 +23,7 @@ public sealed partial class MainWindowViewModel
 
     private void PruneStaleActiveSessionCaches()
     {
-        _sessionService.PruneStaleActiveSessionCaches(runtimeBotId => File.Exists(BuildAgentControlSocketPath(runtimeBotId)));
+        _sessionService.PruneStaleActiveSessionCaches(runtimeBotId => File.Exists(DeploymentTransportHelpers.BuildAgentControlSocketPath(runtimeBotId)));
     }
 
     private void SetActiveServerAccess(string botId, string sessionId, string runtimeBotId, string runtimeBotName, string serverId, string ownerToken, string dashboardEndpoint)
@@ -86,13 +86,13 @@ public sealed partial class MainWindowViewModel
                 return;
             }
 
-            var controlSocketPath = BuildAgentControlSocketPath(runtimeBotId);
+            var controlSocketPath = DeploymentTransportHelpers.BuildAgentControlSocketPath(runtimeBotId);
             if (!File.Exists(controlSocketPath))
             {
                 return;
             }
 
-            var reply = SendAgentControlRequest(controlSocketPath, "quit_session", new Dictionary<string, object>());
+            var reply = DeploymentTransportHelpers.SendAgentControlRequest(controlSocketPath, "quit_session", new Dictionary<string, object>(), DeployHandshakeTimeoutMs);
             if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.Log(LogLevel.Warning, "session_quit_control_error", "Failed to quit active session via control socket.",
@@ -243,13 +243,13 @@ public sealed partial class MainWindowViewModel
     {
         try
         {
-            var controlSocketPath = BuildAgentControlSocketPath(runtimeBotId);
+            var controlSocketPath = DeploymentTransportHelpers.BuildAgentControlSocketPath(runtimeBotId);
             if (!File.Exists(controlSocketPath))
             {
                 return null;
             }
 
-            var reply = SendAgentControlRequest(controlSocketPath, "server_access", new Dictionary<string, object>());
+            var reply = DeploymentTransportHelpers.SendAgentControlRequest(controlSocketPath, "server_access", new Dictionary<string, object>(), DeployHandshakeTimeoutMs);
             if (!string.Equals(reply.Type, "server_access", StringComparison.OrdinalIgnoreCase))
             {
                 return null;
@@ -311,7 +311,7 @@ public sealed partial class MainWindowViewModel
                 return server.ServerId;
             }
 
-            var serverHostCandidates = BuildHostCandidates(server.Host);
+            var serverHostCandidates = DeploymentTransportHelpers.BuildHostCandidates(server.Host);
             var hostMatch = serverHostCandidates.Any(candidate =>
                 string.Equals(candidate, targetHost, StringComparison.OrdinalIgnoreCase));
 
@@ -497,10 +497,11 @@ public sealed partial class MainWindowViewModel
     {
         try
         {
-            var reply = SendAgentControlRequest(
-                BuildAgentControlSocketPath(runtimeBotId),
+            var reply = DeploymentTransportHelpers.SendAgentControlRequest(
+                DeploymentTransportHelpers.BuildAgentControlSocketPath(runtimeBotId),
                 messageType,
-                payload);
+                payload,
+                DeployHandshakeTimeoutMs);
 
             if (string.Equals(reply.Type, "control_error", StringComparison.OrdinalIgnoreCase))
             {

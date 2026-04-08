@@ -60,6 +60,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly HttpClient _serverCatalogHttpClient;
     private readonly UIStateViewModel _uiState = new();
     private readonly BotServiceViewModel _botService = new();
+    private readonly DeploymentServiceViewModel _deploymentService = null!;
     private ServerServiceViewModel _serverService = null!;  // Initialized in constructor with dependencies
     private readonly ArenaServiceViewModel _arenaService = new();
     private readonly SessionServiceViewModel _sessionService = new();
@@ -85,6 +86,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _serverService = new ServerServiceViewModel(_storage, _logger, _serverCatalogHttpClient);
         _arenaService.SetPluginCatalog(_serverService.ServerPluginCatalogEntries);
         _serverService.ServerPluginCatalogEntries.CollectionChanged += OnServerPluginCatalogEntriesChanged;
+        _deploymentService = new DeploymentServiceViewModel(_storage, _orchestration, _logger, _sessionService);
 
         Bots = new ObservableCollection<BotSummaryItem>();
         ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
@@ -222,6 +224,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public UIStateViewModel UIState => _uiState;
 
     public BotServiceViewModel BotService => _botService;
+    public DeploymentServiceViewModel DeploymentService => _deploymentService;
     public ServerServiceViewModel ServerService => _serverService;
     public ArenaServiceViewModel ArenaService => _arenaService;
     public SessionServiceViewModel SessionService => _sessionService;
