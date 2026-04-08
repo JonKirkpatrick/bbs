@@ -1,4 +1,5 @@
 import Link from '@docusaurus/Link';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import clsx from 'clsx';
@@ -49,7 +50,7 @@ export default function Home(): JSX.Element {
           <div className={styles.heroContent}>
             <div className={styles.heroLogoWrap}>
               <img
-                src="/img/BBS_Logo_Final.png"
+                src={useBaseUrl('/img/BBS_Logo_Final.png')}
                 alt="Battle Bot Stadium logo"
                 className={styles.heroLogo}
               />
