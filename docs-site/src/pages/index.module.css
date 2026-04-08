@@ -1,0 +1,121 @@
+.heroBanner {
+  padding: 4.75rem 0 3.75rem;
+  background: radial-gradient(circle at top right, #ffe69b 0%, #f4f0df 55%, #e8ecef 100%);
+  border-bottom: 1px solid #d8dee4;
+}
+
+.heroContent {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2.5rem;
+}
+
+.heroLogoWrap {
+  flex: 0 0 320px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.heroLogo {
+  max-width: 100%;
+  width: 320px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 22px rgba(15, 95, 143, 0.18));
+}
+
+.heroTextWrap {
+  flex: 1;
+}
+
+.heroTitle {
+  font-size: 3.15rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.04em;
+}
+
+.heroSubtitle {
+  font-size: 1.2rem;
+  max-width: 760px;
+  margin: 0;
+}
+
+.heroCtaRow {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-start;
+  gap: 0.75rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  border: 1px solid #d8dee4;
+  box-shadow: 0 8px 20px rgba(27, 31, 35, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(27, 31, 35, 0.08);
+}
+
+@media (max-width: 1024px) {
+  .heroContent {
+    gap: 1.5rem;
+  }
+
+  .heroLogoWrap {
+    flex: 0 0 250px;
+  }
+
+  .heroLogo {
+    width: 250px;
+  }
+
+  .heroTitle {
+    font-size: 2.65rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .heroBanner {
+    padding: 3.25rem 0 2.5rem;
+  }
+
+  .heroContent {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.25rem;
+  }
+
+  .heroLogoWrap {
+    flex: 0 0 auto;
+  }
+
+  .heroLogo {
+    width: 220px;
+  }
+
+  .heroTitle {
+    font-size: 2.2rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1.05rem;
+  }
+
+  .heroCtaRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -20,7 +20,7 @@ This directory contains project documentation organized by purpose.
 
 - [VERSIONING.md](releases/VERSIONING.md): Semantic versioning and release strategy.
 - [ROADMAP.md](releases/ROADMAP.md): Planned future direction.
-- Root-level [CHANGELOG.md](../CHANGELOG.md): Released changes.
+- Root-level [CHANGELOG.md](https://github.com/JonKirkpatrick/bbs/blob/main/CHANGELOG.md): Released changes.
 
 ## Current Client Notes
 

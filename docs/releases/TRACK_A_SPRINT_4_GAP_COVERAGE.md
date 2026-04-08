@@ -30,7 +30,7 @@ Do not begin packaging/readiness work until all `P0` gaps are `done` and at leas
 
 For each gap, add a subsection using this template:
 
-### <Gap ID>: <Short title>
+### [Gap ID]: [Short title]
 
 - Scope:
 - Design notes:
