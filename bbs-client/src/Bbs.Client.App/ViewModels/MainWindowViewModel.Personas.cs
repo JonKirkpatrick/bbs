@@ -157,6 +157,7 @@ public sealed partial class MainWindowViewModel
 
         _storage = storage;
         _orchestration = new LocalBotOrchestrationService(storage, _logger);
+        _botService.UpdateStorage(storage);
         _serverService.UpdateStorage(storage);
         _currentPersonaPath = filePath;
 

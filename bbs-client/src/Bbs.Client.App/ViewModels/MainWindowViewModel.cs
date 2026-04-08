@@ -59,11 +59,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private IBotOrchestrationService _orchestration;
     private readonly HttpClient _serverCatalogHttpClient;
     private readonly UIStateViewModel _uiState = new();
-    private readonly BotServiceViewModel _botService = new();
+    private readonly BotServiceViewModel _botService;
     private readonly DeploymentServiceViewModel _deploymentService = null!;
     private ServerServiceViewModel _serverService = null!;  // Initialized in constructor with dependencies
     private readonly ArenaServiceViewModel _arenaService = new();
-    private readonly SessionServiceViewModel _sessionService = new();
+    private readonly SessionServiceViewModel _sessionService = null!;
     private readonly ServerAccessServiceViewModel _serverAccessService;
     private BotSummaryItem? _selectedBot;
 
@@ -82,13 +82,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Timeout = TimeSpan.FromMilliseconds(ServerCatalogFetchTimeoutMs)
         };
 
+        _botService = new BotServiceViewModel(_storage, _logger);
+        _sessionService = new SessionServiceViewModel(_botService, _logger);
         _serverService = new ServerServiceViewModel(_storage, _logger, _serverCatalogHttpClient);
         _arenaService.SetPluginCatalog(_serverService.ServerPluginCatalogEntries);
         _serverService.ServerPluginCatalogEntries.CollectionChanged += OnServerPluginCatalogEntriesChanged;
         _deploymentService = new DeploymentServiceViewModel(_storage, _orchestration, _logger, _sessionService);
         _serverAccessService = new ServerAccessServiceViewModel(_storage, _logger, _sessionService, _serverCatalogHttpClient);
 
-        Bots = new ObservableCollection<BotSummaryItem>();
         ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
 
         _uiState.PropertyChanged += (s, e) =>
@@ -336,7 +337,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public bool ShowServerDetails => _uiState.ShowServerDetails;
     public bool ShowArenaViewer => _uiState.ShowArenaViewer;
 
-    public ObservableCollection<BotSummaryItem> Bots { get; }
+    public ObservableCollection<BotSummaryItem> Bots => _botService.Bots;
     public ObservableCollection<ServerSummaryItem> Servers => _serverService.Servers;
     public ObservableCollection<ServerMetadataEntryItem> ServerMetadataEntries => _serverService.ServerMetadataEntries;
     public ObservableCollection<ServerPluginCatalogItem> ServerPluginCatalogEntries => _serverService.ServerPluginCatalogEntries;
@@ -632,42 +633,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void SaveBotProfile()
     {
-        var botId = SelectedBot?.BotId ?? Guid.NewGuid().ToString("N");
-        var createdAt = SelectedBot?.CreatedAtUtc ?? DateTimeOffset.UtcNow;
-        var updatedAt = DateTimeOffset.UtcNow;
-
-        var profile = BotProfile.Create(
-            botId: botId,
-            name: _botService.BotEditorName.Trim(),
-            launchPath: _botService.BotEditorLaunchPath.Trim(),
-            avatarImagePath: SelectedBot?.AvatarImagePath,
-            launchArgs: MainWindowViewModelHelpers.ParseArgs(_botService.BotEditorArgs),
-            metadata: MainWindowViewModelHelpers.ParseMetadata(_botService.BotEditorMetadata),
-            createdAtUtc: createdAt,
-            updatedAtUtc: updatedAt);
-
-        var errors = profile.Validate();
-        if (errors.Count > 0)
+        var botId = _botService.SaveBotProfile(SelectedBot);
+        if (string.IsNullOrWhiteSpace(botId))
         {
-            _botService.BotEditorMessage = $"Cannot save bot: {string.Join(", ", errors)}";
-            _logger.Log(LogLevel.Warning, "bot_profile_validation_failed", "Bot profile save validation failed.",
-                new Dictionary<string, string>
-                {
-                    ["errors"] = string.Join(",", errors)
-                });
             return;
         }
 
-        _storage.UpsertBotProfileAsync(profile).GetAwaiter().GetResult();
         LoadBotsFromStorage();
         SelectedBot = FindBotById(botId);
-        _botService.BotEditorMessage = $"Saved bot profile: {profile.Name}";
-        _logger.Log(LogLevel.Information, "bot_profile_saved", "Bot profile persisted.",
-            new Dictionary<string, string>
-            {
-                ["bot_id"] = profile.BotId,
-                ["name"] = profile.Name
-            });
     }
 
     public int ShutdownRuntimeSessionsForExit()
@@ -859,7 +832,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         PruneStaleActiveSessionCaches();
 
-        Bots.Clear();
+        _botService.Bots.Clear();
         foreach (var profile in profiles)
         {
             if (IsRuntimeInstanceProfile(profile))
@@ -881,7 +854,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 _storage.UpsertAgentRuntimeStateAsync(runtimeState).GetAwaiter().GetResult();
             }
 
-            Bots.Add(BotSummaryItem.FromProfile(
+            _botService.Bots.Add(BotSummaryItem.FromProfile(
                 profile,
                 runtimeState,
                 DeploySelectedBotCommand));
@@ -912,15 +885,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private BotSummaryItem? FindBotById(string botId)
     {
-        foreach (var bot in Bots)
-        {
-            if (bot.BotId == botId)
-            {
-                return bot;
-            }
-        }
-
-        return null;
+        return _botService.FindBotById(botId);
     }
 
     private ServerSummaryItem? FindServerById(string serverId)
@@ -969,48 +934,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void SaveServerProfile()
     {
-        if (!int.TryParse(_serverService.ServerEditorPort.Trim(), out var parsedPort))
+        var serverId = _serverService.SaveServerProfile(SelectedServer);
+        if (string.IsNullOrWhiteSpace(serverId))
         {
-            _serverService.ServerEditorMessage = "Cannot save server: server_port_invalid";
             return;
         }
 
-        var serverId = SelectedServer?.ServerId ?? Guid.NewGuid().ToString("N");
-        var createdAt = SelectedServer?.CreatedAtUtc ?? DateTimeOffset.UtcNow;
-        var updatedAt = DateTimeOffset.UtcNow;
-
-        var server = KnownServer.Create(
-            serverId: serverId,
-            name: _serverService.ServerEditorName.Trim(),
-            host: _serverService.ServerEditorHost.Trim(),
-            port: parsedPort,
-            useTls: _serverService.ServerEditorUseTls,
-            metadata: MainWindowViewModelHelpers.ParseMetadata(_serverService.ServerEditorMetadata),
-            createdAtUtc: createdAt,
-            updatedAtUtc: updatedAt);
-
-        var serverErrors = server.Validate();
-        if (serverErrors.Count > 0)
-        {
-            _serverService.ServerEditorMessage = $"Cannot save server: {string.Join(", ", serverErrors)}";
-            return;
-        }
-
-        _storage.UpsertKnownServerAsync(server).GetAwaiter().GetResult();
         LoadServersFromStorage();
         SelectedServer = FindServerById(serverId);
         TriggerServerAccessRefresh();
-        var dashboardPortHint = server.Port == BotTcpDefaultPort
-            ? " Saved, but 8080 is commonly the bot TCP port; dashboard is often 3000."
-            : string.Empty;
-        _serverService.ServerEditorMessage = $"Saved known server: {server.Name}.{dashboardPortHint}";
-        _logger.Log(LogLevel.Information, "known_server_saved", "Known server and plugin cache persisted.",
-            new Dictionary<string, string>
-            {
-                ["server_id"] = server.ServerId,
-                ["name"] = server.Name,
-                ["dashboard_port_hint"] = dashboardPortHint.Length == 0 ? "none" : "bot_port_likely"
-            });
     }
 
     private void TriggerServerAccessRefresh()

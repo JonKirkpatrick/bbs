@@ -56,9 +56,4 @@ public sealed partial class MainWindowViewModel
             HandleOrchestrationException("deploy", bot.BotId, "deploy_attach_failed", ex);
         }
     }
-
-    private static AgentControlResponse ParseControlEnvelope(string line)
-    {
-        return DeploymentTransportHelpers.ParseControlEnvelope(line);
-    }
 }

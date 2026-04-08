@@ -267,6 +267,51 @@ public sealed class ServerServiceViewModel : ViewModelBase
         ServerEditorMessage = "Edit the server form and save.";
     }
 
+    public string SaveServerProfile(ServerSummaryItem? selectedServer)
+    {
+        if (!int.TryParse(ServerEditorPort.Trim(), out var parsedPort))
+        {
+            ServerEditorMessage = "Cannot save server: server_port_invalid";
+            return string.Empty;
+        }
+
+        var serverId = selectedServer?.ServerId ?? Guid.NewGuid().ToString("N");
+        var createdAt = selectedServer?.CreatedAtUtc ?? DateTimeOffset.UtcNow;
+        var updatedAt = DateTimeOffset.UtcNow;
+
+        var server = KnownServer.Create(
+            serverId: serverId,
+            name: ServerEditorName.Trim(),
+            host: ServerEditorHost.Trim(),
+            port: parsedPort,
+            useTls: ServerEditorUseTls,
+            metadata: MainWindowViewModelHelpers.ParseMetadata(ServerEditorMetadata),
+            createdAtUtc: createdAt,
+            updatedAtUtc: updatedAt);
+
+        var serverErrors = server.Validate();
+        if (serverErrors.Count > 0)
+        {
+            ServerEditorMessage = $"Cannot save server: {string.Join(", ", serverErrors)}";
+            return string.Empty;
+        }
+
+        _storage.UpsertKnownServerAsync(server).GetAwaiter().GetResult();
+        var dashboardPortHint = server.Port == BotTcpDefaultPort
+            ? " Saved, but 8080 is commonly the bot TCP port; dashboard is often 3000."
+            : string.Empty;
+        ServerEditorMessage = $"Saved known server: {server.Name}.{dashboardPortHint}";
+        _logger.Log(LogLevel.Information, "known_server_saved", "Known server and plugin cache persisted.",
+            new Dictionary<string, string>
+            {
+                ["server_id"] = server.ServerId,
+                ["name"] = server.Name,
+                ["dashboard_port_hint"] = dashboardPortHint.Length == 0 ? "none" : "bot_port_likely"
+            });
+
+        return serverId;
+    }
+
     public async void TriggerStartupProbe()
     {
         _ = await RunServerProbeCycleAsync(trigger: "startup", updateEditorStatus: false);

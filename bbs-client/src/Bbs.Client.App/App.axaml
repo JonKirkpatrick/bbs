@@ -85,6 +85,15 @@
         M 2.8,11 L 4.8,11
         M 2.8,11 L 2.8,9
       </StreamGeometry>
+
+      <!-- Logo Pulsing Overlay -->
+      <StreamGeometry x:Key="LogoPulsingOverlay">
+        M 246,463.4 L 151.9,409.1 L 57.7,354.7 V 137.3 L 151.9,83 L 246,28.6 L 340.1,83 L 434.3,137.3 V 354.7 L 340.1,409.1 Z
+        
+        M 151.9,409.1 V 300.4 L 246,246 L 340.1,300.4 V 409.1
+        
+        M 340.1,83 V 191.6 L 246,246 L 151.9,191.6 V 83
+      </StreamGeometry>
       
     </ResourceDictionary>
 
