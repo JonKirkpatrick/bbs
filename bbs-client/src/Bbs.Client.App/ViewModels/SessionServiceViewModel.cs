@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
+using Bbs.Client.Core.Storage;
 
 namespace Bbs.Client.App.ViewModels;
 
@@ -222,6 +223,42 @@ public sealed class SessionServiceViewModel : ViewModelBase
         {
             DisconnectActiveDeploymentConnection(session.BotId, session.SessionId, sendQuit);
         }
+    }
+
+    public IReadOnlyList<(BotProfile Profile, AgentRuntimeState? RuntimeState)> BuildDisplayBotEntries(
+        IClientStorage storage,
+        Func<string, bool> hasActiveDeployConnection)
+    {
+        var profiles = storage.ListBotProfilesAsync().GetAwaiter().GetResult();
+
+        PruneStaleActiveSessionCaches(runtimeBotId => File.Exists(DeploymentTransportHelpers.BuildAgentControlSocketPath(runtimeBotId)));
+
+        var entries = new List<(BotProfile Profile, AgentRuntimeState? RuntimeState)>();
+        foreach (var profile in profiles)
+        {
+            if (IsRuntimeInstanceProfile(profile))
+            {
+                continue;
+            }
+
+            var runtimeState = storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
+            if (runtimeState is not null &&
+                runtimeState.LifecycleState == AgentLifecycleState.ActiveSession &&
+                !hasActiveDeployConnection(profile.BotId))
+            {
+                runtimeState = new AgentRuntimeState(
+                    BotId: runtimeState.BotId,
+                    LifecycleState: AgentLifecycleState.Idle,
+                    IsAttached: false,
+                    LastErrorCode: null,
+                    UpdatedAtUtc: DateTimeOffset.UtcNow);
+                storage.UpsertAgentRuntimeStateAsync(runtimeState).GetAwaiter().GetResult();
+            }
+
+            entries.Add((profile, runtimeState));
+        }
+
+        return entries;
     }
 
     public void RefreshActiveBotSessionsProjection(
@@ -672,6 +709,17 @@ public sealed class SessionServiceViewModel : ViewModelBase
         {
             return null;
         }
+    }
+
+    private static bool IsRuntimeInstanceProfile(BotProfile profile)
+    {
+        if (profile.Metadata.TryGetValue("runtime_instance", out var runtimeFlag) &&
+            string.Equals(runtimeFlag, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static string NormalizeActiveSessionId(string rawSessionId)

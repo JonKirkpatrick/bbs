@@ -4,10 +4,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,29 +25,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private const int ServerProbeTimeoutMs = 1200;
     private const int ServerCatalogFetchTimeoutMs = 2000;
     private const int ServerCatalogSelectionRefreshCooldownMs = 5000;
-    private const int DashboardPortFallback = 3000;
     private const int BotTcpDefaultPort = 8080;
     private const int ServerProbeMaxAttempts = 2;
     private const int ServerProbeRetryDelayMs = 200;
-    private const int DeployHandshakeTimeoutMs = 3000;
-    private const int DeployControlSocketReadyTimeoutMs = 8000;
     private const string ProbeStatusMetadataKey = "probe_status";
     private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
     private const string ProbeLastErrorMetadataKey = "probe_last_error";
-    private const string ServerAccessServerIdMetadataKey = "server_access.server_id";
-    private const string ServerAccessSessionIdMetadataKey = "server_access.session_id";
-    private const string ServerAccessOwnerTokenMetadataKey = "server_access.owner_token";
-    private const string ServerAccessDashboardEndpointMetadataKey = "server_access.dashboard_endpoint";
     private const string ClientOwnerTokenMetadataKey = "client.owner_token";
-    private static readonly string[] DashboardEndpointMetadataKeys =
-    {
-        "dashboard_endpoint"
-    };
-
-    private static readonly string[] DashboardPortMetadataKeys =
-    {
-        "dashboard_port"
-    };
 
     private readonly IClientLogger _logger;
     private readonly PersonaManager? _personaManager;
@@ -699,131 +680,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return sessions.Count;
     }
 
-    private static SocketException? FindSocketException(Exception ex)
-    {
-        if (ex is SocketException directSocket)
-        {
-            return directSocket;
-        }
-
-        if (ex is AggregateException aggregate)
-        {
-            foreach (var inner in aggregate.Flatten().InnerExceptions)
-            {
-                var nested = FindSocketException(inner);
-                if (nested is not null)
-                {
-                    return nested;
-                }
-            }
-
-            return null;
-        }
-
-        if (ex.InnerException is not null)
-        {
-            return FindSocketException(ex.InnerException);
-        }
-
-        return null;
-    }
-
-    private static bool TryResolveSocketErrorCode(Exception ex, out string socketErrorCode)
-    {
-        var directSocket = FindSocketException(ex);
-        if (directSocket is not null)
-        {
-            socketErrorCode = $"socket_{directSocket.SocketErrorCode}".ToLowerInvariant();
-            return true;
-        }
-
-        var inspected = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
-        var pending = new Queue<Exception>();
-        pending.Enqueue(ex);
-
-        while (pending.Count > 0)
-        {
-            var current = pending.Dequeue();
-            if (!inspected.Add(current))
-            {
-                continue;
-            }
-
-            var type = current.GetType();
-            if (type.Name.Contains("SocketException", StringComparison.OrdinalIgnoreCase))
-            {
-                var socketCodeProperty = type.GetProperty("SocketErrorCode");
-                if (socketCodeProperty?.GetValue(current) is { } codeValue)
-                {
-                    socketErrorCode = $"socket_{codeValue}".ToLowerInvariant();
-                    return true;
-                }
-
-                socketErrorCode = "socket_error";
-                return true;
-            }
-
-            if (current is IOException)
-            {
-                socketErrorCode = "socket_io_error";
-                return true;
-            }
-
-            if (current is AggregateException aggregate)
-            {
-                foreach (var inner in aggregate.InnerExceptions)
-                {
-                    pending.Enqueue(inner);
-                }
-            }
-            else if (current.InnerException is not null)
-            {
-                pending.Enqueue(current.InnerException);
-            }
-        }
-
-        socketErrorCode = string.Empty;
-        return false;
-    }
-
-
-    private static BotProfile BuildRuntimeInstanceProfile(BotProfile sourceProfile)
-    {
-        var runtimeSuffix = Guid.NewGuid().ToString("N")[..6];
-        var runtimeName = $"{sourceProfile.Name}-{runtimeSuffix}";
-        var runtimeBotId = $"{sourceProfile.BotId}-{runtimeSuffix}";
-        var runtimeMetadata = new Dictionary<string, string>(sourceProfile.Metadata, StringComparer.OrdinalIgnoreCase)
-        {
-            ["source_bot_id"] = sourceProfile.BotId,
-            ["source_bot_name"] = sourceProfile.Name,
-            ["runtime_instance_suffix"] = runtimeSuffix,
-            ["runtime_instance"] = "true"
-        };
-
-        return BotProfile.Create(
-            botId: runtimeBotId,
-            name: runtimeName,
-            launchPath: sourceProfile.LaunchPath,
-            avatarImagePath: sourceProfile.AvatarImagePath,
-            launchArgs: sourceProfile.LaunchArgs,
-            metadata: runtimeMetadata,
-            createdAtUtc: DateTimeOffset.UtcNow,
-            updatedAtUtc: DateTimeOffset.UtcNow);
-    }
-
-    private static string ResolveServerDashboardEndpoint(ServerSummaryItem server)
-    {
-        var value = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(server.Metadata, DashboardEndpointMetadataKeys);
-        if (!string.IsNullOrWhiteSpace(value))
-        {
-            return value;
-        }
-
-        var dashboardPort = MainWindowViewModelHelpers.ParsePositivePort(server.Metadata, DashboardPortMetadataKeys) ?? DashboardPortFallback;
-        var scheme = server.UseTls ? "https" : "http";
-        return MainWindowViewModelHelpers.BuildBaseEndpoint(scheme, server.Host, dashboardPort);
-    }
-
     private void HandleOrchestrationException(string action, string botId, string errorCode, Exception ex)
     {
         if (string.Equals(action, "deploy", StringComparison.OrdinalIgnoreCase) &&
@@ -857,32 +713,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void LoadBotsFromStorage()
     {
-        var profiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
-
-        PruneStaleActiveSessionCaches();
+        var entries = _sessionService.BuildDisplayBotEntries(_storage, HasActiveDeployConnection);
 
         _botService.Bots.Clear();
-        foreach (var profile in profiles)
+        foreach (var (profile, runtimeState) in entries)
         {
-            if (IsRuntimeInstanceProfile(profile))
-            {
-                continue;
-            }
-
-            var runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
-            if (runtimeState is not null &&
-                runtimeState.LifecycleState == AgentLifecycleState.ActiveSession &&
-                !HasActiveDeployConnection(profile.BotId))
-            {
-                runtimeState = new AgentRuntimeState(
-                    BotId: runtimeState.BotId,
-                    LifecycleState: AgentLifecycleState.Idle,
-                    IsAttached: false,
-                    LastErrorCode: null,
-                    UpdatedAtUtc: DateTimeOffset.UtcNow);
-                _storage.UpsertAgentRuntimeStateAsync(runtimeState).GetAwaiter().GetResult();
-            }
-
             _botService.Bots.Add(BotSummaryItem.FromProfile(
                 profile,
                 runtimeState,
@@ -891,17 +726,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(Bots));
         RefreshActiveBotSessionsProjection();
-    }
-
-    private static bool IsRuntimeInstanceProfile(BotProfile profile)
-    {
-        if (profile.Metadata.TryGetValue("runtime_instance", out var runtimeFlag) &&
-            string.Equals(runtimeFlag, "true", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
     }
 
     private void LoadServersFromStorage()

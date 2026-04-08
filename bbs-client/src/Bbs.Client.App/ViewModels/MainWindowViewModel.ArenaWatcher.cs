@@ -113,18 +113,24 @@ public sealed partial class MainWindowViewModel
 
     private void RefreshServerArenas()
     {
-        _arenaService.RefreshServerArenas(SelectedServer, RefreshActiveSessionArenaOptions);
+        _arenaService.RefreshServerArenas(SelectedServer, RefreshActiveSessionArenaOptions, EnterArenaViewerContext);
     }
 
     private async Task RefreshSelectedServerArenasAsync(bool silent = false)
     {
-        _arenaService.RefreshServerArenas(SelectedServer, RefreshActiveSessionArenaOptions);
+        _arenaService.RefreshServerArenas(SelectedServer, RefreshActiveSessionArenaOptions, EnterArenaViewerContext);
         await Task.CompletedTask;
+    }
+
+    private void EnterArenaViewerContext()
+    {
+        _uiState.SwitchContext(WorkspaceContext.ArenaViewer);
+        RefreshContextProjection();
     }
 
     private void StartWatchingArena(int arenaId, string game, string viewerUrl, string pluginEntryUrl, int viewerWidth, int viewerHeight)
     {
-        _arenaService.StartWatchingArena(SelectedServer, arenaId, game, viewerUrl, pluginEntryUrl, viewerWidth, viewerHeight, RefreshContextProjection);
+        _arenaService.StartWatchingArena(SelectedServer, arenaId, game, viewerUrl, pluginEntryUrl, viewerWidth, viewerHeight, EnterArenaViewerContext);
     }
 
     private void StartArenaViewerWatchLoop()

@@ -264,13 +264,13 @@ public sealed class ArenaServiceViewModel : ViewModelBase
         $"Last arena update: {ArenaViewerLastUpdatedUtc}\n" +
         $"Last error: {(string.IsNullOrWhiteSpace(ArenaViewerLastError) ? "none" : ArenaViewerLastError)}";
 
-    public void RefreshServerArenas(ServerSummaryItem? selectedServer, Action refreshActiveSessionArenaOptions)
+    public void RefreshServerArenas(ServerSummaryItem? selectedServer, Action refreshActiveSessionArenaOptions, Action enterArenaViewerContext)
     {
         _watchedServer = selectedServer;
-        _ = RefreshSelectedServerArenasAsync(selectedServer, refreshActiveSessionArenaOptions);
+        _ = RefreshSelectedServerArenasAsync(selectedServer, refreshActiveSessionArenaOptions, enterArenaViewerContext);
     }
 
-    public void StartWatchingArena(ServerSummaryItem? selectedServer, int arenaId, string game, string viewerUrl, string pluginEntryUrl, int viewerWidth, int viewerHeight, Action refreshContextProjection)
+    public void StartWatchingArena(ServerSummaryItem? selectedServer, int arenaId, string game, string viewerUrl, string pluginEntryUrl, int viewerWidth, int viewerHeight, Action enterArenaViewerContext)
     {
         _watchedServer = selectedServer;
         _watchedArenaId = arenaId;
@@ -280,14 +280,14 @@ public sealed class ArenaServiceViewModel : ViewModelBase
         ArenaViewerRawState = string.Empty;
         ArenaViewerLastError = string.Empty;
 
-        refreshContextProjection();
+        enterArenaViewerContext();
 
         if (!IsEmbeddedViewerSupported)
         {
             ArenaViewerStatus = "Embedded viewer unavailable; using fallback mode with raw state and external viewer link.";
         }
 
-        StartArenaViewerWatchLoop(refreshContextProjection);
+        StartArenaViewerWatchLoop(enterArenaViewerContext);
     }
 
     public void StopArenaViewerWatch()
@@ -641,7 +641,7 @@ public sealed class ArenaServiceViewModel : ViewModelBase
         }
     }
 
-    private async Task RefreshSelectedServerArenasAsync(ServerSummaryItem? selectedServer, Action refreshActiveSessionArenaOptions, bool silent = false)
+    private async Task RefreshSelectedServerArenasAsync(ServerSummaryItem? selectedServer, Action refreshActiveSessionArenaOptions, Action enterArenaViewerContext, bool silent = false)
     {
         if (selectedServer is null)
         {
@@ -730,7 +730,7 @@ public sealed class ArenaServiceViewModel : ViewModelBase
                     PluginEntryUrl: pluginEntryUrl,
                     ViewerWidth: arena.ViewerWidth,
                     ViewerHeight: arena.ViewerHeight,
-                    WatchCommand: new RelayCommand(() => StartWatchingArena(selectedServer, arenaId, game, viewerUrl, pluginEntryUrl, arena.ViewerWidth, arena.ViewerHeight, refreshActiveSessionArenaOptions))));
+                    WatchCommand: new RelayCommand(() => StartWatchingArena(selectedServer, arenaId, game, viewerUrl, pluginEntryUrl, arena.ViewerWidth, arena.ViewerHeight, enterArenaViewerContext))));
             }
 
             ServerArenasStatus = ServerArenaEntries.Count == 0
@@ -770,7 +770,7 @@ public sealed class ArenaServiceViewModel : ViewModelBase
         return refreshVersion == _serverArenasRefreshVersion;
     }
 
-    private void StartArenaViewerWatchLoop(Action refreshContextProjection)
+    private void StartArenaViewerWatchLoop(Action enterArenaViewerContext)
     {
         StopArenaViewerWatch();
 
@@ -781,7 +781,7 @@ public sealed class ArenaServiceViewModel : ViewModelBase
         {
             while (!cts.IsCancellationRequested && _watchedArenaId > 0)
             {
-                await RefreshSelectedServerArenasAsync(_watchedServer, refreshContextProjection, silent: true);
+                await RefreshSelectedServerArenasAsync(_watchedServer, () => { }, enterArenaViewerContext, silent: true);
 
                 try
                 {
