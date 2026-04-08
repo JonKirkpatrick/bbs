@@ -4,7 +4,7 @@ All notable changes to Build-a-Bot Stadium are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [v0.5.0] - 2026-04-08
 
 ### Added (Server)
 (new server changes will be captured here)
@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Integration with Dashboard**: Live bot session cards respect profile-provided names; dashboard endpoint fallback for reliability
 - **Agent Control Socket**: Full control plane for deploy/runtime lifecycle, `server_connect`, `server_access`, and shutdown operations with JSON v0.2 protocol
 
+### Added (Documentation site using Docusaurus)
+- Autobuilds on changes to the site
+- Pulls documentation from repository
+
 ### Changed (Client)
 - Agent no longer accepts name overrides from bot `hello` messages; bot author cannot control bot identity in active sessions
 - Deploy validation now includes endpoint candidate generation and fallback retry logic
@@ -26,11 +30,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Server access metadata in server context is resolved from the selected known server profile first
 
 ### Changed (Server)
-(server changes will be captured here)
+- Breaking changes to server discovery probe.
+- Owner token now per client instead of per session
+- Removed persistent bot registry on server side moving responsibility to client
+- Bots in sessions are essentially anonymous with only a reference to the client via token
 
 ### Fixed (Client)
 - Fixed deploy failing when server host is stored as malformed loopback (e.g., 127.0.01 instead of 127.0.0.1)
 - Fixed agent startup failure when bot profile names contained spaces
+- Introduced "persona" concept allowing multiple independent SQLite files to populate client
+- Introduced a new splash animation
+- Wired in an arena viewer so now the client has less reliance on using the server for a view
+- Added a menu bar and a few options
 
 ### Fixed (Server)
 (server fixes will be captured here)
