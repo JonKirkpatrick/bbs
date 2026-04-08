@@ -50,6 +50,13 @@ public sealed partial class MainWindowViewModel
         TriggerServerAccessRefresh();
     }
 
+    private void DisconnectAllActiveDeploymentConnections(bool sendQuit)
+    {
+        _sessionService.DisconnectAllActiveDeploymentConnections(sendQuit);
+        RefreshActiveBotSessionsProjection();
+        TriggerServerAccessRefresh();
+    }
+
     private void RefreshActiveBotSessionsProjection()
     {
         _sessionService.RefreshActiveBotSessionsProjection(SelectedBot, SelectedServer, Servers, ServerArenaEntries, BotTcpDefaultPort);

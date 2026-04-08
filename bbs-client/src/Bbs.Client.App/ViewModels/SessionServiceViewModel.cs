@@ -215,6 +215,15 @@ public sealed class SessionServiceViewModel : ViewModelBase
         }
     }
 
+    public void DisconnectAllActiveDeploymentConnections(bool sendQuit)
+    {
+        var sessionsToRemove = GetAllActiveDeployConnections();
+        foreach (var session in sessionsToRemove)
+        {
+            DisconnectActiveDeploymentConnection(session.BotId, session.SessionId, sendQuit);
+        }
+    }
+
     public void RefreshActiveBotSessionsProjection(
         BotSummaryItem? selectedBot,
         ServerSummaryItem? selectedServer,

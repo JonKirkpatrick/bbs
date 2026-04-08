@@ -85,6 +85,8 @@ public sealed partial class MainWindowViewModel
 
     public void UnloadPersona()
     {
+        DisconnectAllActiveDeploymentConnections(sendQuit: true);
+
         if (_orchestration is IDisposable disposable)
         {
             disposable.Dispose();
@@ -149,6 +151,8 @@ public sealed partial class MainWindowViewModel
     {
         var storage = new SqliteClientStorage(filePath);
         await storage.InitializeAsync();
+
+        DisconnectAllActiveDeploymentConnections(sendQuit: true);
 
         if (_orchestration is IDisposable disposable)
         {

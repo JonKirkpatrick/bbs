@@ -62,7 +62,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly BotServiceViewModel _botService;
     private readonly DeploymentServiceViewModel _deploymentService = null!;
     private ServerServiceViewModel _serverService = null!;  // Initialized in constructor with dependencies
-    private readonly ArenaServiceViewModel _arenaService = new();
+    private readonly ArenaServiceViewModel _arenaService = null!;
     private readonly SessionServiceViewModel _sessionService = null!;
     private readonly ServerAccessServiceViewModel _serverAccessService;
     private BotSummaryItem? _selectedBot;
@@ -85,12 +85,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _botService = new BotServiceViewModel(_storage, _logger);
         _sessionService = new SessionServiceViewModel(_botService, _logger);
         _serverService = new ServerServiceViewModel(_storage, _logger, _serverCatalogHttpClient);
+        _arenaService = new ArenaServiceViewModel(_serverCatalogHttpClient);
         _arenaService.SetPluginCatalog(_serverService.ServerPluginCatalogEntries);
         _serverService.ServerPluginCatalogEntries.CollectionChanged += OnServerPluginCatalogEntriesChanged;
         _deploymentService = new DeploymentServiceViewModel(_storage, _orchestration, _logger, _sessionService);
         _serverAccessService = new ServerAccessServiceViewModel(_storage, _logger, _sessionService, _serverCatalogHttpClient);
-
-        ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
 
         _uiState.PropertyChanged += (s, e) =>
         {
@@ -164,9 +163,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 e.PropertyName == nameof(ArenaServiceViewModel.OwnerArenaTimeMs) ||
                 e.PropertyName == nameof(ArenaServiceViewModel.OwnerArenaAllowHandicap) ||
                 e.PropertyName == nameof(ArenaServiceViewModel.OwnerJoinArenaId) ||
-                e.PropertyName == nameof(ArenaServiceViewModel.OwnerJoinHandicapPercent))
+                e.PropertyName == nameof(ArenaServiceViewModel.OwnerJoinHandicapPercent) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.IsServerArenasLoading) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ServerArenasStatus) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerLabel) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerStatus) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerRawState) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerUrl) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerPluginEntryUrl) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerHostWidth) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerHostHeight) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.IsEmbeddedViewerSupported) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ShowEmbeddedViewerFallback) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ShowOpenArenaViewerButton) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.EmbeddedViewerSupportMessage) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerLastUpdatedUtc) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerLastError) ||
+                e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerDiagnostics))
             {
                 OnPropertyChanged(e.PropertyName);
+                if (e.PropertyName == nameof(ArenaServiceViewModel.ArenaViewerUrl))
+                {
+                    if (OpenArenaViewerInBrowserCommand is RelayCommand openArenaViewerCommand)
+                    {
+                        openArenaViewerCommand.RaiseCanExecuteChanged();
+                    }
+                }
+                else if (e.PropertyName == nameof(ArenaServiceViewModel.IsServerArenasLoading))
+                {
+                    if (RefreshServerArenasCommand is RelayCommand refreshServerArenasCommand)
+                    {
+                        refreshServerArenasCommand.RaiseCanExecuteChanged();
+                    }
+                }
             }
         };
 
@@ -341,7 +370,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<ServerSummaryItem> Servers => _serverService.Servers;
     public ObservableCollection<ServerMetadataEntryItem> ServerMetadataEntries => _serverService.ServerMetadataEntries;
     public ObservableCollection<ServerPluginCatalogItem> ServerPluginCatalogEntries => _serverService.ServerPluginCatalogEntries;
-    public ObservableCollection<ServerArenaItem> ServerArenaEntries { get; }
+    public ObservableCollection<ServerArenaItem> ServerArenaEntries => _arenaService.ServerArenaEntries;
 
     public BotSummaryItem? SelectedBot
     {
