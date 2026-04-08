@@ -12,8 +12,8 @@ const config: Config = {
   tagline: 'Battle Bot Stadium docs for users, operators, and contributors',
   favicon: 'img/bbs.ico',
 
-  url: 'https://example.com',
-  baseUrl: '/',
+  url: 'https://jonkirkpatrick.github.io',
+  baseUrl: '/bbs/',
 
   organizationName: 'JonKirkpatrick',
   projectName: 'bbs',
