@@ -24,18 +24,6 @@
      id="defs10">
     <linearGradient
        inkscape:collect="always"
-       id="linearGradient2189">
-      <stop
-         style="stop-color:#556672;stop-opacity:1;"
-         offset="0"
-         id="stop2185" />
-      <stop
-         style="stop-color:#2a3036;stop-opacity:1;"
-         offset="1"
-         id="stop2187" />
-    </linearGradient>
-    <linearGradient
-       inkscape:collect="always"
        id="linearGradient1938">
       <stop
          style="stop-color:#00add8;stop-opacity:1;"
@@ -53,15 +41,6 @@
        inkscape:vp_z="19611.434 : 11161.693 : 1"
        inkscape:persp3d-origin="256 : 170.66667 : 1"
        id="perspective901" />
-    <linearGradient
-       inkscape:collect="always"
-       xlink:href="#linearGradient2189"
-       id="linearGradient2191"
-       x1="245.36421"
-       y1="576.54449"
-       x2="246"
-       y2="28.596632"
-       gradientUnits="userSpaceOnUse" />
     <clipPath
        clipPathUnits="userSpaceOnUse"
        id="clipPath5768">
@@ -92,20 +71,21 @@
      inkscape:pagecheckerboard="false"
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
-     inkscape:zoom="0.73706117"
-     inkscape:cx="324.93911"
-     inkscape:cy="276.77486"
-     inkscape:window-width="2508"
-     inkscape:window-height="1371"
-     inkscape:window-x="2612"
-     inkscape:window-y="32"
+     inkscape:zoom="1.581663"
+     inkscape:cx="138.77798"
+     inkscape:cy="266.80778"
+     inkscape:window-width="2560"
+     inkscape:window-height="1403"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
      inkscape:window-maximized="1"
      inkscape:current-layer="g1423"
      showborder="true" />
   <g
      id="g1423"
      transform="rotate(180,246,246)"
-     inkscape:label="BBS Logo">
+     inkscape:label="BBS Logo"
+     style="display:inline">
     <path
        style="color:#000000;display:inline;fill:#f7df1e;fill-opacity:1;stroke-width:10;-inkscape-stroke:none"
        d="M 246.00001,463.40337 57.723165,354.70169 57.723159,137.29832 245.99999,28.596634 434.27683,137.29831 l 10e-6,217.40337 z"
@@ -114,7 +94,7 @@
     <g
        id="g1032"
        inkscape:label="JS Shadow Group"
-       style="display:none">
+       style="display:inline">
       <path
          id="path1404"
          style="color:#000000;display:inline;fill:#000000;fill-opacity:0.348651;stroke-width:5.77349;-inkscape-stroke:none"
@@ -154,7 +134,7 @@
     <g
        id="g1037"
        inkscape:label="CS Shadow Group"
-       style="display:none">
+       style="display:inline">
       <path
          id="path1304"
          style="color:#000000;display:inline;fill:#000000;fill-opacity:0.348651;stroke-width:5.77349;-inkscape-stroke:none"
@@ -179,7 +159,7 @@
     <g
        id="g1042"
        inkscape:label="Go Shadow Group"
-       style="display:none">
+       style="display:inline">
       <path
          id="path1398"
          style="color:#000000;display:inline;fill:#000000;fill-opacity:0.35;stroke-width:5.77349;-inkscape-stroke:none"
@@ -198,9 +178,34 @@
     </g>
     <path
        id="path2166"
-       style="color:#000000;display:inline;fill:url(#linearGradient2191);fill-opacity:1;stroke:none;stroke-opacity:1;-inkscape-stroke:none"
+       style="color:#000000;display:none;fill:#000000;fill-opacity:1;stroke:none;stroke-opacity:1;-inkscape-stroke:none"
        d="M 246,22.822266 146.86133,80.060547 52.722656,134.41211 V 357.58789 L 146.86133,411.93945 246,469.17773 l 2.5,-1.44335 96.63867,-55.79493 94.13867,-54.35156 V 134.41211 L 345.13867,80.060547 Z m 0,11.548828 89.13867,51.46289 V 188.76172 L 246,240.22656 156.86133,188.76172 V 85.833984 Z M 146.86133,91.60938 V 194.53516 L 236,246 146.86133,297.46484 V 400.39062 L 62.722656,351.81445 v -211.6289 z m 198.27734,0 84.13867,48.57617 v 211.6289 l -84.13867,48.57617 V 297.46484 L 256,246 345.13867,194.53516 Z M 246,251.77344 335.13867,303.23828 V 406.16602 L 246,457.62891 156.86133,406.16602 V 303.23828 Z"
-       inkscape:label="Frame" />
+       inkscape:label="Frame"
+       inkscape:transform-center-x="-2e-06"
+       inkscape:transform-center-y="2e-06" />
+    <g
+       id="g1795"
+       inkscape:label="Frame_Simplified"
+       style="display:inline">
+      <path
+         style="color:#000000;display:inline;fill:none;fill-opacity:1;stroke:#000000;stroke-width:10;stroke-opacity:1;-inkscape-stroke:none"
+         d="m 246.00001,463.40337 -94.13842,-54.35084 -94.138425,-54.35084 -6e-6,-217.40337 94.138411,-54.350843 94.13842,-54.350843 94.13842,54.350838 94.13842,54.350838 10e-6,217.40337 -94.13842,54.35084 z"
+         id="path1011"
+         inkscape:label="FrameJSHex"
+         sodipodi:nodetypes="ccccccccccc" />
+      <path
+         style="color:#000000;display:inline;fill:none;fill-opacity:1;stroke:#000000;stroke-width:10;stroke-opacity:1;-inkscape-stroke:none"
+         d="M 151.86158,409.05252 V 300.35084 L 246,246 l 94.13842,54.35084 v 108.70168"
+         id="path1788"
+         inkscape:label="FrameGoHex"
+         sodipodi:nodetypes="ccccc" />
+      <path
+         style="color:#000000;display:inline;fill:none;fill-opacity:1;stroke:#000000;stroke-width:10;stroke-opacity:1;-inkscape-stroke:none"
+         d="M 340.13842,82.94748 V 191.64916 L 246,246 151.86158,191.64916 V 82.94748"
+         id="path1790"
+         inkscape:label="FrameCSHex"
+         sodipodi:nodetypes="ccccc" />
+    </g>
   </g>
   <metadata
      id="metadata1078">

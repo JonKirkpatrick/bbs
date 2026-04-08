@@ -119,6 +119,26 @@ internal static class DeploymentTransportHelpers
         throw new InvalidOperationException($"Failed {messageType} control request after retries.", lastFailure);
     }
 
+    internal static void WaitForControlSocketReady(string controlSocketPath, int timeoutMs)
+    {
+        if (File.Exists(controlSocketPath))
+        {
+            return;
+        }
+
+        var timeout = TimeSpan.FromMilliseconds(Math.Max(0, timeoutMs));
+        var start = DateTime.UtcNow;
+        while (DateTime.UtcNow - start < timeout)
+        {
+            if (File.Exists(controlSocketPath))
+            {
+                return;
+            }
+
+            Thread.Sleep(50);
+        }
+    }
+
     internal static bool TryResolveSocketErrorCode(Exception ex, out string socketErrorCode)
     {
         var directSocket = FindSocketException(ex);

@@ -64,9 +64,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private ServerServiceViewModel _serverService = null!;  // Initialized in constructor with dependencies
     private readonly ArenaServiceViewModel _arenaService = new();
     private readonly SessionServiceViewModel _sessionService = new();
-    private readonly ServerAccessServiceViewModel _serverAccessService = new();
+    private readonly ServerAccessServiceViewModel _serverAccessService;
     private BotSummaryItem? _selectedBot;
-    private int _serverAccessRefreshVersion;
 
     private MainWindowViewModel(
         IClientLogger logger,
@@ -87,6 +86,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _arenaService.SetPluginCatalog(_serverService.ServerPluginCatalogEntries);
         _serverService.ServerPluginCatalogEntries.CollectionChanged += OnServerPluginCatalogEntriesChanged;
         _deploymentService = new DeploymentServiceViewModel(_storage, _orchestration, _logger, _sessionService);
+        _serverAccessService = new ServerAccessServiceViewModel(_storage, _logger, _sessionService, _serverCatalogHttpClient);
 
         Bots = new ObservableCollection<BotSummaryItem>();
         ServerArenaEntries = new ObservableCollection<ServerArenaItem>();
@@ -455,159 +455,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void ExecuteCreateArena()
     {
-        _ = ExecuteOwnerTokenActionAsync(OwnerTokenActionType.CreateArena);
+        _ = _serverAccessService.ExecuteOwnerTokenActionAsync(
+            OwnerTokenActionType.CreateArena,
+            SelectedServer,
+            OwnerArenaSelectedPlugin,
+            OwnerArenaArgs,
+            OwnerArenaTimeMs,
+            OwnerArenaAllowHandicap,
+            OwnerJoinArenaId,
+            OwnerJoinHandicapPercent);
     }
 
     private void ExecuteJoinArena()
     {
-        _ = ExecuteOwnerTokenActionAsync(OwnerTokenActionType.JoinArena);
-    }
-
-    private async Task ExecuteOwnerTokenActionAsync(OwnerTokenActionType actionType)
-    {
-        var selectedServerId = SelectedServer?.ServerId;
-        var guard = OwnerTokenGatedActionRules.Validate(actionType, ServerAccessMetadata, selectedServerId);
-        if (!guard.CanExecute || guard.Plan is null)
-        {
-            OwnerTokenActionStatus = guard.Message;
-            _logger.Log(LogLevel.Warning, "owner_token_action_blocked", "Owner-token action blocked by precondition check.",
-                new Dictionary<string, string>
-                {
-                    ["action"] = actionType.ToString(),
-                    ["reason"] = guard.Message
-                });
-            return;
-        }
-
-        if (!TryBuildOwnerActionFormFields(actionType, out var fields, out var validationError))
-        {
-            OwnerTokenActionStatus = validationError;
-            return;
-        }
-
-        var actionUri = BuildDashboardActionUri(ServerAccessMetadata.DashboardEndpoint, guard.Plan.PlaceholderRoute);
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Post, actionUri)
-            {
-                Content = new FormUrlEncodedContent(fields)
-            };
-            using var response = await _serverCatalogHttpClient.SendAsync(request);
-            var responseHtml = await response.Content.ReadAsStringAsync();
-            var message = ExtractDashboardActionMessage(responseHtml);
-
-            if (response.IsSuccessStatusCode)
-            {
-                OwnerTokenActionStatus = string.IsNullOrWhiteSpace(message)
-                    ? $"{guard.Plan.DisplayName} request accepted."
-                    : message;
-                _logger.Log(LogLevel.Information, "owner_token_action_invoked", "Owner-token action invoked successfully.",
-                    new Dictionary<string, string>
-                    {
-                        ["action"] = actionType.ToString(),
-                        ["server_id"] = selectedServerId ?? "none",
-                        ["route"] = guard.Plan.PlaceholderRoute
-                    });
-                return;
-            }
-
-            OwnerTokenActionStatus = string.IsNullOrWhiteSpace(message)
-                ? $"{guard.Plan.DisplayName} failed with HTTP {(int)response.StatusCode}."
-                : message;
-        }
-        catch (Exception ex)
-        {
-            OwnerTokenActionStatus = $"{guard.Plan.DisplayName} failed: {ex.Message}";
-            _logger.Log(LogLevel.Warning, "owner_token_action_failed", "Owner-token action failed.",
-                new Dictionary<string, string>
-                {
-                    ["action"] = actionType.ToString(),
-                    ["server_id"] = selectedServerId ?? "none",
-                    ["route"] = guard.Plan.PlaceholderRoute,
-                    ["error"] = ex.GetType().Name
-                });
-        }
-    }
-
-    private bool TryBuildOwnerActionFormFields(OwnerTokenActionType actionType, out IReadOnlyDictionary<string, string> fields, out string validationError)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["owner_token"] = ServerAccessMetadata.OwnerToken
-        };
-
-        if (actionType == OwnerTokenActionType.CreateArena)
-        {
-            if (string.IsNullOrWhiteSpace(OwnerArenaSelectedPlugin))
-            {
-                fields = values;
-                validationError = "Select a plugin before creating an arena.";
-                return false;
-            }
-
-            values["game"] = OwnerArenaSelectedPlugin.Trim();
-            if (!string.IsNullOrWhiteSpace(OwnerArenaArgs))
-            {
-                values["game_args"] = OwnerArenaArgs.Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(OwnerArenaTimeMs))
-            {
-                values["time_ms"] = OwnerArenaTimeMs.Trim();
-            }
-
-            values["allow_handicap"] = OwnerArenaAllowHandicap ? "true" : "false";
-            fields = values;
-            validationError = string.Empty;
-            return true;
-        }
-
-        if (!int.TryParse(OwnerJoinArenaId.Trim(), out var arenaId) || arenaId <= 0)
-        {
-            fields = values;
-            validationError = "Join Arena requires a positive arena ID.";
-            return false;
-        }
-
-        if (!int.TryParse(OwnerJoinHandicapPercent.Trim(), out var handicapPercent))
-        {
-            fields = values;
-            validationError = "Join Arena handicap must be an integer.";
-            return false;
-        }
-
-        values["arena_id"] = arenaId.ToString();
-        values["handicap_percent"] = handicapPercent.ToString();
-        fields = values;
-        validationError = string.Empty;
-        return true;
-    }
-
-    private static Uri BuildDashboardActionUri(string dashboardEndpoint, string relativeRoute)
-    {
-        var endpoint = new Uri(dashboardEndpoint, UriKind.Absolute);
-        var builder = new UriBuilder(endpoint.Scheme, endpoint.Host, endpoint.Port)
-        {
-            Path = relativeRoute
-        };
-        return builder.Uri;
-    }
-
-    private static string ExtractDashboardActionMessage(string responseHtml)
-    {
-        if (string.IsNullOrWhiteSpace(responseHtml))
-        {
-            return string.Empty;
-        }
-
-        var start = responseHtml.IndexOf('>');
-        var end = responseHtml.LastIndexOf('<');
-        if (start >= 0 && end > start)
-        {
-            return responseHtml[(start + 1)..end].Trim();
-        }
-
-        return responseHtml.Trim();
+        _ = _serverAccessService.ExecuteOwnerTokenActionAsync(
+            OwnerTokenActionType.JoinArena,
+            SelectedServer,
+            OwnerArenaSelectedPlugin,
+            OwnerArenaArgs,
+            OwnerArenaTimeMs,
+            OwnerArenaAllowHandicap,
+            OwnerJoinArenaId,
+            OwnerJoinHandicapPercent);
     }
 
 
@@ -1146,58 +1015,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void TriggerServerAccessRefresh()
     {
-        _ = RefreshServerAccessMetadataAsync();
-    }
-
-    private async Task RefreshServerAccessMetadataAsync()
-    {
-        var refreshVersion = Interlocked.Increment(ref _serverAccessRefreshVersion);
-        IsServerAccessLoading = true;
-        ServerAccessStatus = "Refreshing server access metadata...";
-
-        var selectedServerId = SelectedServer?.ServerId;
-        var selectedBotId = SelectedBot?.BotId;
-
-        try
-        {
-            var resolved = await Task.Run(() => ResolveServerAccessMetadata(selectedServerId, selectedBotId));
-            if (refreshVersion != Volatile.Read(ref _serverAccessRefreshVersion))
-            {
-                return;
-            }
-
-            ServerAccessMetadata = resolved;
-            ServerAccessOwnerToken = resolved.IsValid ? MainWindowViewModelHelpers.MaskToken(resolved.OwnerToken) : "-";
-            ServerAccessDashboardEndpoint = resolved.IsValid ? resolved.DashboardEndpoint : "-";
-            ServerAccessStatus = resolved.StatusMessage;
-            if (!resolved.IsValid)
-            {
-                OwnerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
-            }
-
-            RefreshOwnerTokenActionProjection();
-        }
-        catch
-        {
-            if (refreshVersion != Volatile.Read(ref _serverAccessRefreshVersion))
-            {
-                return;
-            }
-
-            ServerAccessMetadata = ServerAccessMetadata.Invalid("Failed to refresh server access metadata.");
-            ServerAccessOwnerToken = "-";
-            ServerAccessDashboardEndpoint = "-";
-            ServerAccessStatus = "Failed to refresh server access metadata.";
-            OwnerTokenActionStatus = "Owner-token actions are unavailable until valid server access metadata is loaded.";
-            RefreshOwnerTokenActionProjection();
-        }
-        finally
-        {
-            if (refreshVersion == Volatile.Read(ref _serverAccessRefreshVersion))
-            {
-                IsServerAccessLoading = false;
-            }
-        }
+        _ = _serverAccessService.RefreshServerAccessMetadataAsync(SelectedServer, SelectedBot?.BotId, _uiState.CurrentContext);
     }
 
     private void RefreshOwnerTokenActionProjection()
@@ -1208,96 +1026,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ((RelayCommand)CreateArenaCommand).RaiseCanExecuteChanged();
         ((RelayCommand)JoinArenaCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DeploySelectedBotCommand).RaiseCanExecuteChanged();
-    }
-
-    private ServerAccessMetadata ResolveServerAccessMetadata(string? selectedServerId, string? selectedBotId)
-    {
-        // Server metadata is the canonical owner-token source in Server context.
-        if (!string.IsNullOrWhiteSpace(selectedServerId))
-        {
-            var knownServerAccess = ResolveKnownServerAccessMetadata(selectedServerId);
-            if (knownServerAccess.IsValid || _uiState.CurrentContext == WorkspaceContext.ServerDetails)
-            {
-                return knownServerAccess;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(selectedBotId) &&
-            TryGetActiveServerAccess(selectedBotId, selectedServerId, out var activeServerId, out var activeAccess) &&
-            (string.IsNullOrWhiteSpace(selectedServerId) || string.Equals(selectedServerId, activeServerId, StringComparison.OrdinalIgnoreCase)))
-        {
-            if (string.IsNullOrWhiteSpace(activeAccess.OwnerToken))
-            {
-                return ServerAccessMetadata.Invalid("Owner token is not available for this runtime session yet.");
-            }
-
-            return activeAccess;
-        }
-
-        BotProfile? profile = null;
-        AgentRuntimeState? runtimeState = null;
-
-        if (!string.IsNullOrWhiteSpace(selectedBotId))
-        {
-            profile = _storage.ListBotProfilesAsync().GetAwaiter().GetResult().FirstOrDefault(b => b.BotId == selectedBotId);
-            if (profile is not null)
-            {
-                runtimeState = _storage.GetAgentRuntimeStateAsync(profile.BotId).GetAwaiter().GetResult();
-            }
-        }
-
-        if (profile is null)
-        {
-            var allProfiles = _storage.ListBotProfilesAsync().GetAwaiter().GetResult();
-            foreach (var candidate in allProfiles)
-            {
-                var candidateState = _storage.GetAgentRuntimeStateAsync(candidate.BotId).GetAwaiter().GetResult();
-                if (candidateState?.IsAttached == true)
-                {
-                    profile = candidate;
-                    runtimeState = candidateState;
-                    break;
-                }
-            }
-        }
-
-        return ServerAccessMetadataResolver.Resolve(profile, runtimeState, selectedServerId);
-    }
-
-    private ServerAccessMetadata ResolveKnownServerAccessMetadata(string? selectedServerId)
-    {
-        var server = !string.IsNullOrWhiteSpace(selectedServerId)
-            ? FindServerById(selectedServerId)
-            : SelectedServer;
-
-        if (server is null)
-        {
-            return ServerAccessMetadata.Invalid("No server selected for access metadata.");
-        }
-
-        var ownerToken = MainWindowViewModelHelpers.FirstNonEmptyMetadataValue(server.Metadata, new[]
-        {
-            ClientOwnerTokenMetadataKey,
-            ServerAccessOwnerTokenMetadataKey
-        });
-
-        if (string.IsNullOrWhiteSpace(ownerToken))
-        {
-            return ServerAccessMetadata.Invalid("Owner token missing from selected server metadata.");
-        }
-
-        var dashboardEndpoint = ResolveServerDashboardEndpoint(server);
-        if (string.IsNullOrWhiteSpace(dashboardEndpoint) || !Uri.TryCreate(dashboardEndpoint, UriKind.Absolute, out _))
-        {
-            return ServerAccessMetadata.Invalid("Dashboard endpoint missing or invalid for selected server.");
-        }
-
-        return new ServerAccessMetadata(
-            IsValid: true,
-            OwnerToken: ownerToken,
-            DashboardEndpoint: dashboardEndpoint,
-            StatusMessage: "Server access metadata loaded from selected server profile.",
-            Source: "known-server-metadata");
     }
 
 }
