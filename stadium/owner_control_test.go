@@ -36,7 +36,7 @@ func TestOwnerSessionSnapshot(t *testing.T) {
 	}
 
 	s := &Session{Conn: &testConn{}}
-	_, err = m.RegisterSession(s, "alpha", "", "", []string{"any"}, ownerToken)
+	_, err = m.RegisterSession(s, "alpha", []string{"any"}, ownerToken)
 	if err != nil {
 		t.Fatalf("RegisterSession failed: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestOwnerArenaControlFlow_CreateJoinLeave(t *testing.T) {
 	}
 
 	s := &Session{Conn: &testConn{}}
-	_, err = m.RegisterSession(s, "owner_bot", "", "", []string{"any"}, ownerToken)
+	_, err = m.RegisterSession(s, "owner_bot", []string{"any"}, ownerToken)
 	if err != nil {
 		t.Fatalf("RegisterSession failed: %v", err)
 	}

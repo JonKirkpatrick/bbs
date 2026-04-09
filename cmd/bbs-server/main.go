@@ -263,7 +263,7 @@ func handleBot(conn net.Conn) {
 				continue
 			}
 
-			result, err := stadium.DefaultManager.RegisterSession(sess, parts[1], "", "", caps, ownerToken)
+			result, err := stadium.DefaultManager.RegisterSession(sess, parts[1], caps, ownerToken)
 			if err != nil {
 				sess.SendJSON(stadium.Response{Status: "err", Type: "auth", Payload: err.Error()})
 				continue

@@ -4,20 +4,17 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"strings"
 	"time"
 )
 
 // RegisterSession now captures the full profile of the bot upon entry.
-func (m *Manager) RegisterSession(s *Session, name, requestedBotID, providedSecret string, caps []string, ownerToken string) (RegistrationResult, error) {
+func (m *Manager) RegisterSession(s *Session, name string, caps []string, ownerToken string) (RegistrationResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var result RegistrationResult
 
 	now := time.Now()
 	ownerToken = normalizeOwnerToken(ownerToken)
-	_ = normalizeIdentityInput(requestedBotID)
-	_ = normalizeIdentityInput(providedSecret)
 
 	if name == "" {
 		return result, errors.New("name is required")
@@ -139,16 +136,6 @@ func (m *Manager) UpdateSessionProfile(sess *Session, key, val string) error {
 
 	m.mu.Unlock()
 	return nil
-}
-
-func normalizeIdentityInput(v string) string {
-	v = strings.TrimSpace(v)
-	switch v {
-	case "", "\"\"", "''", "-", "none":
-		return ""
-	default:
-		return v
-	}
 }
 
 func newToken(prefix string, byteCount int) (string, error) {

@@ -90,7 +90,8 @@ QUIT
 
 ## Security Notes
 
-- `owner_token`, `bot_id`, and `bot_secret` are sensitive.
+- `owner_token` is sensitive.
+- If your local workflow still stores `bot_id` in credentials files, treat that file as sensitive runtime metadata.
 - Treat credentials files like secrets.
 - Current bot channel is plain TCP; prefer trusted networks or external tunnel/TLS.
 

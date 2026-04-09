@@ -64,8 +64,7 @@ It does not forward raw BBS server commands.
     "owner_token": "owner_abc123",
     "capabilities": ["any"],
     "credentials_file": "my_bot_credentials.txt",
-    "bot_id": "",
-    "bot_secret": ""
+    "bot_id": ""
   }
 }
 ```
@@ -75,7 +74,7 @@ Notes:
 - `name` in `hello` is informational only and does **not** override the agent's registered name (which is controlled by the client via `--name` CLI flag). The agent ignores bot-provided names to ensure clients maintain control over bot identity.
 - `capabilities` may be array or CSV (`capabilities_csv`).
 - `credentials_file` optional; default `<name>_credentials.txt`.
-- empty `bot_id`/`bot_secret` requests new identity issuance.
+- `bot_id` is optional local metadata used by some client-side workflows; it is not used for server REGISTER authentication.
 
 ### `action`
 
@@ -201,7 +200,7 @@ Ask the agent process to stop.
 
 Dynamically register with a server (deploy flow). Used when the client wants to change servers or retry registration after initial failure.
 
-The agent will attempt to connect to the provided server endpoint, send a REGISTER command with its locally-configured identity, and capture the returned session metadata.
+The agent will attempt to connect to the provided server endpoint, send a REGISTER command with local runtime options, and capture the returned session metadata.
 
 **Request:**
 
@@ -225,14 +224,13 @@ The agent will attempt to connect to the provided server endpoint, send a REGIST
   "id": "req-deploy-1",
   "payload": {
     "session_id": 12,
-    "bot_id": "bot_abcd1234",
-    "bot_secret": "secret_xyz789",
     "owner_token": "owner_token_abc123",
+    "control_token": "control_token_xyz987",
     "dashboard_host": "127.0.0.1",
     "dashboard_port": "3000",
     "dashboard_endpoint": "127.0.0.1:3000",
-    "arena_id": null,
-    "capabilities": "any"
+    "server": "127.0.0.1:8080",
+    "server_connected": true
   }
 }
 ```
@@ -383,7 +381,6 @@ Response to control `status` request.
     "server": "localhost:8080",
     "server_connected": true,
     "session_id": 12,
-    "bot_id": "bot_abcd1234",
     "arena_id": 3,
     "player_id": 1,
     "awaiting_action": false
@@ -403,7 +400,6 @@ Response to control `server_access` request.
     "server": "localhost:8080",
     "server_connected": true,
     "session_id": 12,
-    "bot_id": "bot_abcd1234",
     "owner_token": "owner_...",
     "dashboard_host": "localhost",
     "dashboard_port": "3000",

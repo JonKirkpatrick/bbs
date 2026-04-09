@@ -29,7 +29,7 @@ The dashboard is HTTP with SSE/WebSocket streams and is not a TCP client.
 | Command | Arguments | Description |
 | --- | --- | --- |
 | `HELP` | (none) | Returns available commands for current session state. |
-| `REGISTER` | `<name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]` | Registers a session. Use `"" ""` to request new identity credentials. |
+| `REGISTER` | `<name> [cap1,cap2,...] [owner_token=<token>] [client_nonce=<nonce>] [client_ts=<ts>]` | Registers a runtime session. `owner_token` links dashboard owner controls; nonce/timestamp fields support handshake proof binding. |
 | `WHOAMI` | (none) | Returns session identity and arena linkage state. |
 | `UPDATE` | `<field> <value>` | Updates mutable session metadata (for example name/capabilities). |
 | `CREATE` | `<type> [time_ms] [handicap_bool] [args...]` | Creates an arena. `type` must exist in runtime plugin catalog. |
@@ -75,8 +75,8 @@ All server responses (including command replies and connection greeting) use one
 
 ## Identity And Ownership
 
-- Returning bots must use matching `bot_id` + `bot_secret`.
-- New bots send `""` for both to request issuance.
+- Registration is session-based: server issues `session_id` and marks the connection as registered.
+- `bot_id`/`bot_secret` are no longer part of REGISTER authentication.
 - `owner_token=<token>` links session to dashboard owner controls.
 
 On successful `REGISTER`, payload includes server-issued access metadata:

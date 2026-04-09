@@ -9,7 +9,7 @@ func TestRegisterSession_NewIdentity(t *testing.T) {
 	m := newTestManager()
 	s := &Session{Conn: &testConn{}}
 
-	result, err := m.RegisterSession(s, "alpha", "", "", []string{"any", "grid"}, "")
+	result, err := m.RegisterSession(s, "alpha", []string{"any", "grid"}, "")
 	if err != nil {
 		t.Fatalf("RegisterSession returned unexpected error: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestRegisterSession_AlwaysIssuesFreshRuntimeIdentity(t *testing.T) {
 
 	m.UnregisterSession(1)
 	s := &Session{Conn: &testConn{}}
-	result, err := m.RegisterSession(s, "alpha", "", "", []string{"any"}, "")
+	result, err := m.RegisterSession(s, "alpha", []string{"any"}, "")
 	if err != nil {
 		t.Fatalf("RegisterSession returned unexpected error: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestRegisterSession_RejectInvalidOwnerToken(t *testing.T) {
 	m := newTestManager()
 	s := &Session{Conn: &testConn{}}
 
-	_, err := m.RegisterSession(s, "alpha", "", "", []string{"any"}, "owner_short")
+	_, err := m.RegisterSession(s, "alpha", []string{"any"}, "owner_short")
 	if err == nil {
 		t.Fatal("expected invalid owner token error")
 	}

@@ -87,7 +87,7 @@ func newTestManager() *Manager {
 func newRegisteredSession(t *testing.T, m *Manager, name string) (*Session, RegistrationResult) {
 	t.Helper()
 	s := &Session{Conn: &testConn{}}
-	result, err := m.RegisterSession(s, name, "", "", []string{"any"}, "")
+	result, err := m.RegisterSession(s, name, []string{"any"}, "")
 	if err != nil {
 		t.Fatalf("RegisterSession failed: %v", err)
 	}

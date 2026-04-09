@@ -327,13 +327,13 @@ All bot response lines use one JSON envelope shape: `{"status": ..., "type": ...
 Typical flow:
 
 1. Connect to `localhost:<stadium_port>`
-2. `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
+2. `REGISTER <name> [cap1,cap2,...] [owner_token=<token>] [client_nonce=<nonce>] [client_ts=<ts>]`
 3. Deploy a bot, then create/join/watch arenas and send moves from its active runtime session
 
 Common commands:
 
 - `HELP`
-- `REGISTER <name> <bot_id_or_""> <bot_secret_or_""> [cap1,cap2,...] [owner_token=<token>]`
+- `REGISTER <name> [cap1,cap2,...] [owner_token=<token>] [client_nonce=<nonce>] [client_ts=<ts>]`
 - `WHOAMI`
 - `UPDATE <field> <value>`
 - `CREATE <type> [time_ms] [handicap_bool] [args...]`
@@ -410,7 +410,7 @@ nc localhost 8080
 Try commands:
 
 ```text
-REGISTER bot_one "" "" any
+REGISTER bot_one any
 CREATE guess_number max_range=100
 LIST
 ```

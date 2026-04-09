@@ -45,7 +45,7 @@ func TestRegisterSession_DoesNotPersistProfile(t *testing.T) {
 	m.SetPersistenceStore(store)
 
 	session := &Session{}
-	_, err := m.RegisterSession(session, "bot-alpha", "", "", []string{"any"}, "")
+	_, err := m.RegisterSession(session, "bot-alpha", []string{"any"}, "")
 	if err != nil {
 		t.Fatalf("RegisterSession returned error: %v", err)
 	}
