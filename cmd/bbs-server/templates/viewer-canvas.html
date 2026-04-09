@@ -69,6 +69,8 @@
         let activePluginRenderer = null;
         let activePluginGame = "";
         let activePluginEntryURL = "";
+        let activeFrameStreamSource = "";
+        let activeFrameStreamImage = null;
 
         const loadedPluginEntries = new Set();
         const pluginRenderers = new Map();
@@ -80,7 +82,7 @@
             const availableWidth = Math.max(1, Math.floor(window.innerWidth || nativeWidth));
             const availableHeight = Math.max(1, Math.floor(window.innerHeight || nativeHeight));
 
-            const scale = Math.min(1, availableWidth / nativeWidth, availableHeight / nativeHeight);
+            const scale = Math.max(0.1, Math.min(availableWidth / nativeWidth, availableHeight / nativeHeight));
             const displayWidth = Math.max(1, Math.floor(nativeWidth * scale));
             const displayHeight = Math.max(1, Math.floor(nativeHeight * scale));
 
@@ -178,6 +180,10 @@
                 return;
             }
 
+            if (renderFrameStreamPacket(frame.frame_stream, frame)) {
+                return;
+            }
+
             let rendered = false;
             if (activePluginRenderer && typeof activePluginRenderer.render === "function") {
                 try {
@@ -201,6 +207,64 @@
             if (!rendered) {
                 clearCanvasNotice("Plugin renderer unavailable for game '" + (gameName || "unknown") + "'.");
             }
+        }
+
+        function renderFrameStreamPacket(packet, frame) {
+            if (!packet || typeof packet !== "object") {
+                return false;
+            }
+
+            const mimeType = String(packet.mime_type || "").trim();
+            const encoding = String(packet.encoding || "").trim().toLowerCase();
+            const data = typeof packet.data === "string" ? packet.data : "";
+            if (!mimeType || !encoding || !data) {
+                return false;
+            }
+
+            let source = "";
+            if (encoding === "base64") {
+                source = "data:" + mimeType + ";base64," + data;
+            } else if (encoding === "utf8") {
+                source = "data:" + mimeType + ";charset=utf-8," + encodeURIComponent(data);
+            } else if (encoding === "data_url") {
+                source = data;
+            } else {
+                return false;
+            }
+
+            const width = Number(packet.width || 0);
+            const height = Number(packet.height || 0);
+            if (width > 0 && height > 0 && (canvas.width !== width || canvas.height !== height)) {
+                canvas.width = width;
+                canvas.height = height;
+                syncCanvasLayout();
+            }
+
+            if (source !== activeFrameStreamSource || !activeFrameStreamImage) {
+                activeFrameStreamSource = source;
+                const img = new Image();
+                img.onload = function () {
+                    activeFrameStreamImage = img;
+                    if (frame === currentFrame) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(activeFrameStreamImage, 0, 0, canvas.width, canvas.height);
+                    }
+                };
+                img.onerror = function () {
+                    activeFrameStreamImage = null;
+                    clearCanvasNotice("Invalid frame stream image payload.");
+                };
+                img.src = source;
+            }
+
+            if (!activeFrameStreamImage) {
+                clearCanvasNotice("Loading frame stream...");
+                return true;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(activeFrameStreamImage, 0, 0, canvas.width, canvas.height);
+            return true;
         }
 
         function applyLiveEvent(payload) {

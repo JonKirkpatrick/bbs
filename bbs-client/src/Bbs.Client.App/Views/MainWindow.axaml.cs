@@ -205,8 +205,13 @@ public partial class MainWindow : Window
         var nativeHeight = Math.Max(1, _currentVm.ArenaViewerHostHeight);
 
         var availableWidth = Math.Max(1, _embeddedViewerViewport.Bounds.Width - (EmbeddedViewerSurfacePadding * 2));
-        var availableHeight = Math.Max(1, _embeddedViewerViewport.Bounds.Height - (EmbeddedViewerSurfacePadding * 2));
-        var scale = Math.Min(1, Math.Min(availableWidth / nativeWidth, availableHeight / nativeHeight));
+        // The viewer lives inside a vertical stack where height can expand with content.
+        // Scale primarily from available width, then cap by a fraction of the window height.
+        var widthScale = availableWidth / nativeWidth;
+        var windowHeight = Math.Max(1, Bounds.Height);
+        var maxViewerHeight = Math.Max(220, windowHeight * 0.62);
+        var heightScaleCap = maxViewerHeight / nativeHeight;
+        var scale = Math.Max(0.1, Math.Min(widthScale, heightScaleCap));
 
         var displayWidth = Math.Max(1, Math.Floor(nativeWidth * scale));
         var displayHeight = Math.Max(1, Math.Floor(nativeHeight * scale));

@@ -444,7 +444,7 @@
                                                               BorderBrush="Transparent"
                                                               CornerRadius="0"
                                                               Background="Transparent"
-                                                              MinHeight="360"
+                                                                  MinHeight="460"
                                                               ClipToBounds="True">
                                                             <Grid ClipToBounds="True">
                                                                   <Border x:Name="ArenaEmbeddedViewerSurface"

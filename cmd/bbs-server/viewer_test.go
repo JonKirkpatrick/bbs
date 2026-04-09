@@ -68,3 +68,48 @@ func TestDownsampleReplayRawFrames(t *testing.T) {
 		}
 	})
 }
+
+func TestExtractFrameStreamPacket(t *testing.T) {
+	t.Run("valid base64 packet", func(t *testing.T) {
+		rawState := `{"viewer":{"frame_stream":{"version":1,"mime_type":"image/png","encoding":"base64","data":"abcd","width":640,"height":360,"frame_id":"f1","key_frame":true}}}`
+		packet := extractFrameStreamPacket(rawState)
+		if packet == nil {
+			t.Fatalf("packet is nil")
+		}
+		if packet.MimeType != "image/png" {
+			t.Fatalf("mime_type = %q, want image/png", packet.MimeType)
+		}
+		if packet.Encoding != "base64" {
+			t.Fatalf("encoding = %q, want base64", packet.Encoding)
+		}
+		if packet.Data != "abcd" {
+			t.Fatalf("data = %q, want abcd", packet.Data)
+		}
+		if packet.Width != 640 || packet.Height != 360 {
+			t.Fatalf("size = %dx%d, want 640x360", packet.Width, packet.Height)
+		}
+		if !packet.KeyFrame {
+			t.Fatalf("key_frame = false, want true")
+		}
+	})
+
+	t.Run("missing packet", func(t *testing.T) {
+		rawState := `{"viewer":{}}`
+		if packet := extractFrameStreamPacket(rawState); packet != nil {
+			t.Fatalf("expected nil packet for missing frame_stream")
+		}
+	})
+
+	t.Run("invalid encoding", func(t *testing.T) {
+		rawState := `{"viewer":{"frame_stream":{"mime_type":"image/png","encoding":"gzip","data":"abcd"}}}`
+		if packet := extractFrameStreamPacket(rawState); packet != nil {
+			t.Fatalf("expected nil packet for unsupported encoding")
+		}
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		if packet := extractFrameStreamPacket("not-json"); packet != nil {
+			t.Fatalf("expected nil packet for invalid json")
+		}
+	})
+}

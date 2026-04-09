@@ -5,6 +5,16 @@ import random
 import sys
 
 
+def escape_svg_text(value):
+    text = str(value)
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    text = text.replace('"', "&quot;")
+    text = text.replace("'", "&#39;")
+    return text
+
+
 def parse_key_value_args(raw_args):
     values = {}
     if not isinstance(raw_args, list):
@@ -59,6 +69,7 @@ class GuessNumberGame:
     def get_state(self):
         progress_max = max(8, min(24, self.max_range // 4))
         outcome = "won" if self.game_over else "in_progress"
+        frame_stream = self._build_frame_stream()
 
         return {
             "state": json.dumps(
@@ -73,6 +84,7 @@ class GuessNumberGame:
                     "viewer": {
                         "mode": "client",
                         "hint": f"Enter an integer move from 1 to {self.max_range}",
+                        "frame_stream": frame_stream,
                         "progress": {
                             "label": "Attempt pressure",
                             "value": self.attempts,
@@ -81,6 +93,47 @@ class GuessNumberGame:
                     },
                 }
             )
+        }
+
+    def _build_frame_stream(self):
+        width = 960
+        height = 540
+        outcome = "won" if self.game_over else "in_progress"
+
+        status_color = "#2e7d32" if self.game_over else "#0b7285"
+        feedback = escape_svg_text(self.last_feedback)
+        guess_text = "-" if self.last_guess is None else str(self.last_guess)
+
+        svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' width='960' height='540' viewBox='0 0 960 540'>"
+            "<defs>"
+            "<linearGradient id='bg' x1='0' y1='0' x2='0' y2='1'>"
+            "<stop offset='0%' stop-color='#0f172a'/>"
+            "<stop offset='100%' stop-color='#111827'/>"
+            "</linearGradient>"
+            "</defs>"
+            "<rect width='960' height='540' fill='url(#bg)'/>"
+            "<rect x='24' y='24' width='912' height='492' rx='18' ry='18' fill='rgba(255,255,255,0.04)' stroke='rgba(255,255,255,0.14)'/>"
+            f"<text x='48' y='84' fill='#e2e8f0' font-size='40' font-family='monospace'>Guess Number</text>"
+            f"<text x='48' y='130' fill='#94a3b8' font-size='24' font-family='monospace'>Range: 1..{self.max_range}</text>"
+            f"<text x='48' y='188' fill='#f8fafc' font-size='32' font-family='monospace'>Attempts: {self.attempts}</text>"
+            f"<text x='48' y='236' fill='#f8fafc' font-size='32' font-family='monospace'>Last guess: {guess_text}</text>"
+            f"<text x='48' y='312' fill='{status_color}' font-size='30' font-family='monospace'>Status: {escape_svg_text(self.last_feedback)}</text>"
+            f"<text x='48' y='376' fill='#cbd5e1' font-size='24' font-family='monospace'>Outcome: {outcome}</text>"
+            f"<text x='48' y='430' fill='#94a3b8' font-size='20' font-family='monospace'>Frame stream v1 (SVG utf8)</text>"
+            f"<text x='48' y='470' fill='#64748b' font-size='18' font-family='monospace'>{feedback}</text>"
+            "</svg>"
+        )
+
+        return {
+            "version": 1,
+            "mime_type": "image/svg+xml",
+            "encoding": "utf8",
+            "data": svg,
+            "width": width,
+            "height": height,
+            "frame_id": f"guess-number-{self.attempts}",
+            "key_frame": True,
         }
 
     def validate_move(self, player_id, move):

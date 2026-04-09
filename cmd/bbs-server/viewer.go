@@ -38,11 +38,25 @@ type viewerParticipant struct {
 // rawViewerFrame is a minimal frame model with just raw game state and metadata.
 // The client plugin renderer is responsible for parsing and rendering the raw state.
 type rawViewerFrame struct {
-	MoveIndex  int    `json:"move_index"`
-	Timestamp  string `json:"timestamp,omitempty"`
-	RawState   string `json:"raw_state"`
-	IsTerminal bool   `json:"is_terminal"`
-	Winner     string `json:"winner,omitempty"`
+	MoveIndex int    `json:"move_index"`
+	Timestamp string `json:"timestamp,omitempty"`
+	RawState  string `json:"raw_state"`
+	// FrameStream is an optional, transport-friendly visual payload exposed by plugins.
+	// When present, hosts can render this directly as pixels without executing plugin JS.
+	FrameStream *viewerFrameStreamPacket `json:"frame_stream,omitempty"`
+	IsTerminal  bool                     `json:"is_terminal"`
+	Winner      string                   `json:"winner,omitempty"`
+}
+
+type viewerFrameStreamPacket struct {
+	Version  int    `json:"version,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	Encoding string `json:"encoding,omitempty"`
+	Data     string `json:"data,omitempty"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+	FrameID  string `json:"frame_id,omitempty"`
+	KeyFrame bool   `json:"key_frame,omitempty"`
 }
 
 type viewerReplayResponse struct {
@@ -325,11 +339,13 @@ func buildReplayRawFrames(record stadium.MatchRecord) ([]rawViewerFrame, error) 
 	frames := make([]rawViewerFrame, 0, len(record.Moves)+1)
 
 	// Initial frame
+	initialState := game.GetState()
 	frames = append(frames, rawViewerFrame{
-		MoveIndex:  0,
-		Timestamp:  record.StartedAt,
-		RawState:   game.GetState(),
-		IsTerminal: false,
+		MoveIndex:   0,
+		Timestamp:   record.StartedAt,
+		RawState:    initialState,
+		FrameStream: extractFrameStreamPacket(initialState),
+		IsTerminal:  false,
 	})
 
 	if len(record.Moves) > 0 {
@@ -338,11 +354,13 @@ func buildReplayRawFrames(record stadium.MatchRecord) ([]rawViewerFrame, error) 
 				return nil, fmt.Errorf("failed to apply move %d (%s): %w", i+1, move.Move, err)
 			}
 
+			state := game.GetState()
 			frames = append(frames, rawViewerFrame{
-				MoveIndex:  i + 1,
-				Timestamp:  move.OccurredAt,
-				RawState:   game.GetState(),
-				IsTerminal: false,
+				MoveIndex:   i + 1,
+				Timestamp:   move.OccurredAt,
+				RawState:    state,
+				FrameStream: extractFrameStreamPacket(state),
+				IsTerminal:  false,
 			})
 
 			if over, _ := game.IsGameOver(); over {
@@ -365,10 +383,12 @@ func buildReplayRawFrames(record stadium.MatchRecord) ([]rawViewerFrame, error) 
 				return nil, fmt.Errorf("failed to apply fallback move %d (%s): %w", i+1, move, err)
 			}
 
+			state := game.GetState()
 			frames = append(frames, rawViewerFrame{
-				MoveIndex:  i + 1,
-				RawState:   game.GetState(),
-				IsTerminal: false,
+				MoveIndex:   i + 1,
+				RawState:    state,
+				FrameStream: extractFrameStreamPacket(state),
+				IsTerminal:  false,
 			})
 
 			if over, _ := game.IsGameOver(); over {
@@ -419,10 +439,11 @@ func buildLiveRawViewerEvent(arenaID int) (viewerLiveEvent, bool, error) {
 	}
 
 	frame := rawViewerFrame{
-		MoveIndex:  arenaState.MoveCount,
-		Timestamp:  arenaState.LastMoveAt,
-		RawState:   arenaState.GameState,
-		IsTerminal: false,
+		MoveIndex:   arenaState.MoveCount,
+		Timestamp:   arenaState.LastMoveAt,
+		RawState:    arenaState.GameState,
+		FrameStream: extractFrameStreamPacket(arenaState.GameState),
+		IsTerminal:  false,
 	}
 
 	if arenaState.Status == "completed" || arenaState.Status == "aborted" {
@@ -599,4 +620,88 @@ func downsampleReplayRawFrames(frames []rawViewerFrame, maxFrames int) []rawView
 
 	out = append(out, frames[lastIdx])
 	return out
+}
+
+func extractFrameStreamPacket(rawState string) *viewerFrameStreamPacket {
+	rawState = strings.TrimSpace(rawState)
+	if rawState == "" {
+		return nil
+	}
+
+	var root map[string]interface{}
+	if err := json.Unmarshal([]byte(rawState), &root); err != nil {
+		return nil
+	}
+
+	viewer, ok := root["viewer"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	rawPacket, ok := viewer["frame_stream"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	packet := &viewerFrameStreamPacket{}
+
+	if v, ok := toInt(rawPacket["version"]); ok {
+		packet.Version = v
+	}
+	if v, ok := toString(rawPacket["mime_type"]); ok {
+		packet.MimeType = v
+	}
+	if v, ok := toString(rawPacket["encoding"]); ok {
+		packet.Encoding = strings.ToLower(v)
+	}
+	if v, ok := toString(rawPacket["data"]); ok {
+		packet.Data = v
+	}
+	if v, ok := toInt(rawPacket["width"]); ok {
+		packet.Width = v
+	}
+	if v, ok := toInt(rawPacket["height"]); ok {
+		packet.Height = v
+	}
+	if v, ok := toString(rawPacket["frame_id"]); ok {
+		packet.FrameID = v
+	}
+	if v, ok := rawPacket["key_frame"].(bool); ok {
+		packet.KeyFrame = v
+	}
+
+	if packet.MimeType == "" || packet.Encoding == "" || packet.Data == "" {
+		return nil
+	}
+
+	if packet.Encoding != "base64" && packet.Encoding != "utf8" && packet.Encoding != "data_url" {
+		return nil
+	}
+
+	return packet
+}
+
+func toString(value interface{}) (string, bool) {
+	v, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
+func toInt(value interface{}) (int, bool) {
+	switch n := value.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	default:
+		return 0, false
+	}
 }

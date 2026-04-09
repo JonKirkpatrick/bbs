@@ -82,7 +82,13 @@
             border: 1px solid var(--line);
             background: white;
             padding: 0.5rem;
-            overflow: auto;
+            overflow: hidden;
+        }
+
+        .canvas-wrap canvas {
+            width: 100%;
+            height: auto;
+            max-width: 100%;
         }
 
         canvas {
@@ -275,6 +281,8 @@
         let activePluginRenderer = null;
         let activePluginGame = "";
         let activePluginEntryURL = "";
+        let activeFrameStreamSource = "";
+        let activeFrameStreamImage = null;
         const loadedPluginEntries = new Set();
         const pluginRenderers = new Map();
 
@@ -414,6 +422,10 @@
                 return;
             }
 
+            if (renderFrameStreamPacket(frame.frame_stream, frame)) {
+                return;
+            }
+
             let rendered = false;
             if (activePluginRenderer && typeof activePluginRenderer.render === "function") {
                 try {
@@ -438,6 +450,63 @@
             if (!rendered) {
                 clearCanvasNotice("No plugin renderer registered for game '" + (gameName || "unknown") + "'.");
             }
+        }
+
+        function renderFrameStreamPacket(packet, frame) {
+            if (!packet || typeof packet !== "object") {
+                return false;
+            }
+
+            const mimeType = String(packet.mime_type || "").trim();
+            const encoding = String(packet.encoding || "").trim().toLowerCase();
+            const data = typeof packet.data === "string" ? packet.data : "";
+            if (!mimeType || !encoding || !data) {
+                return false;
+            }
+
+            let source = "";
+            if (encoding === "base64") {
+                source = "data:" + mimeType + ";base64," + data;
+            } else if (encoding === "utf8") {
+                source = "data:" + mimeType + ";charset=utf-8," + encodeURIComponent(data);
+            } else if (encoding === "data_url") {
+                source = data;
+            } else {
+                return false;
+            }
+
+            const width = Number(packet.width || 0);
+            const height = Number(packet.height || 0);
+            if (width > 0 && height > 0 && (canvas.width !== width || canvas.height !== height)) {
+                canvas.width = width;
+                canvas.height = height;
+            }
+
+            if (source !== activeFrameStreamSource || !activeFrameStreamImage) {
+                activeFrameStreamSource = source;
+                const img = new Image();
+                img.onload = function () {
+                    activeFrameStreamImage = img;
+                    if ((lastLiveEvent && frame === lastLiveEvent.frame) || replayFrames[replayIndex] === frame) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(activeFrameStreamImage, 0, 0, canvas.width, canvas.height);
+                    }
+                };
+                img.onerror = function () {
+                    activeFrameStreamImage = null;
+                    setStatus("Invalid frame stream image payload.", true);
+                };
+                img.src = source;
+            }
+
+            if (!activeFrameStreamImage) {
+                clearCanvasNotice("Loading frame stream...");
+                return true;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(activeFrameStreamImage, 0, 0, canvas.width, canvas.height);
+            return true;
         }
 
         function stopReplayTimer() {
