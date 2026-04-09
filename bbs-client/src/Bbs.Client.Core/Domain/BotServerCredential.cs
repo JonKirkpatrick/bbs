@@ -1,5 +1,3 @@
-using System;
-
 namespace Bbs.Client.Core.Domain;
 
 public sealed record BotServerCredential(

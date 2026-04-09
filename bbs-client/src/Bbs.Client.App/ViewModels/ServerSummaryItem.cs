@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Avalonia.Media;
 using Bbs.Client.Core.Domain;
 

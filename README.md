@@ -270,12 +270,21 @@ CREATE mygame board_size=8
 - `protocol_version` must match `games/pluginapi.ProtocolVersion` (currently `1`).
 - Plugin process contract uses JSONL requests/responses over stdin/stdout.
 - Use stderr for plugin logs; stdout is reserved for protocol messages.
-- `viewer_client_entry` is required and must resolve to a JavaScript file in the plugin directory (or an absolute path).
-- BBS viewer payloads contain raw frame state; all rendering is handled by the plugin client bundle loaded from `/viewer/plugin-entry?game=<name>`.
+- Viewer payloads always include raw frame state (`raw_state`) from your `GetState()` output.
+- Viewer rendering is frame-stream first: if `raw_state.viewer.frame_stream` is present and valid, hosts render pixels directly (video-like playback).
+- JS renderer remains as compatibility fallback via `/viewer/plugin-entry?game=<name>` when frame stream is absent/invalid.
+- `viewer_client_entry` is still required by the current manifest/linter contract for compatibility, but JS-only rendering is planned for deprecation in a future release.
+
+Frame-stream packet notes:
+
+- Path inside state payload: `viewer.frame_stream`
+- Required fields: `mime_type`, `encoding` (`base64` | `utf8` | `data_url`), `data`
+- Optional fields: `version`, `width`, `height`, `frame_id`, `key_frame`
 
 ### Authoring Best Practices
 
 - Keep `GetState()` deterministic and machine-parseable JSON.
+- Prefer publishing visual output through `viewer.frame_stream` so non-JS hosts can render frames directly.
 - Return actionable errors from `ValidateMove` and `ApplyMove`.
 - Parse args defensively and provide clear validation messages.
 - Treat plugin startup and `init` as fast-path operations.
@@ -293,6 +302,10 @@ CREATE mygame board_size=8
   - check server logs for `[game-plugin]` messages
 - Manifest skipped during plugin discovery:
   - verify `viewer_client_entry` exists and does not contain `..`
+- Viewer appears blank or stuck on loading:
+  - verify `viewer.frame_stream.encoding` is `base64`, `utf8`, or `data_url`
+  - verify `mime_type` and `data` are non-empty on emitted frames
+  - verify your `state` string remains valid JSON
 - Plugin appears to hang:
   - ensure protocol writes only JSON responses on stdout
   - ensure logging is written to stderr

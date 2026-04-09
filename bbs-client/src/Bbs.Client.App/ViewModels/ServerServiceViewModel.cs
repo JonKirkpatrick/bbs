@@ -1,11 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Net.Http;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Threading;
 using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
@@ -17,7 +11,6 @@ public sealed class ServerServiceViewModel : ViewModelBase
 {
     // Constants for server probing and discovery
     private const int ServerProbeTimeoutMs = 1200;
-    private const int ServerCatalogFetchTimeoutMs = 2000;
     private const int ServerCatalogSelectionRefreshCooldownMs = 5000;
     private const int DashboardPortFallback = 3000;
     private const int BotTcpDefaultPort = 8080;

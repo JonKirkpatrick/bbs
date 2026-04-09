@@ -1,16 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Threading;
 using System.Windows.Input;
 using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;
@@ -22,17 +11,8 @@ namespace Bbs.Client.App.ViewModels;
 
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
-    private const int ServerProbeTimeoutMs = 1200;
     private const int ServerCatalogFetchTimeoutMs = 2000;
-    private const int ServerCatalogSelectionRefreshCooldownMs = 5000;
     private const int BotTcpDefaultPort = 8080;
-    private const int ServerProbeMaxAttempts = 2;
-    private const int ServerProbeRetryDelayMs = 200;
-    private const string ProbeStatusMetadataKey = "probe_status";
-    private const string ProbeLastCheckedMetadataKey = "probe_last_checked_utc";
-    private const string ProbeLastErrorMetadataKey = "probe_last_error";
-    private const string ClientOwnerTokenMetadataKey = "client.owner_token";
-
     private readonly IClientLogger _logger;
     private readonly PersonaManager? _personaManager;
     private string? _currentPersonaPath;

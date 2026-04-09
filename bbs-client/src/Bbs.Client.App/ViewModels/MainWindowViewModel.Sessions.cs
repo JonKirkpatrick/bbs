@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using Bbs.Client.Core.Domain;
 
 namespace Bbs.Client.App.ViewModels;

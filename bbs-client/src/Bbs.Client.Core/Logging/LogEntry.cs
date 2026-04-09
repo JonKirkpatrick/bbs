@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Bbs.Client.Core.Logging;
 
 public sealed class LogEntry

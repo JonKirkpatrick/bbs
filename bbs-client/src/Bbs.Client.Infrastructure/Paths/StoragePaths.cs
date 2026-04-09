@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace Bbs.Client.Infrastructure.Paths;
 
 internal static class StoragePaths

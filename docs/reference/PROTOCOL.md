@@ -128,6 +128,19 @@ The dashboard is served on default port `3000` (override with `--dash`).
 - `GET /viewer/replay-data?match_id=<id>` replay JSON
 - `GET /viewer/plugin-entry?game=<name>` plugin viewer client bundle
 
+Viewer rendering contract (current release):
+
+- Live/replay frame payloads include `raw_state` from plugin `GetState()` output.
+- Rendering is frame-stream first: if `raw_state.viewer.frame_stream` is present and valid, viewers render pixels directly.
+- JS renderer remains a compatibility fallback loaded via `/viewer/plugin-entry?game=<name>` when frame stream is absent/invalid.
+- `viewer_client_entry` remains required by current manifest/linter/runtime validation, even when plugins publish frame-stream payloads.
+- JS-only rendering is planned for deprecation in a future release.
+
+`viewer.frame_stream` packet fields:
+
+- Required: `mime_type`, `encoding` (`base64` | `utf8` | `data_url`), `data`
+- Optional: `version`, `width`, `height`, `frame_id`, `key_frame`
+
 `GET /api/arenas` response includes per-arena viewer hints:
 
 - `viewer_url`: preferred live viewer URL (currently `/viewer/canvas?...`)

@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Bbs.Client.Core.Domain;
 using Bbs.Client.Core.Logging;

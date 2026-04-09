@@ -6,7 +6,6 @@ using Bbs.Client.App.Views;
 using Bbs.Client.Core.Logging;
 using Bbs.Client.Infrastructure.Logging;
 using Bbs.Client.Infrastructure.Personas;
-using System;
 
 namespace Bbs.Client.App;
 

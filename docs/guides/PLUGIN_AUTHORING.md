@@ -8,6 +8,8 @@ This guide is for external developers building process-based game plugins for Bu
 - Plugin protocol version must match `games/pluginapi.ProtocolVersion` (currently `1`).
 - Use `stderr` for logs. Keep `stdout` protocol-only.
 - Plugins may be implemented in any language as long as the executable process speaks the JSONL RPC protocol.
+- `GetState()` should return deterministic JSON text in `state` (`raw_state` in viewer payloads).
+- Viewer now supports an optional frame-stream payload in `raw_state.viewer.frame_stream` for direct pixel rendering.
 
 ## Plugin Runtime Model
 
@@ -42,6 +44,8 @@ Optional top-level fields:
 | `supports_move_clock` | bool | no | Whether dashboard should expose move clock controls. |
 | `supports_handicap` | bool | no | Whether dashboard should expose handicap controls. |
 | `args` | array | no | Schema for dashboard game-argument form. |
+| `viewer_client_entry` | string | compatibility-required (current release) | Legacy plugin JS entry for client renderer fallback. Planned for deprecation in a future release once manifest contract is relaxed. |
+| `supports_replay` | bool | no | Whether plugin renderer supports replay timelines. |
 
 `args[]` field schema:
 
@@ -63,6 +67,8 @@ Example manifest:
   "name": "mygame",
   "display_name": "My Game",
   "executable": "my-game-plugin",
+  "viewer_client_entry": "my_game_viewer.js",
+  "supports_replay": true,
   "supports_move_clock": true,
   "supports_handicap": false,
   "args": [
@@ -115,19 +121,50 @@ The linter validates:
 
 ## Viewer Integration
 
-Viewer rendering is now fully externalized to plugin-provided JavaScript bundles.
+Viewer rendering is frame-stream first.
+
+How viewer rendering now works (in order):
+
+- Viewer receives live/replay frames from `/viewer/live-sse` or `/viewer/live-ws`, and replay snapshots from `/viewer/replay-data`.
+- Every frame includes `raw_state` (your `GetState()` JSON string).
+- If `raw_state.viewer.frame_stream` is present and valid, the viewer renders that payload directly (video-like frame playback).
+- If frame stream is missing/invalid, viewer falls back to plugin JS renderer loaded from `/viewer/plugin-entry?game=<name>`.
+
+This means plugin authors are no longer forced to rely exclusively on JavaScript rendering for every frame.
 
 Required manifest fields:
 
-- `viewer_client_entry`: path to the plugin viewer JS file.
-- `supports_replay`: set `true` when the renderer supports replay timelines.
+- `viewer_client_entry`: path to plugin viewer JS file (still required by current manifest/linter contract for compatibility).
 
-How rendering works:
+Frame-stream packet schema (inside your `GetState()` JSON):
 
-- BBS sends raw frame data (`raw_state`, move metadata, terminal/winner flags).
-- The viewer page loads the plugin bundle from `/viewer/plugin-entry?game=<name>`.
-- The bundle registers a renderer with:
+Path: `viewer.frame_stream`
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `version` | number | no | Optional protocol marker (for example `1`). |
+| `mime_type` | string | yes | Example: `image/png`, `image/jpeg`, `image/svg+xml`. |
+| `encoding` | string | yes | One of: `base64`, `utf8`, `data_url`. |
+| `data` | string | yes | Encoded image payload. |
+| `width` | number | no | Canvas width hint. |
+| `height` | number | no | Canvas height hint. |
+| `frame_id` | string | no | Optional frame identifier. |
+| `key_frame` | bool | no | Optional keyframe hint. |
+
+Minimal `state` example with frame stream:
+
+```json
+{
+  "state": "{\"viewer\":{\"frame_stream\":{\"version\":1,\"mime_type\":\"image/svg+xml\",\"encoding\":\"utf8\",\"data\":\"<svg ...>...</svg>\",\"width\":960,\"height\":540,\"frame_id\":\"f-42\",\"key_frame\":true}}}"
+}
+```
+
+Legacy JS renderer contract (fallback path):
+
+- Bundle is served from `/viewer/plugin-entry?game=<name>`.
+- Bundle registers once via:
   - `window.BBSViewerPluginRuntime.register("<game_name>", { render(payload) { ... } })`
+- This path remains supported in the current release but is expected to be deprecated in a future release as frame-stream adoption completes.
 
 Renderer payload shape:
 
@@ -140,9 +177,10 @@ Renderer payload shape:
 Practical guidance:
 
 - Keep `GetState()` deterministic and machine-parseable JSON.
-- Put all visual data the renderer needs into `raw_state`.
-- Return `true` from renderer `render(payload)` when the frame is handled.
-- Keep bundle startup side effects minimal and register exactly once.
+- Put all visual data needed by non-JS viewers into `raw_state.viewer.frame_stream`.
+- If you still ship JS fallback, return `true` from `render(payload)` when handled.
+- Keep JS bundle startup side effects minimal and register exactly once.
+- Prefer stable frame dimensions (`width`/`height`) to avoid canvas resize churn.
 
 ## Release Checklist
 
@@ -152,8 +190,10 @@ Practical guidance:
 4. Confirm dashboard Plugin Discovery panel shows `loaded` and no skipped reason.
 5. Create arena from dashboard and from TCP `CREATE` command.
 6. Verify `GetState()` output remains deterministic and machine-parseable.
-7. Confirm graceful shutdown behavior on arena teardown.
-8. Publish binary + manifest together.
+7. If using frame stream, verify `viewer.frame_stream` has valid `mime_type`, `encoding`, and `data`.
+8. Confirm live and replay viewer behavior both work with your frame payload.
+9. Confirm graceful shutdown behavior on arena teardown.
+10. Publish binary + manifest together.
 
 ## Troubleshooting
 
@@ -164,6 +204,10 @@ Practical guidance:
 - Manifest skipped:
   - Open dashboard Plugin Discovery panel and inspect `Reason`.
   - Run linter locally for direct path errors.
+- Live/replay shows "Loading frame stream..." or blank canvas:
+  - Validate `viewer.frame_stream.encoding` is one of `base64`, `utf8`, `data_url`.
+  - Validate `mime_type` and `data` are non-empty on every rendered frame.
+  - Verify emitted payload is valid JSON within the `state` string.
 - Runtime launch failure:
   - Verify `executable` resolves correctly relative to manifest directory or absolute path.
   - Run executable directly and check stderr logs.

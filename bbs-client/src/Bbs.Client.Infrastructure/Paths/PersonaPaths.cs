@@ -1,4 +1,3 @@
-using System.IO;
 using Bbs.Client.Infrastructure.Paths;
 
 namespace Bbs.Client.Infrastructure.Personas;

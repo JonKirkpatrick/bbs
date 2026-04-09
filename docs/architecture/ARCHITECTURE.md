@@ -122,11 +122,17 @@ Key fields:
 - `name`
 - `display_name`
 - `executable`
-- `viewer_client_entry` (required)
+- `viewer_client_entry` (compatibility-required in current release)
 - `supports_replay`
 - `supports_move_clock`
 - `supports_handicap`
 - `args[]` for dashboard/runtime schema
+
+Compatibility note:
+
+- `viewer_client_entry` is currently required by manifest validation and runtime discovery.
+- Viewer execution is no longer JS-only; frame stream can render directly without plugin JS.
+- JS fallback remains available and is expected to be deprecated in a future release.
 
 ### RPC Contract (`games/pluginapi`)
 
@@ -163,14 +169,16 @@ The manifest `args` schema is intentionally shared with the dashboard's dynamic 
 
 ## Viewer Architecture
 
-The viewer uses a client-side rendering model where all game visualization logic runs in the browser.
+The viewer uses a frame-stream-first rendering model with JS fallback.
 
 ### Live Viewing
 
 - `/viewer?arena_id=<id>` serves an HTML shell
 - `/viewer/canvas?arena_id=<id>` serves a minimal canvas-only HTML shell for embedded clients
 - `/viewer/live-sse?arena_id=<id>` (or `/viewer/live-ws`) streams raw game state frames + plugin metadata
-- server emits only the raw state string from `game.GetState()`; structured frame data is built by client JS
+- server emits raw state from `game.GetState()` and extracts optional `viewer.frame_stream` packet
+- when `viewer.frame_stream` is valid, hosts render pixels directly (video-like path)
+- when `viewer.frame_stream` is missing/invalid, host falls back to plugin JS renderer
 
 Embedded client pattern:
 
@@ -182,20 +190,27 @@ Embedded client pattern:
 
 - `/viewer?match_id=<id>` serves an HTML shell for archived matches
 - `/viewer/replay-data?match_id=<id>` returns a JSON object with frame history (downsampled by `max_frames` query param)
-- client reconstructs frames by parsing raw state and applying game plugin logic
+- replay frames include `raw_state` and optional `frame_stream`; same frame-stream-first rendering path applies
 
 ### Plugin Client Entry Point
 
 - Each plugin manifest declares `viewer_client_entry`: a relative or absolute path to a JavaScript file
 - `/viewer/plugin-entry?game=<name>` serves the JS bundle for a specific game
 - Client runtime calls `window.BBSViewerPluginRuntime.register(gameName, { render: ... })` to install the renderer
-- Renderer receives raw state and renders to a canvas
+- Renderer receives raw state and renders to a canvas when fallback is needed
+
+Frame stream payload contract (inside `raw_state` JSON):
+
+- Path: `viewer.frame_stream`
+- Required: `mime_type`, `encoding` (`base64` | `utf8` | `data_url`), `data`
+- Optional: `version`, `width`, `height`, `frame_id`, `key_frame`
 
 This model ensures:
 - zero server-side render coupling
 - game developers own visualization entirely
 - replay viewing works identically to live viewing
-- viewer bundle is versioned with the game plugin
+- frame payloads can be consumed by hosts without executing plugin JS
+- viewer bundle remains versioned with the game plugin during transition
 
 ## Dashboard Integration
 
@@ -206,7 +221,7 @@ Effects:
 - dropdown is always in sync with runtime game catalog
 - per-game arg fields are schema-driven
 - move-clock/handicap controls auto-adjust by game capability
-- viewer pages load plugin-provided client bundles via `/viewer/plugin-entry`
+- viewer pages prefer frame-stream rendering and use `/viewer/plugin-entry` as compatibility fallback
 
 This means valid plugins are presented uniformly in owner and admin create flows.
 

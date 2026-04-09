@@ -1,5 +1,3 @@
-using System;
-
 namespace Bbs.Client.Infrastructure.Personas;
 
 /// <summary>

@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Bbs.Client.Core.Logging;
 
 public interface IClientLogger
