@@ -50,6 +50,29 @@
                   VerticalAlignment="Center"
                   IsHitTestVisible="False" />
 
+            <Path x:Name="LogoPulsingOverlayPath"
+                  Data="{StaticResource LogoPulsingOverlay}"
+                  Width="512"
+                  Height="512"
+                  Stretch="None"
+                  Stroke="#FFFF00FF"
+                  StrokeThickness="2"
+                  Opacity="0"
+                  IsHitTestVisible="False"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  RenderTransformOrigin="0.5,0.5">
+                  <Path.Effect>
+                        <BlurEffect Radius="16" />
+                  </Path.Effect>
+                  <Path.RenderTransform>
+                        <TransformGroup>
+                              <ScaleTransform ScaleX="1" ScaleY="1" />
+                              <TranslateTransform X="10" Y="10" />
+                        </TransformGroup>
+                  </Path.RenderTransform>
+            </Path>
+
       <Grid RowDefinitions="32,*" Margin="0,0,0,16">
             <Menu Grid.Row="0" 
                   Height="32" 

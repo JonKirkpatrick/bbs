@@ -73,7 +73,7 @@ Thumbs.db
 htmlcov/
 
 # Runtime SQLite artifacts
-/bbs.sqlite3*
+*.sqlite3
 /cmd/bbs-server/data/bbs.sqlite3*
 /cmd/bbs-server/bbs.sqlite3*
 

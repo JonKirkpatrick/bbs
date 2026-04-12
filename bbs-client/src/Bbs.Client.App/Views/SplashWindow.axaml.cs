@@ -9,7 +9,7 @@ namespace Bbs.Client.App.Views;
 public partial class SplashWindow : Window
 {
     private const int DefaultVerticalCenterOffsetPx = 32;
-    private const int FrameCount = 77;
+    private const int FrameCount = 81;
     private const double FramesPerSecond = 30.0;
     private const int FrameIndexStart = 1;
     private const int FinalFrameHoldMs = 120;

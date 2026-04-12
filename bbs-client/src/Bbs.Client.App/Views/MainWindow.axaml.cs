@@ -1,10 +1,15 @@
 using System.ComponentModel;
 using System.Reflection;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Styling;
 using Bbs.Client.App.ViewModels;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 
 namespace Bbs.Client.App.Views;
 
@@ -15,6 +20,8 @@ public partial class MainWindow : Window
     private ContentControl? _embeddedViewerHost;
     private Border? _embeddedViewerSurface;
     private Border? _embeddedViewerViewport;
+    private ShapePath? _logoPulsingOverlayPath;
+    private bool _logoPulsePlayed;
     private const double EmbeddedViewerSurfacePadding = 6;
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
@@ -27,11 +34,12 @@ public partial class MainWindow : Window
         DataContextChanged += OnDataContextChanged;
     }
 
-    private void OnOpened(object? sender, EventArgs e)
+    private async void OnOpened(object? sender, EventArgs e)
     {
         EnsureEmbeddedViewerLayoutHooks();
         TryInitializeEmbeddedViewer();
         UpdateEmbeddedViewerLayout();
+        await PlayStartupLogoPulseAsync();
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -188,6 +196,55 @@ public partial class MainWindow : Window
     private void OnEmbeddedViewerViewportSizeChanged(object? sender, SizeChangedEventArgs e)
     {
         UpdateEmbeddedViewerLayout();
+    }
+
+    private async Task PlayStartupLogoPulseAsync()
+    {
+        if (_logoPulsePlayed)
+        {
+            return;
+        }
+
+        _logoPulsingOverlayPath ??= this.FindControl<ShapePath>("LogoPulsingOverlayPath");
+        if (_logoPulsingOverlayPath is null)
+        {
+            return;
+        }
+
+        _logoPulsePlayed = true;
+
+        await Task.Delay(TimeSpan.FromMilliseconds(150));
+
+        var pulseAnimation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(1650),
+            IterationCount = new IterationCount(1),
+            Easing = new SineEaseOut(),
+            FillMode = FillMode.None,
+            PlaybackDirection = PlaybackDirection.Normal,
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0d),
+                    Setters =
+                    {
+                        new Setter(Visual.OpacityProperty, 0.8d),
+                    }
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1d),
+                    Setters =
+                    {
+                        new Setter(Visual.OpacityProperty, 0d),
+                    }
+                }
+            }
+        };
+
+        await pulseAnimation.RunAsync(_logoPulsingOverlayPath);
+        _logoPulsingOverlayPath.Opacity = 0;
     }
 
     private void UpdateEmbeddedViewerLayout()
