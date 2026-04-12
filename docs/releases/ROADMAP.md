@@ -10,7 +10,7 @@ Build-a-Bot Stadium should be a practical platform for running bots in process-p
 
 Near-term work focuses on:
 
-- an alpha desktop client for bot-centric orchestration and server discovery/interaction
+- desktop client hardening and operability improvements
 - persistent server-side storage with SQLite
 - meaningful unit test coverage for core components
 
@@ -29,149 +29,94 @@ Near-term work focuses on:
 
 ## Near-Term Release Focus
 
-## Release Track A: Desktop Client (Alpha)
+Status snapshot (12 April 2026):
 
-Current status snapshot (23 March 2026):
-- Completed: A0, A1, A2, and A3 baseline (`A3-01` through `A3-04`).
-- In progress: `A3-05` bot glow-state semantics and later A4-A6 slices.
-- Tracking source of truth: `docs/releases/TRACK_A_TASK_CHECKLIST.md`.
+- Desktop client alpha objectives from Track A have been delivered in the v0.5.0 cycle.
+- Server-side SQLite persistence foundations are delivered.
+- Documentation has moved to the Docusaurus flow and is now being normalized for versioned releases.
 
-Goal:
-- Introduce a local desktop client that manages bots as first-class entities and orchestrates agent+bot runtime transparently.
+Track A planning docs were useful during implementation, but they are no longer the source of truth.
+Current execution status should be inferred from released behavior (CHANGELOG + code), with roadmap tracking only forward-looking work.
 
-Scope:
-- Establish a persistent client identity on first launch (local ID now, global/federated ID-compatible model).
-- Introduce persistent local storage for client state (SQLite preferred default; lightweight fallback optional only if SQLite proves unnecessary).
-- Launch directly into a unified workspace view (no top-level mode switching).
-- Include a collapsible left panel for bots and a collapsible right panel for servers.
-- Use the center activity area as a context-driven workspace that loads bot/server-specific flows.
-- Bot panel scope:
-	- render one card per registered bot,
-	- include entry point to register a new bot,
-	- show glanceable status glow states on cards (amber=attached, green=active runtime session, red=error).
-- Server panel scope:
-	- render one card per known server,
-	- probe cached servers on startup to refresh availability,
-	- show glanceable server status (green=live, grey=inactive/offline).
-- Center activity scope:
-	- load bot registration and bot metadata/editor flows,
-	- load server detail views when a server is selected,
-	- expose owner-token-gated commands for the selected server and its active sessions (for example create/join arena actions).
+## Completed Track: Desktop Client Alpha (Track A)
 
-Definition of done:
-- First launch initializes durable client identity and persistent storage automatically.
-- User can register at least one bot profile and deploy it from the GUI, with runtime lifecycle handled by the client.
-- The selected server view can retrieve server access metadata from the known server profile and fall back to the agent control channel when needed.
-- Known server records persist across restarts, including cached plugin catalog snapshots.
-- Unified single-view layout is functional with collapsible bot/server side panels and context-driven center workspace.
-- Bot and server cards expose the planned alpha status indicators (bot: amber/green/red, server: green/grey).
-- Startup server probing updates known server availability state in the UI.
-- Selecting bot/server cards loads appropriate context views in the center activity area.
-- Server-context views can surface owner-token-gated actions in the center workspace.
-- Alpha build/run instructions documented for Linux desktop environment.
+Outcome:
 
-Likely follow-on:
-- Per-bot global identity strategy, cross-server credential lifecycle policies, and richer federated server resolution behavior.
+- Unified desktop workspace with left/center/right panel model.
+- Persona-driven local workspace state.
+- Bot profile registration/edit/deploy lifecycle.
+- Known server registration, probing, and metadata/catalog cache usage.
+- Owner-token/server-access aware context flows.
+- Arena-viewer integration and packaging baseline.
 
-Implementation slices (Track A alpha):
+Follow-on work moved into active roadmap tracks below.
 
-Execution checklist reference:
-- `docs/releases/TRACK_A_TASK_CHECKLIST.md`
-
-Slice A0: Foundation and project skeleton
-- Create Avalonia solution skeleton, baseline MVVM structure, and app shell.
-- Define core client domain models (`ClientIdentity`, `BotProfile`, `KnownServer`, `ServerPluginCache`, `AgentRuntimeState`).
-- Add lightweight telemetry/logging abstraction for local diagnostics.
-- Checkpoint outcome: app launches to shell, no persistence yet, architecture and model contracts established.
-
-Slice A1: Persistence and first-launch identity
-- Introduce storage layer with SQLite as default implementation.
-- Implement first-launch initialization flow for durable client identity.
-- Add schema versioning and startup migration path for client DB.
-- Checkpoint outcome: identity and empty collections persist across restarts.
-
-Slice A2: Unified layout and panel infrastructure
-- Build unified workspace UI with collapsible left bot panel and right server panel.
-- Implement center activity host and navigation/context routing model.
-- Add card components for bot/server lists with status rendering hooks.
-- Checkpoint outcome: static panel interactions work and center area swaps context views.
-
-Slice A3: Bot registration and orchestration wiring
-- Implement bot registration/edit form in center activity area.
-- Persist bot metadata including launch path and args.
-- Implement deploy orchestration path that launches/monitors agent+bot transparently.
-- Map orchestration status to bot card glow states (amber/green/red).
-- Checkpoint outcome: at least one bot can be registered, attached, detached, and status-reflected in UI.
-
-Slice A4: Known server management and probing
-- Implement known server registration/edit workflow and persistence.
-- Add startup/server-list probe cycle for cached endpoints.
-- Cache server metadata and plugin catalog snapshots on successful contact.
-- Render server card status (green/grey) from probe state.
-- Checkpoint outcome: server list is persistent and availability updates at boot and refresh.
-
-Slice A5: Context server view and owner-token actions (alpha)
-- Implement server detail view in center activity area.
-- Resolve server access metadata from selected server profiles first, then agent control channel fallback.
-- Expose first owner-token-gated action stubs/flows (for example create/join arena command paths).
-- Checkpoint outcome: selected active server view can show gated controls for an attached bot session.
-
-Slice A6: Hardening and alpha packaging
-- Add integration tests for orchestration and storage initialization paths.
-- Add guardrails for process lifecycle errors and stale connection states.
-- Finalize Linux build/run packaging notes and developer setup documentation.
-- Checkpoint outcome: alpha path is documented, repeatable, and stable enough for internal usage.
-
-## Release Track B: Server Persistence (SQLite)
+## Active Track B: Server Persistence and Data Lifecycle
 
 Goal:
-- Move key runtime entities from memory-only behavior to durable storage.
+- Expand persistence from foundational coverage to operationally complete lifecycle management.
 
 Scope:
-- Introduce SQLite-backed persistence layer.
-- Persist core entities first (sessions/bot identity metadata, arenas, match history, and relevant snapshots/events).
-- Define migration strategy and schema versioning approach.
-- Preserve current behavior where possible behind a repository/storage abstraction.
+- Continue consolidating runtime entities under durable storage boundaries.
+- Tighten migration discipline and backward compatibility checks.
+- Define retention/pruning strategy for high-volume tables.
+- Improve operational guidance for backup/restore and upgrade verification.
 
 Definition of done:
-- Server restart no longer loses selected persisted entities.
-- Storage schema is versioned and initialization is automated.
-- Read/write paths for persisted entities are covered by tests.
-- Operational docs describe DB file location, backup expectations, and migration behavior.
+- Restart and upgrade behavior is deterministic for persisted runtime entities.
+- Schema migration tests cover expected upgrade paths.
+- Runbook-level documentation exists for backup, restore, and recovery checks.
+- Retention policy is defined and implemented for long-running deployments.
 
 Likely follow-on:
-- Optional retention and pruning policies for large event/snapshot tables.
+- Optional export/archival tooling for historical match and event datasets.
 
-## Release Track C: Unit Test Expansion
+## Active Track C: Test and Reliability Expansion
 
 Goal:
-- Increase confidence in core behavior and reduce regression risk.
+- Raise confidence in release stability and reduce regression risk across client and server.
 
 Scope:
-- Add and organize unit tests around existing components.
-- Prioritize stadium managers, protocol/contract parsing, plugin registry/host behavior, and storage abstraction.
-- Introduce test fixtures/helpers to reduce setup duplication.
-- Make tests easy to run in CI and locally.
+- Expand high-value unit and integration coverage around orchestration, protocol handling, plugin host boundaries, and persistence migration.
+- Add targeted regression tests for known state/concurrency edge cases.
+- Standardize developer and CI test entry points.
 
 Definition of done:
-- Core packages have meaningful unit coverage for primary success and failure paths.
-- Regression tests exist for recently fixed concurrency/state issues.
-- `make test` and CI run reliably without manual setup.
-- Test organization is documented for contributors.
+- Core packages have durable coverage on success/failure paths that have historically regressed.
+- Recent bug fixes ship with associated regression tests.
+- make test and CI runs are reproducible without local hand edits.
+- Test strategy and conventions are documented for contributors.
 
 Likely follow-on:
-- Add integration tests for end-to-end agent/server/plugin interactions.
+- Add broader end-to-end scenario tests for client to agent to server workflows.
+
+## Active Track D: Documentation and Release Hygiene
+
+Goal:
+- Keep docs aligned with shipped behavior and make version pinning a normal release step.
+
+Scope:
+- Remove stale implementation planning docs after completion.
+- Convert stable architecture knowledge into maintained architecture/reference pages.
+- Align roadmap language with released milestones in CHANGELOG.
+- Add a release-time docs check to catch stale references.
+
+Definition of done:
+- Docs site navigation reflects current architecture and supported workflows.
+- Stale sprint/task-tracking artifacts are removed from active docs.
+- Roadmap only contains forward-looking priorities.
+- Release process includes docs review/versioning checkpoint.
 
 ## Out of Scope (For These Near Releases)
 
 - Full enterprise multi-tenant auth and internet-facing hardening.
 - Distributed server clustering and horizontal scaling.
 - Broad plugin SDKs for every language; contract-first interoperability remains the focus.
-- Finalized UX polish for all client workflows beyond alpha-level operation.
+- Finalized UX polish for all client workflows beyond the current hardening scope.
 
 ## Revisit Point: Product Definition
 
-After progress across the three release tracks above, revisit and publish:
+After progress across the active tracks above, revisit and publish:
 
 - explicit final-product scope
 - explicit non-goals/exclusions
@@ -184,6 +129,6 @@ Priorities can change based on:
 
 - reliability issues found during testing or usage
 - complexity discovered during SQLite integration
-- feedback from desktop client alpha usage
+- feedback from desktop client usage
 
 When priorities shift, update this roadmap and changelog in the same commit where practical.

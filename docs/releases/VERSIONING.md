@@ -12,7 +12,7 @@ The primary version applies to the entire project: `vMAJOR.MINOR.PATCH`
 - **MINOR**: New features, game plugins, or non-breaking enhancements
 - **PATCH**: Bug fixes, documentation, or internal improvements
 
-Example: `v0.1.0` → `v0.2.0` (new plugin or CLI feature) → `v0.2.1` (bug fix)
+Example: `v0.5.0` → `v0.6.0` (new feature set) → `v0.6.1` (bug-fix release)
 
 ### Component Versions (Optional)
 
@@ -23,6 +23,16 @@ Individual components can be versioned independently:
 - `bbs-plugin-manifest-lint/v0.1.0` - Manifest validation tool
 
 Use component versions when a single component has frequent updates or needs independent release cycles. Most changes should increment the repository version instead.
+
+### Component Version Policy
+
+To avoid drift between release notes and tags, use this policy:
+
+- Repository tags (`vMAJOR.MINOR.PATCH`) remain the primary release signal.
+- Component tags (`component/vMAJOR.MINOR.PATCH`) are optional and only used when that component ships independently.
+- The "Component Versions" block in `CHANGELOG.md` tracks the latest released component tags, not in-repo implementation state.
+- Update component entries only when a component tag is created.
+- If no new component tag is cut for a release, leave existing component version entries unchanged.
 
 ## Release Process
 
@@ -37,20 +47,20 @@ Update your branch (typically `main`) with:
 
 # Commit changelog if updated
 git add CHANGELOG.md
-git commit -m "Prepare v0.2.0 release"
+git commit -m "Prepare v0.x.y release"
 ```
 
 ### 2. Tag Release
 
 ```bash
 # Repository release
-git tag -a v0.2.0 -m "Release v0.2.0: new gridworld plugin, improved error handling"
+git tag -a v0.x.y -m "Release v0.x.y: summary of highlights"
 
 # Or component release
 git tag -a bbs-agent/v0.3.0 -m "bbs-agent v0.3.0: socket timeout fixes"
 
 # Push tags to trigger CI/CD
-git push origin v0.2.0
+git push origin v0.x.y
 ```
 
 ### 3. Automated Release Build
@@ -71,6 +81,22 @@ GitHub Release notes should include:
 - **Notable Fixes**: Important bug fixes
 - **Contributors**: Credits for external contributors
 
+If component tags were created in this release:
+
+- update the "Component Versions" section in `CHANGELOG.md`
+- include component tag references in release notes
+
+### 5. Docs Versioning (Docusaurus)
+
+When preparing a notable release, snapshot docs for that version:
+
+```bash
+cd docs-site
+npm run docusaurus docs:version v0.x.y
+```
+
+Then update navigation/version metadata as needed and commit the docs update in the same release prep cycle.
+
 ## Before v1.0.0
 
 Until `v1.0.0`, follow these guidelines:
@@ -85,7 +111,7 @@ The server embeds version information at build time:
 
 ```bash
 # Manual build with custom version
-go build -ldflags "-X main.buildVersion=v0.2.0" -o /tmp/bbs-server ./cmd/bbs-server
+go build -ldflags "-X main.buildVersion=v0.x.y" -o /tmp/bbs-server ./cmd/bbs-server
 
 # CI/CD provides version automatically
 # Binary reports version via `/api/version` endpoint or command-line flag
@@ -120,7 +146,10 @@ When determining runtime version, the system checks:
 ## Release Checklist
 
 - [ ] Update CHANGELOG.md with all changes
-- [ ] Verify all tests pass locally: `go test ./...`
+- [ ] Verify server tests pass locally: `go test ./...`
+- [ ] Verify client build passes locally: `dotnet build bbs-client/Bbs.Client.sln`
+- [ ] Verify client tests pass locally: `dotnet test bbs-client/tests/Bbs.Client.Core.Tests/Bbs.Client.Core.Tests.csproj` and `dotnet test bbs-client/tests/Bbs.Client.Infrastructure.Tests/Bbs.Client.Infrastructure.Tests.csproj`
+- [ ] Verify docs site builds cleanly: `cd docs-site && npm run build`
 - [ ] Run plugin manifest linter: `go run ./cmd/bbs-plugin-manifest-lint --dirs cmd/bbs-server/plugins/games`
 - [ ] Ensure no uncommitted changes: `git status`
 - [ ] Create annotated tag: `git tag -a v0.x.y -m "Release notes"`
@@ -128,6 +157,7 @@ When determining runtime version, the system checks:
 - [ ] Monitor GitHub Actions for successful build
 - [ ] Review auto-generated Release on GitHub
 - [ ] Add detailed release notes if needed
+- [ ] If component tags were cut, update `CHANGELOG.md` component version entries
 
 ## Questions?
 

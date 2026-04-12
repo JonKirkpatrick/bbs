@@ -112,7 +112,7 @@ BBS_ENABLE_GAME_PLUGINS=true BBS_GAME_PLUGIN_DIR=/path/to/plugins go run ./cmd/b
 # Create arena to test your plugin
 ```
 
-For the desktop client alpha, verify the current flow by deploying a bot profile, selecting a live server, and confirming that the active session card's arena dropdown populates from that server before issuing JOIN.
+For the desktop client, verify the current flow by deploying a bot profile, selecting a live server, and confirming that the active session card's arena dropdown populates from that server before issuing JOIN.
 
 ## Documentation
 

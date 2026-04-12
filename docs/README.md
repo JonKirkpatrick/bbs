@@ -4,7 +4,8 @@ This directory contains project documentation organized by purpose.
 
 ## Architecture
 
-- [ARCHITECTURE.md](architecture/ARCHITECTURE.md): Runtime decomposition and design boundaries.
+- [ARCHITECTURE.md](architecture/ARCHITECTURE.md): Runtime/server decomposition and design boundaries.
+- [CLIENT_APP_ARCHITECTURE.md](architecture/CLIENT_APP_ARCHITECTURE.md): Desktop client structure, startup flow, and service viewmodel boundaries.
 
 ## Reference
 
@@ -24,7 +25,7 @@ This directory contains project documentation organized by purpose.
 
 ## Current Client Notes
 
-- The desktop client alpha uses deploy-based runtime instances for active sessions.
+- The desktop client uses deploy-based runtime instances for active sessions.
 - Server context resolves owner-token metadata from the selected known server profile first.
 - Bot-context JOIN dropdowns are populated from the selected server's active arena list.
 

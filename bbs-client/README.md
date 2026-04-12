@@ -1,6 +1,10 @@
-# BBS Client (Track A)
+# BBS Client
 
-This directory contains the Avalonia desktop client scaffold for Track A.
+This directory contains the Avalonia desktop client implementation.
+
+Current architecture documentation lives at:
+
+- `docs/architecture/CLIENT_APP_ARCHITECTURE.md`
 
 ## Project Structure
 

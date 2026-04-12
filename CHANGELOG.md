@@ -6,164 +6,146 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [v0.5.0] - 2026-04-08
 
-### Added (Server)
-(new server changes will be captured here)
+### Added
+- **Client**: Local bot orchestration with deploy/launch/detach lifecycle, Unix socket IPC, and runtime session tracking
+- **Client**: Bot name sanitization (spaces -> underscores) when passing profile identity to agent runtime
+- **Client**: Dynamic server registration via `server_connect` without requiring agent restart
+- **Client**: Endpoint resilience during deploy through normalized fallback candidate probing
+- **Client**: SQLite-backed bot profile persistence with per-server runtime state and credential metadata
+- **Client**: Agent control socket support for `server_connect`, `server_access`, and shutdown control paths (JSON v0.2)
+- **Docs**: Docusaurus documentation site wired to repository docs content
 
-### Added (Client - bbs-client v0.1.0)
-- **Local Bot Orchestration**: Complete deploy/launch/detach lifecycle for bot profiles with Unix socket IPC and runtime session tracking
-- **Bot Name Sanitization**: Client profiles control bot identity; names with spaces are automatically sanitized (spaces → underscores) when passed to agent
-- **Dynamic Server Registration**: `server_connect` control command allows client to register with a server without agent restart, with automatic retry on endpoint failure
-- **Endpoint Resilience**: Deploy automatically tries multiple server endpoint candidates (normalized loopback variants, IPv4 parsing, etc.) when initial connection fails
-- **Profile-Based Bot Management**: SQLite-backed bot profile storage with per-server bot state and credentials persistence
-- **Integration with Dashboard**: Live bot session cards respect profile-provided names; dashboard endpoint fallback for reliability
-- **Agent Control Socket**: Full control plane for deploy/runtime lifecycle, `server_connect`, `server_access`, and shutdown operations with JSON v0.2 protocol
+### Changed
+- **Client**: Agent no longer accepts bot name overrides from bot `hello` payloads
+- **Client**: Deploy validation now includes endpoint candidate generation and fallback retry behavior
+- **Client**: Bot launch arguments constrained to `--socket`; profile name is passed through `--name`
+- **Client**: Active bot session cards refresh arena options from the selected server's live arena list
+- **Client**: Server-context access metadata resolves from selected known server profile first
+- **Server**: Discovery probe behavior updated
+- **Server**: Owner token semantics moved from per-session to per-client
+- **Server**: Persistent server-side bot registry removed; bot ownership responsibility shifted toward client-side identity/session mapping
 
-### Added (Documentation site using Docusaurus)
-- Autobuilds on changes to the site
-- Pulls documentation from repository
+### Fixed
+- **Client**: Deploy failures when server host metadata used malformed loopback values (for example `127.0.01`)
+- **Client**: Agent startup failures for bot profile names containing spaces
+- **Client**: Persona-backed local state partitioning for multiple independent SQLite files
+- **Client**: Splash animation integration and menu bar polish
+- **Client**: Arena viewer integration improvements to reduce dashboard dependency for viewing workflows
 
-### Changed (Client)
-- Agent no longer accepts name overrides from bot `hello` messages; bot author cannot control bot identity in active sessions
-- Deploy validation now includes endpoint candidate generation and fallback retry logic
-- Bot arguments now limited to `--socket` only; profile name is passed to agent via `--name` flag, not bot args
-- Active bot session cards refresh arena options from the selected server's live arena list
-- Server access metadata in server context is resolved from the selected known server profile first
-
-### Changed (Server)
-- Breaking changes to server discovery probe.
-- Owner token now per client instead of per session
-- Removed persistent bot registry on server side moving responsibility to client
-- Bots in sessions are essentially anonymous with only a reference to the client via token
-
-### Fixed (Client)
-- Fixed deploy failing when server host is stored as malformed loopback (e.g., 127.0.01 instead of 127.0.0.1)
-- Fixed agent startup failure when bot profile names contained spaces
-- Introduced "persona" concept allowing multiple independent SQLite files to populate client
-- Introduced a new splash animation
-- Wired in an arena viewer so now the client has less reliance on using the server for a view
-- Added a menu bar and a few options
-
-### Fixed (Server)
-(server fixes will be captured here)
 
 ## [v0.3.0] - 2026-03-22
 
 ### Added
-- **SQLite Persistence (Stage 0)**: Durable storage for server identity, match history, bot profiles, and federation outbox
-- **Runtime Path Contract**: Configurable paths for templates, plugins, config, and data with environment overrides
-- **Linux FHS Packaging Profile**: Native `.deb` package support with systemd integration (via `BBS_PACKAGING_MODE=linux-fhs`)
-- **Federation Infrastructure**: Outbox worker with retry/backoff, HTTP publisher, mock global registrar, and dedupe receipts
-- **Admin Debug Endpoints**: `/admin/debug/server-identity`, `/admin/debug/outbox`, `/admin/debug/recent-matches` for operational visibility
-- **Mock Federation Receiver**: Optional token-gated `/federation/mock/ingest` endpoint for loopback testing
+- **Server**: SQLite persistence stage 0 for server identity, match history, bot profiles, and federation outbox
+- **Server**: Runtime path contract with environment-overridable locations for templates, plugins, config, and data
+- **Server**: Federation infrastructure including outbox worker, retry/backoff publisher, mock registrar, and dedupe receipts
+- **Server**: Admin debug endpoints for identity, outbox, and recent matches visibility
+- **Server**: Optional token-gated mock federation ingest endpoint (`/federation/mock/ingest`)
+- **Infrastructure**: Linux FHS packaging profile with native .deb + systemd support (`BBS_PACKAGING_MODE=linux-fhs`)
 
 ### Changed
-- **Persistence Integration**: Manager now persists bot profiles and matches to SQLite on lifecycle events
-- **Bootstrap Flow**: Server identity and global registration now happen at startup with durable state
-- **Template Loading**: Dashboard templates resolved from configurable path instead of hardcoded relative path
-- **Plugin Discovery**: Plugin directory resolved from `BBS_GAME_PLUGIN_DIR` or runtime defaults (dev-friendly fallbacks)
+- **Server**: Manager persistence integration now writes bot profiles and matches to SQLite on lifecycle transitions
+- **Server**: Bootstrap flow now performs server identity and global registration with durable startup state
+- **Server**: Dashboard template loading moved to configurable runtime path resolution
+- **Server**: Plugin discovery now resolves from `BBS_GAME_PLUGIN_DIR` or runtime defaults
 
 ### Infrastructure
-- Added `.deb` package structure with systemd service, user setup, and post-install scripts
-- Added `docs/deployment/LINUX_PACKAGING_PROFILE.md` with `.deb` build and deployment examples
-- Added `docs/architecture/ADR_RUNTIME_PATHS_STAGE0.md` documenting path contract decisions
-- Makefile `deb` target for building `.deb` packages on Linux
+- **Infrastructure**: Added .deb package structure with systemd service, user setup, and post-install scripts
+- **Docs**: Added deployment guide at `docs/deployment/LINUX_PACKAGING_PROFILE.md`
+- **Docs**: Added architecture decision record at `docs/architecture/ADR_RUNTIME_PATHS_STAGE0.md`
+- **Build**: Added Makefile `deb` target for Linux package builds
 
 ### Fixed
-- Template loading no longer depends on working directory
-- Plugin discovery is consistent across development and packaged installations
+- **Server**: Template loading no longer depends on process working directory
+- **Server**: Plugin discovery behavior is consistent between development and packaged installs
 
 ## [v0.2.0] - 2026-03-20
 
 ### Added
-- **Release Management Infrastructure**: Formalized versioning, Makefile build targets, and release workflow
-- **Repository Hygiene**: Comprehensive `.gitignore` excluding binaries, build artifacts, LaTeX files, and credentials
-- **Contributor Guide**: `CONTRIBUTING.md` with development setup, testing, and plugin authoring workflows
-- **Installation Options**: Multiple installation paths documented (from source, pre-built, direct run)
-- **Language-Agnostic Documentation**: Clarified that plugins can be written in any language (Go, Python, Rust, etc.)
+- **Infrastructure**: Formalized release management workflow, versioning approach, and Makefile build targets
+- **Infrastructure**: Added comprehensive `.gitignore` coverage for binaries, build artifacts, LaTeX output, and credentials
+- **Docs**: Added contributor guide in `CONTRIBUTING.md`
+- **Docs**: Added installation-path documentation (source, pre-built, direct run)
+- **Docs**: Clarified language-agnostic plugin support
 
 ### Changed
-- **Breaking**: Plugin documentation now emphasizes language-neutral RPC contract over Go-specific patterns
-- Improved wording in plugin authoring guide to clearly state language flexibility
-- Updated README installation section with three options and release references
+- **Docs**: Breaking documentation update to emphasize language-neutral RPC contract over Go-specific patterns
+- **Docs**: Improved plugin authoring guidance for language flexibility
+- **Docs**: Updated README installation section with three options and release references
 
 ### Fixed
-- Deadlock conditions during concurrent bot registration
-- Stale state display issues in dashboard views
-- Dashboard state synchronization improvements
+- **Server**: Deadlock conditions during concurrent bot registration
+- **Server**: Stale dashboard state display issues
+- **Server**: Dashboard state synchronization reliability
 
 ### Infrastructure
-- Added `Makefile` with convenient build, test, lint, and release targets
-- Added `VERSIONING.md` with semantic versioning strategy and release process
-- Added `CHANGELOG.md` changelog file
-- Established `.gitignore` to exclude binaries, transient files, and credentials
-- GitHub Actions CI automation for building and publishing releases
-- Command cheat sheet support (`.local.md` files for personal notes)
+- **Build**: Added Makefile targets for build, test, lint, and release workflows
+- **Docs**: Added `VERSIONING.md` and initial `CHANGELOG.md`
+- **Infrastructure**: Hardened `.gitignore` coverage for binaries, transient files, and secrets
+- **Infrastructure**: Added GitHub Actions automation for build and release publishing
+- **Docs**: Added local command-cheat-sheet pattern (`.local.md`)
 
 ## [v0.1.0] - 2026-03-19
 
 ### Added
-- **Plugin-Only Architecture**: Removed all built-in games; now all games are provided as process plugins
-- **Gridworld RL Plugin**: New Python-based single-player environment with episodic support, configurable rewards, and replay support
-- **Enhanced Viewer**: Decoupled viewer rendering from server internals; plugins now provide custom JavaScript UI bundles
-- **Improved Documentation**: Added reference implementations for Go and Python plugins
-- **Q-Learning Bot Example**: New `python_gridworld_q_bot.py` demonstrating learning agent patterns
+- **Server**: Plugin-only architecture; built-in games removed in favor of process-plugin runtime
+- **Plugins**: Added Gridworld RL reference plugin with episodic support and configurable rewards
+- **Viewer**: Introduced decoupled viewer model with plugin-provided JavaScript bundles
+- **Docs**: Added reference plugin implementations for Go and Python
+- **Examples**: Added `python_gridworld_q_bot.py` as a learning-agent example
 
 ### Changed
-- **Breaking**: Removed built-in Connect4, Chess, Checkers, and Gridworld games
-- **Breaking**: Removed server-side viewer rendering; all rendering is now client-side plugin code
-- Dashboard game discovery now scans manifest files from `cmd/bbs-server/plugins/games/`
-- Plugin manifest now requires `viewer_client_entry` field pointing to JavaScript bundle
+- **Server**: Breaking removal of built-in Connect4, Chess, Checkers, and Gridworld games
+- **Viewer**: Breaking removal of server-side viewer rendering; rendering moved to client/plugin side
+- **Server**: Dashboard game discovery now scans plugin manifests from `cmd/bbs-server/plugins/games/`
+- **Plugins**: Plugin manifest now requires `viewer_client_entry` JavaScript bundle reference
 
 ### Deprecated
-- Server-side viewer methods (`GetViewerSpec`, `GetViewerFrame`) replaced by client-side rendering
+- **Viewer API**: Server-side viewer methods (`GetViewerSpec`, `GetViewerFrame`) deprecated in favor of client-side rendering
 
 ### Fixed
-- Plugin loading timing and reliability
-- Dashboard state consistency during rapid game creation
+- **Server**: Plugin loading timing and runtime reliability
+- **Dashboard**: State consistency during rapid game creation
 
 ### Internal
-- Completely refactored games subsystem to use plugin host pattern
-- Improved plugin process lifecycle management
-- New `games/pluginapi/` shared protocol for process-based plugins
+- **Server**: Refactored games subsystem around plugin host pattern
+- **Server**: Improved plugin process lifecycle management
+- **Protocol**: Added shared process-plugin RPC contract at `games/pluginapi/`
 
 ## [v0.0.2] - 2026-03-19
 
 ### Added
-- Environment variable export: `BBS_ENABLE_GAME_PLUGINS` now propagates to bot processes
-- Support for autonomous-mode games (`RequiredPlayers() == 0`)
+- **Runtime**: `BBS_ENABLE_GAME_PLUGINS` now propagates to bot processes
+- **Game Engine**: Added support for autonomous-mode games (`RequiredPlayers() == 0`)
 
 ### Changed
-- Plugin manifest discovery now handles version field correctly
+- **Plugins**: Plugin manifest discovery now handles version field correctly
 
 ### Fixed
-- Plugin environment variable inheritance
+- **Runtime**: Fixed plugin environment variable inheritance
 
 ## [v0.0.1] - 2026-03-19
 
 ### Added
-- Initial release of Build-a-Bot Stadium
-- **Core Platform**: TCP server and HTTP dashboard for managing bot arenas
-- **Game Support**:
-  - Connect4 (two-player)
-  - Gridworld (single-player environment)
-  - Checkers (two-player)
-  - Chess (two-player)
-- **Plugin System**: Early-stage process plugin support with Counter reference plugin
-- **Dashboard**: Web-based arena management and live viewer
-- **Agent Bridge**: `bbs-agent` local JSONL bridge for bot developers
-- **Deployment Scripts**: TrueNAS Docker and native deployment helpers
-
-### Features
-- TCP protocol for bot command/response
-- Dynamic session and arena management
-- Bot identity and ownership tokens
-- Move clock and handicap support
-- Match replay capability
-- Game argument schema in manifests
+- **Release**: Initial release of Build-a-Bot Stadium
+- **Core Platform**: TCP server and HTTP dashboard for arena management
+- **Games**: Added Connect4, Gridworld, Checkers, and Chess runtime support
+- **Plugins**: Early process-plugin support with Counter reference plugin
+- **Dashboard**: Web arena management and live viewer capabilities
+- **Agent**: Added `bbs-agent` local JSONL bridge for bot developers
+- **Deployment**: Added TrueNAS Docker and native deployment scripts
+- **Protocol**: Added TCP command/response protocol surface
+- **Session Management**: Added dynamic session and arena lifecycle support
+- **Identity**: Added bot identity and ownership token model
+- **Gameplay**: Added move clock, handicap support, and match replay
+- **Manifest**: Added game argument schema support in manifests
 
 ---
 
 ## Component Versions
+
+This section records the latest released component tags.
+Update these entries only when component-specific tags are cut.
 
 ### bbs-agent
 
@@ -184,15 +166,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Current Stable
 
-- **Repository**: v0.1.0 (plugin-only architecture)
+- **Repository**: v0.5.0
 - **TCP Protocol**: Stable; new command types are additive
 - **Plugin RPC**: Protocol v1 (stable)
 - **Agent Contract**: v0.2 (pre-v1.0; breaking changes possible)
 
 ### Upgrading
 
-- **v0.0.x → v0.1.0**: Requires rewriting game plugins to use new plugin-only manifest format
-- All components: No database migration needed (in-memory state)
+- **v0.0.x → v0.1.0**: Requires rewriting game plugins to use plugin-only manifest format.
+- **v0.3.x → v0.5.x**: Review server discovery and owner-token behavior changes before rollout.
+- Client upgrades should preserve persona-backed state; validate deployment and server-access flows after upgrade.
 
 ---
 

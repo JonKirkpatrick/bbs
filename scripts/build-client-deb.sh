@@ -48,6 +48,7 @@ go build -trimpath -ldflags "-s -w -X main.buildVersion=v$DEB_VERSION" -o "$PKGD
 echo "Building bbs-client application..."
 cd "$CLIENT_ROOT"
 dotnet publish -c Release -o "$PKGDIR/opt/bbs-client" src/Bbs.Client.App/Bbs.Client.App.csproj \
+    -r linux-x64 \
     --self-contained false
 
 # Make the main DLL executable

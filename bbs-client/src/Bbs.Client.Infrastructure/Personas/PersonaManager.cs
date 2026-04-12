@@ -16,14 +16,14 @@ public sealed class PersonaManager
     /// <summary>
     /// Ensures the personas directory exists.
     /// </summary>
-    public async Task EnsureDirectoryExistsAsync()
+    public Task EnsureDirectoryExistsAsync()
     {
         if (!Directory.Exists(_personasDirectory))
         {
             Directory.CreateDirectory(_personasDirectory);
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ public sealed class PersonaManager
     /// <summary>
     /// Renames an existing persona.
     /// </summary>
-    public async Task<string> RenamePersonaAsync(string currentFilePath, string newPersonaName, CancellationToken cancellationToken = default)
+    public Task<string> RenamePersonaAsync(string currentFilePath, string newPersonaName, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(currentFilePath))
         {
@@ -127,7 +127,7 @@ public sealed class PersonaManager
         var newFilePath = Path.Combine(_personasDirectory, $"{sanitizedName}.sqlite3");
         if (string.Equals(currentFilePath, newFilePath, StringComparison.OrdinalIgnoreCase))
         {
-            return currentFilePath;
+            return Task.FromResult(currentFilePath);
         }
 
         if (File.Exists(newFilePath))
@@ -136,13 +136,13 @@ public sealed class PersonaManager
         }
 
         File.Move(currentFilePath, newFilePath, overwrite: false);
-        return newFilePath;
+        return Task.FromResult(newFilePath);
     }
 
     /// <summary>
     /// Deletes a persona file.
     /// </summary>
-    public async Task DeletePersonaAsync(string filePath, CancellationToken cancellationToken = default)
+    public Task DeletePersonaAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath))
         {
@@ -150,7 +150,7 @@ public sealed class PersonaManager
         }
 
         File.Delete(filePath);
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>

@@ -20,7 +20,7 @@ The runtime game catalog is sourced from process plugins loaded from manifests (
 
 The dashboard create-arena forms are populated directly from this live catalog, so new plugin games can appear without changing dashboard code.
 
-The desktop client alpha now treats the selected known server as the canonical source for owner-token metadata in server context, and bot-context JOIN dropdowns are refreshed from the active server's arena list.
+The desktop client now treats the selected known server as the canonical source for owner-token metadata in server context, and bot-context JOIN dropdowns are refreshed from the active server's arena list.
 
 ## Installation
 

@@ -15,6 +15,9 @@
 # Go build artifacts
 dist/
 /tmp/
+/build/deb/
+/build/deb-client/
+*.deb
 
 # .NET build artifacts
 **/bin/
