@@ -4,6 +4,17 @@ All notable changes to Build-a-Bot Stadium are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Server**: Added new test around SQLite write contention.
+
+### Changed
+- **Client**: Added pulsing logo animation while servers are being probed on persona load.
+
+### Fixed
+- **Server**: Fixed intermittent SQLite write contention on server bootup routine by properly locking it on write and enabling graceful retry.
+
 ## [v0.5.0] - 2026-04-08
 
 ### Added

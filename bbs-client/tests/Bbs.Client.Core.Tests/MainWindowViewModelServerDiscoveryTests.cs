@@ -80,6 +80,41 @@ public sealed class MainWindowViewModelServerDiscoveryTests
         Assert.False((bool)probeResult[0]!);
     }
 
+    [Fact]
+    public async Task PersonaLoadProbePersistsFreshProbeStatus()
+    {
+        await using var server = await TestApiServer.StartAsync(
+            statusPayload: "{\"status\":\"ok\"}",
+            gameCatalogPayload: "[]");
+
+        var httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(2)
+        };
+
+        var knownServer = KnownServer.Create(
+            serverId: "srv-3",
+            name: "Persona Probe Server",
+            host: "127.0.0.1",
+            port: 6555,
+            metadata: new Dictionary<string, string>
+            {
+                ["dashboard_endpoint"] = server.BaseUrl,
+                ["probe_status"] = "unreachable"
+            });
+
+        var storage = new StubClientStorage(new[] { knownServer });
+        var logger = new StubClientLogger();
+        var service = new ServerServiceViewModel(storage, logger, httpClient);
+
+        await service.ProbeServersForPersonaLoadAsync();
+
+        var refreshedServer = (await storage.ListKnownServersAsync()).Single(s => s.ServerId == "srv-3");
+        Assert.True(refreshedServer.Metadata.TryGetValue("probe_status", out var probeStatus));
+        Assert.Equal("reachable", probeStatus);
+        Assert.True(refreshedServer.Metadata.ContainsKey("probe_last_checked_utc"));
+    }
+
     private static ServerServiceViewModel CreateServerServiceWithHttpClient(HttpClient client)
     {
         var mockStorage = new StubClientStorage();
@@ -107,16 +142,39 @@ public sealed class MainWindowViewModelServerDiscoveryTests
 
     private sealed class StubClientStorage : IClientStorage
     {
+        private readonly Dictionary<string, KnownServer> _knownServers;
+        private readonly Dictionary<string, ServerPluginCache> _pluginCaches = new(StringComparer.OrdinalIgnoreCase);
+
+        public StubClientStorage(IEnumerable<KnownServer>? knownServers = null)
+        {
+            _knownServers = (knownServers ?? Array.Empty<KnownServer>())
+                .ToDictionary(server => server.ServerId, StringComparer.OrdinalIgnoreCase);
+        }
+
         public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult(1);
         public Task<ClientIdentity?> GetClientIdentityAsync(CancellationToken cancellationToken = default) => Task.FromResult((ClientIdentity?)null);
         public Task SaveClientIdentityAsync(ClientIdentity identity, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<IReadOnlyList<BotProfile>> ListBotProfilesAsync(CancellationToken cancellationToken = default) => Task.FromResult((IReadOnlyList<BotProfile>)new List<BotProfile>());
         public Task UpsertBotProfileAsync(BotProfile profile, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task<IReadOnlyList<KnownServer>> ListKnownServersAsync(CancellationToken cancellationToken = default) => Task.FromResult((IReadOnlyList<KnownServer>)new List<KnownServer>());
-        public Task UpsertKnownServerAsync(KnownServer server, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task<ServerPluginCache?> GetServerPluginCacheAsync(string serverId, CancellationToken cancellationToken = default) => Task.FromResult((ServerPluginCache?)null);
-        public Task UpsertServerPluginCacheAsync(ServerPluginCache cache, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<KnownServer>> ListKnownServersAsync(CancellationToken cancellationToken = default) => Task.FromResult((IReadOnlyList<KnownServer>)_knownServers.Values.ToList());
+        public Task UpsertKnownServerAsync(KnownServer server, CancellationToken cancellationToken = default)
+        {
+            _knownServers[server.ServerId] = server;
+            return Task.CompletedTask;
+        }
+
+        public Task<ServerPluginCache?> GetServerPluginCacheAsync(string serverId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(_pluginCaches.TryGetValue(serverId, out var cache) ? cache : null);
+        }
+
+        public Task UpsertServerPluginCacheAsync(ServerPluginCache cache, CancellationToken cancellationToken = default)
+        {
+            _pluginCaches[cache.ServerId] = cache;
+            return Task.CompletedTask;
+        }
+
         public Task<AgentRuntimeState?> GetAgentRuntimeStateAsync(string botId, CancellationToken cancellationToken = default) => Task.FromResult((AgentRuntimeState?)null);
         public Task UpsertAgentRuntimeStateAsync(AgentRuntimeState state, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }

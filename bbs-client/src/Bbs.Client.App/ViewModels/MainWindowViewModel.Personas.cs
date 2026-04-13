@@ -164,6 +164,9 @@ public sealed partial class MainWindowViewModel
         Bots.Clear();
         Servers.Clear();
         LoadBotsFromStorage();
+
+        // Probe all persona-associated servers before repopulating cards so status text reflects current reachability.
+        await _serverService.ProbeServersForPersonaLoadAsync();
         LoadServersFromStorage();
 
         SelectedBot = Bots.FirstOrDefault();

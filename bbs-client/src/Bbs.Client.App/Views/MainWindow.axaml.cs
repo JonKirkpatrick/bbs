@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private Border? _embeddedViewerViewport;
     private ShapePath? _logoPulsingOverlayPath;
     private bool _logoPulsePlayed;
+    private static readonly IBrush PersonaLoadPulseBrush = new SolidColorBrush(Color.Parse("#2DBE60"));
     private const double EmbeddedViewerSurfacePadding = 6;
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
@@ -85,7 +86,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ViewModel.CreatePersonaAsync(name);
+        await RunWithPersonaLoadPulseAsync(() => ViewModel.CreatePersonaAsync(name));
     }
 
     private async void OnLoadPersonaClicked(object? sender, RoutedEventArgs e)
@@ -107,7 +108,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ViewModel.LoadPersonaAsync(selectedPersonaPath);
+        await RunWithPersonaLoadPulseAsync(() => ViewModel.LoadPersonaAsync(selectedPersonaPath));
     }
 
     private void OnUnloadPersonaClicked(object? sender, RoutedEventArgs e)
@@ -134,7 +135,92 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ViewModel.DuplicateCurrentPersonaAsync(name);
+        await RunWithPersonaLoadPulseAsync(() => ViewModel.DuplicateCurrentPersonaAsync(name));
+    }
+
+    private async Task RunWithPersonaLoadPulseAsync(Func<Task> operation)
+    {
+        _logoPulsingOverlayPath ??= this.FindControl<ShapePath>("LogoPulsingOverlayPath");
+        if (_logoPulsingOverlayPath is null)
+        {
+            await operation();
+            return;
+        }
+
+        var originalStroke = _logoPulsingOverlayPath.Stroke;
+        using var pulseCancellation = new CancellationTokenSource();
+        _logoPulsingOverlayPath.Stroke = PersonaLoadPulseBrush;
+        var pulseTask = RunPersonaLoadPulseLoopAsync(pulseCancellation.Token);
+
+        try
+        {
+            await operation();
+        }
+        finally
+        {
+            pulseCancellation.Cancel();
+            try
+            {
+                await pulseTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Pulse cancellation is expected once loading has completed.
+            }
+
+            _logoPulsingOverlayPath.Opacity = 0;
+            _logoPulsingOverlayPath.Stroke = originalStroke;
+        }
+    }
+
+    private async Task RunPersonaLoadPulseLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_logoPulsingOverlayPath is null)
+        {
+            return;
+        }
+
+        var pulseAnimation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(900),
+            IterationCount = new IterationCount(1),
+            Easing = new SineEaseInOut(),
+            FillMode = FillMode.None,
+            PlaybackDirection = PlaybackDirection.Normal,
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0d),
+                    Setters =
+                    {
+                        new Setter(Visual.OpacityProperty, 0.1d),
+                    }
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(0.5d),
+                    Setters =
+                    {
+                        new Setter(Visual.OpacityProperty, 0.85d),
+                    }
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1d),
+                    Setters =
+                    {
+                        new Setter(Visual.OpacityProperty, 0.1d),
+                    }
+                }
+            }
+        };
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await pulseAnimation.RunAsync(_logoPulsingOverlayPath, cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(60), cancellationToken);
+        }
     }
 
     private async void OnRenamePersonaClicked(object? sender, RoutedEventArgs e)

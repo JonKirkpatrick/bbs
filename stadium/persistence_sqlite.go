@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -15,11 +16,18 @@ type SQLitePersistenceStore struct {
 	db *sql.DB
 }
 
+const (
+	sqliteBusyRetryAttempts = 3
+	sqliteBusyRetryDelay    = 200 * time.Millisecond
+)
+
 func NewSQLitePersistenceStore(databasePath string) (*SQLitePersistenceStore, error) {
-	db, err := sql.Open("sqlite", databasePath)
+	db, err := sql.Open("sqlite", databasePath+"?_pragma=busy_timeout(5000)&_pragma=journal_mode=WAL")
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	store := &SQLitePersistenceStore{db: db}
 	if err := store.migrate(context.Background()); err != nil {
 		_ = db.Close()
@@ -124,7 +132,7 @@ func (s *SQLitePersistenceStore) ensureColumn(ctx context.Context, tableName, co
 }
 
 func (s *SQLitePersistenceStore) SaveServerIdentity(ctx context.Context, identity ServerIdentity) error {
-	_, err := s.db.ExecContext(ctx, `
+	return s.execWrite(ctx, `
 		INSERT INTO server_identity (
 			local_server_id, global_server_id, public_key_fingerprint, public_key_hex, private_key_hex,
 			preferred_display_name, accepted_display_name, registry_status, created_at, last_registration_at
@@ -152,7 +160,6 @@ func (s *SQLitePersistenceStore) SaveServerIdentity(ctx context.Context, identit
 		identity.CreatedAt.UTC().Format(time.RFC3339Nano),
 		identity.LastRegistrationAt.UTC().Format(time.RFC3339Nano),
 	)
-	return err
 }
 
 func (s *SQLitePersistenceStore) LoadServerIdentity(ctx context.Context) (ServerIdentity, bool, error) {
@@ -200,75 +207,71 @@ func (s *SQLitePersistenceStore) UpsertBotProfile(ctx context.Context, profile D
 }
 
 func (s *SQLitePersistenceStore) AppendMatch(ctx context.Context, match DurableMatch, moves []DurableMatchMove) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return s.withWriteTx(ctx, func(tx *sql.Tx) error {
+		argsJSON, err := json.Marshal(match.GameArgs)
+		if err != nil {
+			return err
+		}
 
-	argsJSON, err := json.Marshal(match.GameArgs)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT OR REPLACE INTO matches (
-			match_id, arena_id, origin_server_id, game, game_args_json, terminal_status, end_reason,
-			winner_player_id, winner_bot_id, winner_bot_name, is_draw, started_at, ended_at, final_game_state
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		match.MatchID,
-		match.ArenaID,
-		match.OriginServerID,
-		match.Game,
-		string(argsJSON),
-		match.TerminalStatus,
-		match.EndReason,
-		match.WinnerPlayerID,
-		match.WinnerBotID,
-		match.WinnerBotName,
-		boolToInt(match.IsDraw),
-		match.StartedAt.UTC().Format(time.RFC3339Nano),
-		match.EndedAt.UTC().Format(time.RFC3339Nano),
-		match.FinalGameState,
-	)
-	if err != nil {
-		return err
-	}
-
-	for _, mv := range moves {
 		_, err = tx.ExecContext(ctx, `
-			INSERT OR REPLACE INTO match_moves (
-				match_id, origin_server_id, sequence, player_id, session_id,
-				bot_id, bot_name, move, elapsed_ms, occurred_at
+			INSERT OR REPLACE INTO matches (
+				match_id, arena_id, origin_server_id, game, game_args_json, terminal_status, end_reason,
+				winner_player_id, winner_bot_id, winner_bot_name, is_draw, started_at, ended_at, final_game_state
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
-			mv.MatchID,
-			mv.OriginServerID,
-			mv.Sequence,
-			mv.PlayerID,
-			mv.SessionID,
-			mv.BotID,
-			mv.BotName,
-			mv.Move,
-			mv.ElapsedMS,
-			mv.OccurredAt.UTC().Format(time.RFC3339Nano),
+			match.MatchID,
+			match.ArenaID,
+			match.OriginServerID,
+			match.Game,
+			string(argsJSON),
+			match.TerminalStatus,
+			match.EndReason,
+			match.WinnerPlayerID,
+			match.WinnerBotID,
+			match.WinnerBotName,
+			boolToInt(match.IsDraw),
+			match.StartedAt.UTC().Format(time.RFC3339Nano),
+			match.EndedAt.UTC().Format(time.RFC3339Nano),
+			match.FinalGameState,
 		)
 		if err != nil {
 			return err
 		}
-	}
 
-	return tx.Commit()
+		for _, mv := range moves {
+			_, err = tx.ExecContext(ctx, `
+				INSERT OR REPLACE INTO match_moves (
+					match_id, origin_server_id, sequence, player_id, session_id,
+					bot_id, bot_name, move, elapsed_ms, occurred_at
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+				mv.MatchID,
+				mv.OriginServerID,
+				mv.Sequence,
+				mv.PlayerID,
+				mv.SessionID,
+				mv.BotID,
+				mv.BotName,
+				mv.Move,
+				mv.ElapsedMS,
+				mv.OccurredAt.UTC().Format(time.RFC3339Nano),
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 func (s *SQLitePersistenceStore) AppendOutboxEvent(ctx context.Context, event DurableOutboxEvent) error {
 	if event.NextAttemptAt.IsZero() {
 		event.NextAttemptAt = event.CreatedAt
 	}
-	_, err := s.db.ExecContext(ctx, `
+	return s.execWrite(ctx, `
 		INSERT OR REPLACE INTO federation_outbox (
 			event_id, origin_server_id, event_type, payload_json, created_at,
 			published_at, next_attempt_at, publish_status, retry_count, last_error
@@ -286,7 +289,6 @@ func (s *SQLitePersistenceStore) AppendOutboxEvent(ctx context.Context, event Du
 		event.RetryCount,
 		event.LastError,
 	)
-	return err
 }
 
 func (s *SQLitePersistenceStore) ListPendingOutboxEvents(ctx context.Context, limit int, now time.Time) ([]DurableOutboxEvent, error) {
@@ -345,7 +347,7 @@ func (s *SQLitePersistenceStore) ListPendingOutboxEvents(ctx context.Context, li
 }
 
 func (s *SQLitePersistenceStore) MarkOutboxEventPublished(ctx context.Context, eventID string, publishedAt time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
+	return s.execWrite(ctx, `
 		UPDATE federation_outbox
 		SET publish_status='published', published_at=?, last_error=''
 		WHERE event_id=?
@@ -353,11 +355,10 @@ func (s *SQLitePersistenceStore) MarkOutboxEventPublished(ctx context.Context, e
 		publishedAt.UTC().Format(time.RFC3339Nano),
 		eventID,
 	)
-	return err
 }
 
 func (s *SQLitePersistenceStore) MarkOutboxEventFailed(ctx context.Context, eventID string, nextAttemptAt time.Time, lastError string) error {
-	_, err := s.db.ExecContext(ctx, `
+	return s.execWrite(ctx, `
 		UPDATE federation_outbox
 		SET publish_status='retry', retry_count=retry_count+1, next_attempt_at=?, last_error=?
 		WHERE event_id=?
@@ -366,11 +367,10 @@ func (s *SQLitePersistenceStore) MarkOutboxEventFailed(ctx context.Context, even
 		lastError,
 		eventID,
 	)
-	return err
 }
 
 func (s *SQLitePersistenceStore) RecordInboxReceipt(ctx context.Context, receipt DurableInboxReceipt) error {
-	_, err := s.db.ExecContext(ctx, `
+	return s.execWrite(ctx, `
 		INSERT OR REPLACE INTO federation_inbox_dedupe (source_server_id, source_event_id, processed_at)
 		VALUES (?, ?, ?)
 	`,
@@ -378,7 +378,76 @@ func (s *SQLitePersistenceStore) RecordInboxReceipt(ctx context.Context, receipt
 		receipt.SourceEventID,
 		receipt.ProcessedAt.UTC().Format(time.RFC3339Nano),
 	)
-	return err
+}
+
+func (s *SQLitePersistenceStore) execWrite(ctx context.Context, query string, args ...any) error {
+	return s.retryOnBusy(ctx, func() error {
+		_, err := s.db.ExecContext(ctx, query, args...)
+		return err
+	})
+}
+
+func (s *SQLitePersistenceStore) withWriteTx(ctx context.Context, fn func(*sql.Tx) error) error {
+	return s.retryOnBusy(ctx, func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+
+		if err := fn(tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+
+		if err := tx.Commit(); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return nil
+	})
+}
+
+func (s *SQLitePersistenceStore) retryOnBusy(ctx context.Context, op func() error) error {
+	var lastErr error
+	for attempt := 0; attempt < sqliteBusyRetryAttempts; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		err := op()
+		if err == nil {
+			return nil
+		}
+		if !isSQLiteBusyError(err) {
+			return err
+		}
+		lastErr = err
+
+		if attempt == sqliteBusyRetryAttempts-1 {
+			break
+		}
+
+		timer := time.NewTimer(sqliteBusyRetryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("sqlite write retry failed")
+}
+
+func isSQLiteBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "database is locked") || strings.Contains(lower, "database is busy")
 }
 
 func (s *SQLitePersistenceStore) HasInboxReceipt(ctx context.Context, sourceServerID, sourceEventID string) (bool, error) {

@@ -307,16 +307,33 @@ public sealed class ServerServiceViewModel : ViewModelBase
 
     public async void TriggerStartupProbe()
     {
-        _ = await RunServerProbeCycleAsync(trigger: "startup", updateEditorStatus: false);
+        _ = await RunServerProbeCycleAsync(
+            trigger: "startup",
+            updateEditorStatus: false,
+            refreshUiAfterProbe: true,
+            cancellationToken: CancellationToken.None);
     }
 
     public async void TriggerManualProbe()
     {
-        var result = await RunServerProbeCycleAsync(trigger: "manual", updateEditorStatus: true);
+        var result = await RunServerProbeCycleAsync(
+            trigger: "manual",
+            updateEditorStatus: true,
+            refreshUiAfterProbe: true,
+            cancellationToken: CancellationToken.None);
         if (!result.Succeeded)
         {
             ServerEditorMessage = "Probe failed. See logs for details.";
         }
+    }
+
+    public Task ProbeServersForPersonaLoadAsync(CancellationToken cancellationToken = default)
+    {
+        return RunServerProbeCycleAsync(
+            trigger: "persona_load",
+            updateEditorStatus: false,
+            refreshUiAfterProbe: false,
+            cancellationToken: cancellationToken);
     }
 
     public void RefreshSelectedServerDetail(ServerSummaryItem? selectedServer)
@@ -387,7 +404,11 @@ public sealed class ServerServiceViewModel : ViewModelBase
     }
 
     // Probing orchestration
-    private async Task<(bool Succeeded, int ReachableCount, int UnreachableCount)> RunServerProbeCycleAsync(string trigger, bool updateEditorStatus)
+    private async Task<(bool Succeeded, int ReachableCount, int UnreachableCount)> RunServerProbeCycleAsync(
+        string trigger,
+        bool updateEditorStatus,
+        bool refreshUiAfterProbe,
+        CancellationToken cancellationToken)
     {
         if (!TryBeginProbeCycle())
         {
@@ -406,7 +427,7 @@ public sealed class ServerServiceViewModel : ViewModelBase
 
         try
         {
-            var result = await ProbeKnownServersAsync(CancellationToken.None);
+            var result = await ProbeKnownServersAsync(cancellationToken, refreshUiAfterProbe);
 
             if (updateEditorStatus)
             {
@@ -445,7 +466,7 @@ public sealed class ServerServiceViewModel : ViewModelBase
         }
     }
 
-    private async Task<(int ReachableCount, int UnreachableCount)> ProbeKnownServersAsync(CancellationToken cancellationToken)
+    private async Task<(int ReachableCount, int UnreachableCount)> ProbeKnownServersAsync(CancellationToken cancellationToken, bool refreshUiAfterProbe)
     {
         var knownServers = await _storage.ListKnownServersAsync(cancellationToken);
         if (knownServers.Count == 0)
@@ -518,15 +539,18 @@ public sealed class ServerServiceViewModel : ViewModelBase
                 });
         }
 
-        await Dispatcher.UIThread.InvokeAsync(() =>
+        if (refreshUiAfterProbe)
         {
-            var selectedServerId = SelectedServer?.ServerId;
-            LoadServersFromStorage();
-            if (!string.IsNullOrWhiteSpace(selectedServerId))
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                SelectedServer = FindServerById(selectedServerId);
-            }
-        });
+                var selectedServerId = SelectedServer?.ServerId;
+                LoadServersFromStorage();
+                if (!string.IsNullOrWhiteSpace(selectedServerId))
+                {
+                    SelectedServer = FindServerById(selectedServerId);
+                }
+            });
+        }
 
         return (reachableCount, unreachableCount);
     }
