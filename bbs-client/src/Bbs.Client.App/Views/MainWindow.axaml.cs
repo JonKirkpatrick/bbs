@@ -5,9 +5,11 @@ using Avalonia.Animation.Easings;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Bbs.Client.App.ViewModels;
 using ShapePath = Avalonia.Controls.Shapes.Path;
 
@@ -22,8 +24,23 @@ public partial class MainWindow : Window
     private Border? _embeddedViewerViewport;
     private ShapePath? _logoPulsingOverlayPath;
     private bool _logoPulsePlayed;
+    private Grid? _leftDrawerPanel;
+    private Grid? _rightDrawerPanel;
+    private Border? _leftDrawerHitStrip;
+    private Border? _rightDrawerHitStrip;
+    private TranslateTransform? _leftDrawerTransform;
+    private TranslateTransform? _rightDrawerTransform;
+    private bool _isLeftDrawerOpen;
+    private bool _isRightDrawerOpen;
+    private CancellationTokenSource? _leftDrawerCloseCts;
+    private CancellationTokenSource? _rightDrawerCloseCts;
     private static readonly IBrush PersonaLoadPulseBrush = new SolidColorBrush(Color.Parse("#2DBE60"));
     private const double EmbeddedViewerSurfacePadding = 6;
+    private const double DrawerMinimumWidth = 56;
+    private const double DrawerDesiredWidth = 280;
+    private const double DrawerMinWindowFraction = 0.25;
+    private const double DrawerMaxWindowFraction = 0.50;
+    private static readonly TimeSpan DrawerCloseDelay = TimeSpan.FromMilliseconds(120);
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
 
@@ -32,11 +49,16 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         Opened += OnOpened;
+        SizeChanged += OnWindowSizeChanged;
         DataContextChanged += OnDataContextChanged;
+        PointerExited += OnWindowPointerExited;
     }
 
     private async void OnOpened(object? sender, EventArgs e)
     {
+        EnsureDrawerLayoutHooks();
+        UpdateDrawerWidths();
+        SetDrawersClosedImmediate();
         EnsureEmbeddedViewerLayoutHooks();
         TryInitializeEmbeddedViewer();
         UpdateEmbeddedViewerLayout();
@@ -56,6 +78,9 @@ public partial class MainWindow : Window
             _currentVm.PropertyChanged += OnViewModelPropertyChanged;
         }
 
+        EnsureDrawerLayoutHooks();
+        UpdateDrawerWidths();
+        SetDrawersClosedImmediate();
         EnsureEmbeddedViewerLayoutHooks();
         TryInitializeEmbeddedViewer();
         UpdateEmbeddedViewerLayout();
@@ -71,6 +96,285 @@ public partial class MainWindow : Window
             TryInitializeEmbeddedViewer();
             UpdateEmbeddedViewerLayout();
         }
+
+        if (e.PropertyName == nameof(MainWindowViewModel.UIState))
+        {
+            SetDrawersClosedImmediate();
+        }
+    }
+
+    private void EnsureDrawerLayoutHooks()
+    {
+        if (_leftDrawerPanel is null)
+        {
+            _leftDrawerPanel = this.FindControl<Grid>("LeftDrawerPanel");
+            if (_leftDrawerPanel?.RenderTransform is TranslateTransform leftTransform)
+            {
+                _leftDrawerTransform = leftTransform;
+            }
+        }
+
+        _leftDrawerHitStrip ??= this.FindControl<Border>("LeftDrawerHitStrip");
+
+        if (_rightDrawerPanel is null)
+        {
+            _rightDrawerPanel = this.FindControl<Grid>("RightDrawerPanel");
+            if (_rightDrawerPanel?.RenderTransform is TranslateTransform rightTransform)
+            {
+                _rightDrawerTransform = rightTransform;
+            }
+        }
+
+        _rightDrawerHitStrip ??= this.FindControl<Border>("RightDrawerHitStrip");
+    }
+
+    private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        UpdateDrawerWidths();
+    }
+
+    private double GetClampedDrawerWidth()
+    {
+        var windowWidth = Math.Max(1, Bounds.Width);
+        var minWidth = windowWidth * DrawerMinWindowFraction;
+        var maxWidth = windowWidth * DrawerMaxWindowFraction;
+        return Math.Clamp(DrawerDesiredWidth, minWidth, maxWidth);
+    }
+
+    private void UpdateDrawerWidths()
+    {
+        EnsureDrawerLayoutHooks();
+        var width = GetClampedDrawerWidth();
+
+        if (_leftDrawerPanel is not null)
+        {
+            _leftDrawerPanel.Width = width;
+        }
+
+        if (_rightDrawerPanel is not null)
+        {
+            _rightDrawerPanel.Width = width;
+        }
+
+        if (_leftDrawerTransform is not null && !_isLeftDrawerOpen)
+        {
+            _leftDrawerTransform.X = -width;
+        }
+
+        if (_rightDrawerTransform is not null && !_isRightDrawerOpen)
+        {
+            _rightDrawerTransform.X = width;
+        }
+    }
+
+    private double GetDrawerWidth(Control? drawer)
+    {
+        if (drawer is null)
+        {
+            return 280;
+        }
+
+        if (drawer.Bounds.Width > 0)
+        {
+            return Math.Max(DrawerMinimumWidth, drawer.Bounds.Width);
+        }
+
+        if (drawer.Width > 0)
+        {
+            return Math.Max(DrawerMinimumWidth, drawer.Width);
+        }
+
+        return 280;
+    }
+
+    private void SetDrawersClosedImmediate()
+    {
+        EnsureDrawerLayoutHooks();
+        CancelLeftDrawerClose();
+        CancelRightDrawerClose();
+
+        if (_leftDrawerTransform is not null)
+        {
+            _leftDrawerTransform.X = -GetDrawerWidth(_leftDrawerPanel);
+        }
+
+        if (_rightDrawerTransform is not null)
+        {
+            _rightDrawerTransform.X = GetDrawerWidth(_rightDrawerPanel);
+        }
+
+        _isLeftDrawerOpen = false;
+        _isRightDrawerOpen = false;
+    }
+
+    private bool IsPointerOverLeftDrawerRegion()
+    {
+        return (_leftDrawerPanel?.IsPointerOver ?? false) || (_leftDrawerHitStrip?.IsPointerOver ?? false);
+    }
+
+    private bool IsPointerOverRightDrawerRegion()
+    {
+        return (_rightDrawerPanel?.IsPointerOver ?? false) || (_rightDrawerHitStrip?.IsPointerOver ?? false);
+    }
+
+    private void CancelLeftDrawerClose()
+    {
+        _leftDrawerCloseCts?.Cancel();
+        _leftDrawerCloseCts?.Dispose();
+        _leftDrawerCloseCts = null;
+    }
+
+    private void CancelRightDrawerClose()
+    {
+        _rightDrawerCloseCts?.Cancel();
+        _rightDrawerCloseCts?.Dispose();
+        _rightDrawerCloseCts = null;
+    }
+
+    private void ScheduleLeftDrawerClose()
+    {
+        CancelLeftDrawerClose();
+        var cts = new CancellationTokenSource();
+        _leftDrawerCloseCts = cts;
+        _ = CloseLeftDrawerAfterDelayAsync(cts.Token);
+    }
+
+    private void ScheduleRightDrawerClose()
+    {
+        CancelRightDrawerClose();
+        var cts = new CancellationTokenSource();
+        _rightDrawerCloseCts = cts;
+        _ = CloseRightDrawerAfterDelayAsync(cts.Token);
+    }
+
+    private async Task CloseLeftDrawerAfterDelayAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(DrawerCloseDelay, cancellationToken);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!IsPointerOverLeftDrawerRegion())
+                {
+                    SetLeftDrawerOpen(false);
+                }
+            }, DispatcherPriority.Input, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Drawer close was canceled by a re-enter event.
+        }
+    }
+
+    private async Task CloseRightDrawerAfterDelayAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(DrawerCloseDelay, cancellationToken);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!IsPointerOverRightDrawerRegion())
+                {
+                    SetRightDrawerOpen(false);
+                }
+            }, DispatcherPriority.Input, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Drawer close was canceled by a re-enter event.
+        }
+    }
+
+    private void SetLeftDrawerOpen(bool isOpen)
+    {
+        EnsureDrawerLayoutHooks();
+        if (_leftDrawerTransform is null || _leftDrawerPanel is null)
+        {
+            return;
+        }
+
+        if (isOpen)
+        {
+            CancelLeftDrawerClose();
+        }
+
+        if (_isLeftDrawerOpen == isOpen)
+        {
+            return;
+        }
+
+        var target = isOpen ? 0 : -GetDrawerWidth(_leftDrawerPanel);
+        _isLeftDrawerOpen = isOpen;
+        _leftDrawerTransform.X = target;
+    }
+
+    private void SetRightDrawerOpen(bool isOpen)
+    {
+        EnsureDrawerLayoutHooks();
+        if (_rightDrawerTransform is null || _rightDrawerPanel is null)
+        {
+            return;
+        }
+
+        if (isOpen)
+        {
+            CancelRightDrawerClose();
+        }
+
+        if (_isRightDrawerOpen == isOpen)
+        {
+            return;
+        }
+
+        var target = isOpen ? 0 : GetDrawerWidth(_rightDrawerPanel);
+        _isRightDrawerOpen = isOpen;
+        _rightDrawerTransform.X = target;
+    }
+
+    private void OnLeftDrawerHitStripPointerEntered(object? sender, PointerEventArgs e)
+    {
+        SetLeftDrawerOpen(true);
+    }
+
+    private void OnLeftDrawerHitStripPointerExited(object? sender, PointerEventArgs e)
+    {
+        ScheduleLeftDrawerClose();
+    }
+
+    private void OnRightDrawerHitStripPointerEntered(object? sender, PointerEventArgs e)
+    {
+        SetRightDrawerOpen(true);
+    }
+
+    private void OnRightDrawerHitStripPointerExited(object? sender, PointerEventArgs e)
+    {
+        ScheduleRightDrawerClose();
+    }
+
+    private void OnLeftDrawerPanelPointerEntered(object? sender, PointerEventArgs e)
+    {
+        SetLeftDrawerOpen(true);
+    }
+
+    private void OnRightDrawerPanelPointerEntered(object? sender, PointerEventArgs e)
+    {
+        SetRightDrawerOpen(true);
+    }
+
+    private void OnLeftDrawerPanelPointerExited(object? sender, PointerEventArgs e)
+    {
+        ScheduleLeftDrawerClose();
+    }
+
+    private void OnRightDrawerPanelPointerExited(object? sender, PointerEventArgs e)
+    {
+        ScheduleRightDrawerClose();
+    }
+
+    private void OnWindowPointerExited(object? sender, PointerEventArgs e)
+    {
+        ScheduleLeftDrawerClose();
+        ScheduleRightDrawerClose();
     }
 
     private async void OnNewPersonaClicked(object? sender, RoutedEventArgs e)

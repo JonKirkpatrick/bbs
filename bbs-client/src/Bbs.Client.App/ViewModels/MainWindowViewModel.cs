@@ -419,7 +419,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private bool CanExecuteOwnerTokenAction()
     {
-        return _serverAccessService.HasValidServerAccess && !_serverAccessService.IsServerAccessLoading && SelectedServer is not null;
+        return _serverAccessService.HasValidServerAccess &&
+               !_serverAccessService.IsServerAccessLoading &&
+               SelectedServer is not null &&
+               SelectedServer.VisualState == ServerCardVisualState.Live;
     }
 
     private bool CanRefreshServerArenas()
@@ -446,6 +449,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void ExecuteCreateArena()
     {
+        if (!CanExecuteOwnerTokenAction())
+        {
+            return;
+        }
+
         _ = _serverAccessService.ExecuteOwnerTokenActionAsync(
             OwnerTokenActionType.CreateArena,
             SelectedServer,
@@ -459,6 +467,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void ExecuteJoinArena()
     {
+        if (!CanExecuteOwnerTokenAction())
+        {
+            return;
+        }
+
         _ = _serverAccessService.ExecuteOwnerTokenActionAsync(
             OwnerTokenActionType.JoinArena,
             SelectedServer,

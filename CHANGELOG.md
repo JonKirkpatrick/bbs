@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 - **Client**: Added pulsing logo animation while servers are being probed on persona load.
+- **Client**: Changed side panels to drawers with auto-close, behaving as an overlay instead of occupying space on the central panel.
 
 ### Fixed
 - **Server**: Fixed intermittent SQLite write contention on server bootup routine by properly locking it on write and enabling graceful retry.

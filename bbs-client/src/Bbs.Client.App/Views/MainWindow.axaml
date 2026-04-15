@@ -104,21 +104,54 @@
 
             <Grid Grid.Row="1" Margin="0,12,0,0">
                   <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="{Binding UIState.LeftPanelWidth}" />
+                        <ColumnDefinition Width="0" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="{Binding UIState.RightPanelWidth}" />
+                        <ColumnDefinition Width="0" />
                   </Grid.ColumnDefinitions>
 
-                  <Grid Grid.Column="0" Margin="0,0,6,0" ZIndex="0">
+                  <Border x:Name="LeftDrawerHitStrip"
+                          Grid.ColumnSpan="3"
+                          Width="20"
+                          HorizontalAlignment="Left"
+                          Background="Transparent"
+                          ZIndex="20"
+                          PointerEntered="OnLeftDrawerHitStripPointerEntered"
+                          PointerExited="OnLeftDrawerHitStripPointerExited" />
+
+                  <Border x:Name="RightDrawerHitStrip"
+                          Grid.ColumnSpan="3"
+                          Width="20"
+                          HorizontalAlignment="Right"
+                          Background="Transparent"
+                          ZIndex="20"
+                          PointerEntered="OnRightDrawerHitStripPointerEntered"
+                          PointerExited="OnRightDrawerHitStripPointerExited" />
+
+                  <Grid x:Name="LeftDrawerPanel"
+                        Grid.ColumnSpan="3"
+                        Width="280"
+                        HorizontalAlignment="Left"
+                        Margin="0"
+                        ZIndex="30"
+                        PointerEntered="OnLeftDrawerPanelPointerEntered"
+                        PointerExited="OnLeftDrawerPanelPointerExited">
+                        <Grid.RenderTransform>
+                              <TranslateTransform X="-280">
+                                    <TranslateTransform.Transitions>
+                                          <Transitions>
+                                                <DoubleTransition Property="X" Duration="0:0:0.13" Easing="SineEaseInOut" />
+                                          </Transitions>
+                                    </TranslateTransform.Transitions>
+                              </TranslateTransform>
+                        </Grid.RenderTransform>
                         <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="0,5,5,0" BoxShadow="5 2 20 0 #40000000" ZIndex="0" />
-                        <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ClipToBounds="True" ZIndex="1">
-                              <Grid Margin="0,0,0,8">
+                        <Grid Margin="12" RowDefinitions="Auto,*" ClipToBounds="True" ZIndex="1">
+                              <Grid Margin="0,0,0,8" ColumnDefinitions="Auto,*">
                               <Button Classes="panel-icon-toggle" 
                                           HorizontalAlignment="Left" 
                                           Width="28" Height="28" Padding="6"
                                           Command="{Binding StartNewBotCommand}"
-                                          ToolTip.Tip="New Bot"
-                                          IsVisible="{Binding UIState.IsLeftPanelExpanded}">
+                                          ToolTip.Tip="New Bot">
                                     <Path Data="{StaticResource PlusIcon}"
                                           Classes="panel-icon"
                                           Width="12" Height="12"
@@ -126,35 +159,14 @@
                               </Button>
 
                               <TextBlock Text="Bots" 
-                                          IsVisible="{Binding UIState.IsLeftPanelExpanded}" 
+                                          Grid.Column="1"
                                           HorizontalAlignment="Center" 
                                           VerticalAlignment="Center"
                                           FontSize="18" 
                                           FontWeight="SemiBold" />
-
-                              <Button Classes="panel-icon-toggle" 
-                                          HorizontalAlignment="Right" 
-                                          Width="28" Height="28" Padding="4" 
-                                          Command="{Binding UIState.ToggleLeftPanelCommand}">
-                                    <Grid>
-                                          <Path IsVisible="{Binding UIState.IsLeftPanelExpanded}"
-                                                Data="{StaticResource LeftAngleIcon}"
-                                                Classes="panel-icon"
-                                                ToolTip.Tip="Collapse"
-                                                Width="10" Height="14"
-                                                Stretch="Uniform" />
-
-                                          <Path IsVisible="{Binding UIState.IsLeftPanelCollapsed}"
-                                                Data="{StaticResource RightAngleIcon}"
-                                                Classes="panel-icon"
-                                                ToolTip.Tip="Expand"
-                                                Width="10" Height="14"
-                                                Stretch="Uniform" />
-                                    </Grid>
-                              </Button>
                               </Grid>
-                              <ListBox Grid.Row="2"
-                                                       IsVisible="{Binding UIState.IsLeftPanelExpanded}"
+                              <ListBox x:Name="LeftDrawerBotsList"
+                                                       Grid.Row="1"
                                                        Background="Transparent"
                                                        Margin="0,10,0,0"
                                                        BorderThickness="0"
@@ -162,6 +174,11 @@
                                                        ItemsSource="{Binding Bots}"
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedBot}">
+                                    <ListBox.ItemsPanel>
+                                          <ItemsPanelTemplate>
+                                                <StackPanel />
+                                          </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
                                     <ListBox.ItemTemplate>
       <DataTemplate x:CompileBindings="False">
             <Grid Margin="0,0,0,8">
@@ -528,36 +545,33 @@
                         </Grid>
                   </Grid>
 
-                  <Grid Grid.Column="2" Margin="6,0,0,0" ZIndex="0">
+                  <Grid x:Name="RightDrawerPanel"
+                        Grid.ColumnSpan="3"
+                        Width="280"
+                        HorizontalAlignment="Right"
+                        Margin="0"
+                        ZIndex="30"
+                        PointerEntered="OnRightDrawerPanelPointerEntered"
+                        PointerExited="OnRightDrawerPanelPointerExited">
+                        <Grid.RenderTransform>
+                              <TranslateTransform X="280">
+                                    <TranslateTransform.Transitions>
+                                          <Transitions>
+                                                <DoubleTransition Property="X" Duration="0:0:0.13" Easing="SineEaseInOut" />
+                                          </Transitions>
+                                    </TranslateTransform.Transitions>
+                              </TranslateTransform>
+                        </Grid.RenderTransform>
                         <Border Background="{DynamicResource Palette.PanelBackgroundBrush}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="5,0,0,5" BoxShadow="4 2 20 0 #40000000" ZIndex="0" />
                         <Grid Margin="12" RowDefinitions="Auto,Auto,*" ClipToBounds="True" ZIndex="1">
                               <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                                     <TextBlock Grid.ColumnSpan="3"
-                                               IsVisible="{Binding UIState.IsRightPanelExpanded}"
                                                HorizontalAlignment="Center"
                                                FontSize="18"
                                                FontWeight="SemiBold"
                                                Text="Servers" />
-                                    <Button Classes="panel-icon-toggle" HorizontalAlignment="Left" Width="28" Height="28" Padding="4" Command="{Binding UIState.ToggleRightPanelCommand}">
-                                          <Grid>
-                                                <Path IsVisible="{Binding UIState.IsRightPanelExpanded}"
-                                                      Data="{StaticResource RightAngleIcon}"
-                                                      Classes="panel-icon"
-                                                      Width="10"
-                                                      Height="14"
-                                                      Stretch="Uniform" />
-
-                                                <Path IsVisible="{Binding UIState.IsRightPanelCollapsed}"
-                                                      Data="{StaticResource LeftAngleIcon}"
-                                                      Classes="panel-icon"
-                                                      Width="10"
-                                                      Height="14"
-                                                      Stretch="Uniform" />
-                                          </Grid>
-                                    </Button>
 
                                     <StackPanel Grid.Column="2"
-                                                IsVisible="{Binding UIState.IsRightPanelExpanded}"
                                                 Orientation="Horizontal"
                                                 Spacing="6"
                                                 HorizontalAlignment="Right">
@@ -589,8 +603,8 @@
                                     </StackPanel>
                               </Grid>
 
-                              <ListBox Grid.Row="2"
-                                                       IsVisible="{Binding UIState.IsRightPanelExpanded}"
+                              <ListBox x:Name="RightDrawerServersList"
+                                                       Grid.Row="2"
                                                        Margin="0,10,0,0"
                                                        Background="Transparent"
                                                        BorderThickness="0"
@@ -598,6 +612,11 @@
                                                        ItemsSource="{Binding Servers}"
                                                        ClipToBounds="True"
                                                        SelectedItem="{Binding SelectedServer}">
+                                    <ListBox.ItemsPanel>
+                                          <ItemsPanelTemplate>
+                                                <StackPanel />
+                                          </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
                                     <ListBox.ItemTemplate>
                                           <DataTemplate x:DataType="vm:ServerSummaryItem" x:CompileBindings="False">
                                                 <Grid Margin="0,0,0,8">
