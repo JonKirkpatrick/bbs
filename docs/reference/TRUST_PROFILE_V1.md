@@ -168,7 +168,7 @@ Server policy:
 For control-plane actions (REGISTER and sensitive owner/admin actions):
 
 1. Require nonce + timestamp semantics.
-2. Reject stale timestamp windows (recommended <= 60s skew, <= 120s absolute age).
+2. Reject stale timestamp windows (recommended &lt;= 60s skew, &lt;= 120s absolute age).
 3. Keep short-term nonce/jti cache to block replay.
 4. Bind proof/token `aud` to target server identity.
 
