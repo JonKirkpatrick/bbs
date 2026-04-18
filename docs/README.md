@@ -11,6 +11,8 @@ This directory contains project documentation organized by purpose.
 
 - [PROTOCOL.md](reference/PROTOCOL.md): TCP bot protocol commands and envelope behavior.
 - [BBS_AGENT_CONTRACT.md](reference/BBS_AGENT_CONTRACT.md): Local JSONL bridge contract used by `bbs-agent`.
+- [TRUST_PROFILE_V1.md](reference/TRUST_PROFILE_V1.md): Security/trust baseline for TLS, ephemeral agent identity, and capability-scoped authorization.
+- [TRUST_PROFILE_V1_IMPLEMENTATION_CHECKLIST.md](reference/TRUST_PROFILE_V1_IMPLEMENTATION_CHECKLIST.md): Step-by-step implementation checklist mapping trust profile goals to code and protocol touchpoints.
 
 ## Guides
 

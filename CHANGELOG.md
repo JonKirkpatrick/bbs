@@ -8,13 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 - **Server**: Added new test around SQLite write contention.
+- **Project-Wide**: Introduced a first take at a Trust Profile to guide TLS rollout.
 
 ### Changed
 - **Client**: Added pulsing logo animation while servers are being probed on persona load.
 - **Client**: Changed side panels to drawers with auto-close, behaving as an overlay instead of occupying space on the central panel.
+- **Server**: Removed the GoLang counter plugin example.
 
 ### Fixed
 - **Server**: Fixed intermittent SQLite write contention on server bootup routine by properly locking it on write and enabling graceful retry.
+- **Server**: Moved native Go template syntax in the dashboard javascript into non-executing scripts so the intent is clearer.
 
 ## [v0.5.0] - 2026-04-08
 

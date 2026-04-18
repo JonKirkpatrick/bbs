@@ -651,8 +651,9 @@
         </main>
     </div>
 
+    <script id="bbs-game-catalog" type="application/json">{{.GameCatalogJSON}}</script>
     <script>
-        const BBS_GAME_CATALOG = {{.GameCatalogJSON}};
+        const BBS_GAME_CATALOG = JSON.parse(document.getElementById("bbs-game-catalog").textContent || "[]");
         const BBS_GAME_BY_NAME = (function () {
             const entries = new Map();
             if (Array.isArray(BBS_GAME_CATALOG)) {

@@ -247,12 +247,15 @@
             </div>
         </div>
     </div>
+    <script id="bbs-arenaId" type="application/json">{{.ArenaID}}</script>
+    <script id="bbs-matchId" type="application/json">{{.MatchID}}</script>
+    <script id="bbs-adminKey" type="application/json">{{printf "%q" .AdminKey}}</script>
 
     <script>
     (function () {
-        const arenaId = Number({{.ArenaID}} || 0);
-        const matchId = Number({{.MatchID}} || 0);
-        const adminKey = {{printf "%q" .AdminKey}};
+        const arenaId = Number(document.getElementById("bbs-arenaId").textContent || 0);
+        const matchId = Number(document.getElementById("bbs-matchId").textContent || 0);
+        const adminKey = JSON.parse(document.getElementById("bbs-adminKey").textContent || "null");
 
         const canvas = document.getElementById("viewer-canvas");
         const ctx = canvas.getContext("2d");

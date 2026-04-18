@@ -52,11 +52,12 @@
             <canvas id="viewer-canvas" width="960" height="540"></canvas>
         </div>
     </div>
-
+    <script id="bbs-arenaId" type="application/json">{{.ArenaID}}</script>
+    <script id="bbs-adminKey" type="application/json">{{printf "%q" .AdminKey}}</script>
     <script>
     (function () {
-        const arenaId = Number({{.ArenaID}} || 0);
-        const adminKey = {{printf "%q" .AdminKey}};
+        const arenaId = Number(document.getElementById("bbs-arenaId").textContent || 0);
+        const adminKey = JSON.parse(document.getElementById("bbs-adminKey").textContent || "null");
 
         const canvas = document.getElementById("viewer-canvas");
         const stage = document.getElementById("canvas-stage");

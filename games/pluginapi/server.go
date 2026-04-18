@@ -228,6 +228,7 @@ func Serve(factory Factory) error {
 	return nil
 }
 
+// This is just arbitrarily capped at 2 right now.  We'll be modifying this before too long.
 func requiredPlayers(game Game) int {
 	if game == nil {
 		return 2
